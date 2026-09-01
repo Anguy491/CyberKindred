@@ -51,7 +51,7 @@ Microsoft 将 GSMTC session 定义为“来自另一个应用、提供播放信�
 
 ### 3.1 M1 probe evidence
 
-`TASK-001` 在 2026-09-02 的 Windows 11 Home build 26200 上，以 `windows 0.62.2` 只读探针成功枚举 Apple Music Windows App package `1.1540.23042.0` 的会话。观察到的精确 `SourceAppUserModelId` 为 `AppleInc.AppleMusicWin_nzyj5cx40ttqa!App`；App 运行但未播放时仍可能暴露 `opened` 会话，媒体正文为空、timeline 可读、capability 仅按实时值出现且字段读取错误为零。该值是本机实测身份，不升级为跨版本硬编码常量；产品连接仍须枚举、让用户明确选择并保存所选身份。完整矩阵与红线见 [`TASK-001-MATRIX.md`](../../spikes/gsmtc/evidence/TASK-001-MATRIX.md)。
+`TASK-001` 在 2026-09-02 的 Windows 11 Home build 26200 上，以 `windows 0.62.2` 只读探针成功枚举 Apple Music Windows App package `1.1540.23042.0` 的会话。观察到的精确 `SourceAppUserModelId` 为 `AppleInc.AppleMusicWin_nzyj5cx40ttqa!App`；App 运行但未播放时仍可能暴露 `opened` 会话，媒体正文为空、timeline 可读、capability 仅按实时值出现且字段读取错误为零。播放中辅助实测进一步验证了媒体字段存在性、timeline、播放/暂停与前后切歌能力的真实变化；Apple Music 会约每 200–300 ms 刷新 timeline 时间戳，因此探针显式过滤该心跳而不把它计作用户操作。该 AUMID 是本机实测身份，不升级为跨版本硬编码常量；产品连接仍须枚举、让用户明确选择并保存所选身份。完整矩阵与红线见 [`TASK-001-MATRIX.md`](../../spikes/gsmtc/evidence/TASK-001-MATRIX.md)。
 
 ## 4. MusicBrainz Web Service
 

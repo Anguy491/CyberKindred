@@ -24,7 +24,7 @@
 cargo run --locked --manifest-path .\spikes\gsmtc\Cargo.toml -- snapshot
 ```
 
-以 100 ms 周期观察 60 秒；只在权威快照发生变化时输出去除媒体正文的 JSON Lines 事件：
+以 100 ms 周期观察 60 秒；只在播放状态、媒体、timeline 边界、capability、错误或明显 seek 跳转发生变化时输出去除媒体正文的 JSON Lines 事件。正常播放造成的位置推进和 Apple Music timeline 心跳不会单独输出：
 
 ```powershell
 cargo run --locked --manifest-path .\spikes\gsmtc\Cargo.toml -- watch --seconds 60 --interval-ms 100

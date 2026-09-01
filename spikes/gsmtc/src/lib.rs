@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const REPORT_SCHEMA_VERSION: &str = "1.0.0";
+const SEEK_DETECTION_TOLERANCE_MS: i64 = 2_000;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -251,6 +252,79 @@ pub fn optional_text(value: String) -> Option<String> {
     (!value.is_empty()).then_some(value)
 }
 
+/// Reports whether two consecutive snapshots contain a user-visible semantic
+/// change. Routine timeline heartbeats and normally advancing playback position
+/// are ignored, while a discontinuous position jump is retained as a seek.
+#[must_use]
+pub fn observation_changed(
+    previous: &ProbeReport,
+    current: &ProbeReport,
+    elapsed_ms: u128,
+) -> bool {
+    if previous.sessions.len() != current.sessions.len() {
+        return true;
+    }
+
+    previous
+        .sessions
+        .iter()
+        .zip(&current.sessions)
+        .any(|(left, right)| {
+            !session_semantically_equal(left, right)
+                || timeline_has_discontinuous_jump(left, right, elapsed_ms)
+        })
+}
+
+fn session_semantically_equal(left: &SessionSnapshot, right: &SessionSnapshot) -> bool {
+    left.source_app_user_model_id == right.source_app_user_model_id
+        && left.is_current == right.is_current
+        && left.playback_status == right.playback_status
+        && left.media == right.media
+        && timeline_bounds_equal(left.timeline.as_ref(), right.timeline.as_ref())
+        && left.capabilities == right.capabilities
+        && left.read_errors == right.read_errors
+}
+
+fn timeline_bounds_equal(
+    left: Option<&TimelineSnapshot>,
+    right: Option<&TimelineSnapshot>,
+) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => {
+            left.start_ms == right.start_ms
+                && left.end_ms == right.end_ms
+                && left.min_seek_ms == right.min_seek_ms
+                && left.max_seek_ms == right.max_seek_ms
+        }
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+fn timeline_has_discontinuous_jump(
+    left: &SessionSnapshot,
+    right: &SessionSnapshot,
+    elapsed_ms: u128,
+) -> bool {
+    if left.media != right.media || left.playback_status != right.playback_status {
+        return false;
+    }
+    let (Some(left_timeline), Some(right_timeline)) = (&left.timeline, &right.timeline) else {
+        return false;
+    };
+    let elapsed_ms = i64::try_from(elapsed_ms).unwrap_or(i64::MAX);
+    let expected_delta = if left.playback_status.as_deref() == Some("playing") {
+        elapsed_ms
+    } else {
+        0
+    };
+    let actual_delta = right_timeline
+        .position_ms
+        .saturating_sub(left_timeline.position_ms);
+
+    actual_delta.abs_diff(expected_delta) > SEEK_DETECTION_TOLERANCE_MS.unsigned_abs()
+}
+
 #[cfg(windows)]
 mod platform;
 
@@ -337,5 +411,84 @@ mod tests {
         assert!(!serialized.contains("private-title-canary"));
         assert!(!serialized.contains("private-artist-canary"));
         assert!(serialized.contains("\"presentFields\":[\"title\",\"artist\"]"));
+    }
+
+    #[test]
+    fn timeline_heartbeat_is_not_a_semantic_change() {
+        let previous = test_report();
+        let mut current = previous.clone();
+        let timeline = current.sessions[0]
+            .timeline
+            .as_mut()
+            .expect("test timeline should exist");
+        timeline.position_ms += 1_000;
+        timeline.last_updated_windows_ticks += 10_000_000;
+
+        assert!(!observation_changed(&previous, &current, 1_000));
+    }
+
+    #[test]
+    fn discontinuous_position_jump_is_a_semantic_change() {
+        let previous = test_report();
+        let mut current = previous.clone();
+        current.sessions[0]
+            .timeline
+            .as_mut()
+            .expect("test timeline should exist")
+            .position_ms += 52_000;
+
+        assert!(observation_changed(&previous, &current, 100));
+    }
+
+    #[test]
+    fn media_or_playback_status_change_is_semantic() {
+        let previous = test_report();
+        let mut media_change = previous.clone();
+        media_change.sessions[0]
+            .media
+            .as_mut()
+            .expect("test media should exist")
+            .title = Some("different private title".to_owned());
+        assert!(observation_changed(&previous, &media_change, 100));
+
+        let mut status_change = previous.clone();
+        status_change.sessions[0].playback_status = Some("paused".to_owned());
+        assert!(observation_changed(&previous, &status_change, 100));
+    }
+
+    fn test_report() -> ProbeReport {
+        ProbeReport {
+            schema_version: REPORT_SCHEMA_VERSION.to_owned(),
+            captured_at_unix_ms: 1,
+            mode: "read_only".to_owned(),
+            current_session_app_id: Some("app-id".to_owned()),
+            sessions: vec![SessionSnapshot {
+                source_app_user_model_id: "app-id".to_owned(),
+                is_current: true,
+                playback_status: Some("playing".to_owned()),
+                media: Some(MediaSnapshot {
+                    title: Some("private title".to_owned()),
+                    subtitle: None,
+                    artist: Some("private artist".to_owned()),
+                    album_artist: None,
+                    album_title: None,
+                    track_number: None,
+                    album_track_count: None,
+                    genres: Vec::new(),
+                    thumbnail_available: true,
+                }),
+                timeline: Some(TimelineSnapshot {
+                    start_ms: 0,
+                    end_ms: 240_000,
+                    min_seek_ms: 0,
+                    max_seek_ms: 240_000,
+                    position_ms: 10_000,
+                    last_updated_windows_ticks: 1,
+                }),
+                capabilities: None,
+                read_errors: Vec::new(),
+            }],
+            warnings: Vec::new(),
+        }
     }
 }

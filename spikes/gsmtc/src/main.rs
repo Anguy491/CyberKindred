@@ -1,4 +1,6 @@
-use cyberkindred_gsmtc_probe::{Command, ProbeObservation, parse_command, snapshot, usage};
+use cyberkindred_gsmtc_probe::{
+    Command, ProbeObservation, observation_changed, parse_command, snapshot, usage,
+};
 use std::{
     env,
     error::Error,
@@ -40,15 +42,23 @@ fn run() -> Result<(), Box<dyn Error>> {
 fn watch(seconds: u64, interval_ms: u64) -> Result<(), Box<dyn Error>> {
     let deadline = Instant::now() + Duration::from_secs(seconds);
     let interval = Duration::from_millis(interval_ms);
-    let mut previous_fingerprint = None;
+    let mut previous_report = None;
+    let mut previous_sample_at = None;
 
     loop {
+        let sample_at = Instant::now();
         let report = snapshot()?;
-        let fingerprint = serde_json::to_vec(&report.sessions)?;
-        if previous_fingerprint.as_ref() != Some(&fingerprint) {
+        let elapsed_ms = previous_sample_at.map_or(0, |previous: Instant| {
+            sample_at.duration_since(previous).as_millis()
+        });
+        let changed = previous_report
+            .as_ref()
+            .is_none_or(|previous| observation_changed(previous, &report, elapsed_ms));
+        if changed {
             write_json_line(&ProbeObservation::from(&report))?;
-            previous_fingerprint = Some(fingerprint);
         }
+        previous_report = Some(report);
+        previous_sample_at = Some(sample_at);
         if Instant::now() >= deadline {
             break;
         }

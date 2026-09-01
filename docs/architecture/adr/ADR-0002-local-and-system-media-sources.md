@@ -37,4 +37,4 @@
 
 ## M1 validation note
 
-2026-09-02 的 `TASK-001` 只读探针在 Windows 11 Home build 26200、Apple Music package `1.1540.23042.0` 上验证了 `RequestAsync → GetSessions → SourceAppUserModelId/GetPlaybackInfo/GetTimelineProperties/TryGetMediaPropertiesAsync` 路径可用。App 未播放时观察到精确 AUMID `AppleInc.AppleMusicWin_nzyj5cx40ttqa!App`、`opened` 状态、空媒体正文与受限 capability，支持“字段不推断、capability-driven、会话身份绑定”的原决策。该观察不证明所有版本 AUMID 恒定，也不完成播放中 50 次变化矩阵，因此不改变本 ADR 的产品边界。
+2026-09-02 的 `TASK-001` 只读探针在 Windows 11 Home build 26200、Apple Music package `1.1540.23042.0` 上验证了 `RequestAsync → GetSessions → SourceAppUserModelId/GetPlaybackInfo/GetTimelineProperties/TryGetMediaPropertiesAsync` 路径可用。App 未播放时观察到精确 AUMID `AppleInc.AppleMusicWin_nzyj5cx40ttqa!App`、`opened` 状态、空媒体正文与受限 capability；辅助播放测试又观察到媒体字段、timeline、播放/暂停、切歌和 capability 的语义变化，支持“字段不推断、capability-driven、会话身份绑定”的原决策。该观察不证明所有版本 AUMID 恒定，也只完成变化矩阵的至少 12/50，因此不改变本 ADR 的产品边界。
