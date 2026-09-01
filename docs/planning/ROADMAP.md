@@ -24,6 +24,8 @@ Roadmap 描述阶段，不承载具体需求或任务状态。具体执行顺序
 
 ## M1 — Feasibility and platform probes
 
+**Status:** In Progress — `TASK-001` complete; `TASK-002` and `TASK-003` pending.
+
 **Goal:** 用最小可丢弃探针消除 Windows 媒体与音频的高风险未知数，不形成产品 UI。
 
 **Scope:** packaged/unpackaged GSMTC 枚举与 Apple Music 控制、rodio 常用格式/设备切换、Credential Manager、Tauri notification/tray/NSIS/WebView2。

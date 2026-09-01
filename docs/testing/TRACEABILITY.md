@@ -12,6 +12,8 @@
 
 本矩阵只建立引用，不重新定义需求或契约。表中 `Contract` 的 schema 文件名均位于 `docs/contracts/schemas/`；provider interface 指 `PROVIDER-CONTRACTS.md`。实现 PR/提交必须更新受影响行。任何空单元格、引用不存在、需求无测试/任务或任务无需求都阻断开发。一个测试可覆盖多项需求，但测试失败时必须能回溯到具体需求断言。
 
+任务状态仍以 [`BACKLOG.md`](../planning/BACKLOG.md) 为准。`TASK-001` 的 M1 `TEST-APL-001/002` 证据归档于 [`TASK-001-MATRIX.md`](../../spikes/gsmtc/evidence/TASK-001-MATRIX.md)；M6 产品 UI 验收仍由 `TASK-025` 承担。
+
 ## 2. Functional requirements
 
 ### 2.1 Onboarding
