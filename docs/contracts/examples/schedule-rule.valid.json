@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "1.0.0",
+  "scheduleId": "5ed4fa4a-7172-4889-901e-8cfa50c54efc",
+  "name": "工作日早间电台",
+  "timezone": "Australia/Sydney",
+  "daysOfWeek": ["mon", "tue", "wed", "thu", "fri"],
+  "localTime": "09:00",
+  "enabled": true,
+  "notificationOnly": true,
+  "createdAt": "2026-09-01T08:00:00+10:00",
+  "updatedAt": "2026-09-01T08:00:00+10:00",
+  "revision": 1
+}

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0.0",
+  "programId": "101bd845-f424-4aaa-b940-596f3085a6ae",
+  "sourceId": "gsmtc.apple_music",
+  "mode": "system_session",
+  "createdAt": "2026-09-01T09:00:00+10:00",
+  "segments": [
+    {
+      "type": "track",
+      "segmentId": "3fdc2cf6-53b8-44f0-9cf3-2af63a13c8f2",
+      "trackId": "catalog:arbitrary-song",
+      "segueText": null
+    }
+  ]
+}

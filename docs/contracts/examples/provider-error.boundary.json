@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "1.0.0",
+  "errorId": "ERR-1302",
+  "provider": "musicbrainz",
+  "category": "rate_limit",
+  "retryable": true,
+  "retryAfterMs": 0,
+  "safeMessage": "请稍后重试。",
+  "occurredAt": "2026-09-01T00:00:00Z",
+  "correlationId": "829130c2-3ef3-4029-b2aa-fbb563f9cf1c"
+}

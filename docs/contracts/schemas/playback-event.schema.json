@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cyberkindred://contracts/v1/playback-event.schema.json",
+  "title": "PlaybackEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "eventId", "sequence", "type", "occurredAt", "sourceId", "stateRevision", "reason", "state"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "eventId": { "type": "string", "format": "uuid" },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "type": { "enum": ["state_changed", "track_changed", "capabilities_changed", "source_disconnected", "user_override", "program_interrupted"] },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "sourceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$" },
+    "stateRevision": { "type": "integer", "minimum": 0 },
+    "reason": {
+      "oneOf": [
+        { "type": "null" },
+        { "enum": ["adapter_update", "user_command", "session_lost", "session_replaced", "user_media_key", "tts_resume_aborted", "media_error"] }
+      ]
+    },
+    "state": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "cyberkindred://contracts/v1/playback-state.schema.json" }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "enum": ["state_changed", "track_changed", "capabilities_changed"] } }, "required": ["type"] },
+      "then": { "properties": { "state": { "$ref": "cyberkindred://contracts/v1/playback-state.schema.json" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "source_disconnected" } }, "required": ["type"] },
+      "then": { "properties": { "reason": { "enum": ["session_lost", "session_replaced", "media_error"] } } }
+    }
+  ]
+}

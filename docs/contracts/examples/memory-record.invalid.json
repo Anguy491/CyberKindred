@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0.0",
+  "memoryId": "2a02dcdc-66d3-4ba2-8b5f-7e01d600da21",
+  "status": "proposed",
+  "kind": "routine",
+  "content": "用户通常在九点开始工作。",
+  "confidence": 0.5,
+  "sourceSessionId": null,
+  "createdAt": "2026-09-01T09:00:00+10:00",
+  "updatedAt": "2026-09-01T09:00:00+10:00",
+  "approvedAt": null,
+  "lastUsedAt": null,
+  "enabled": true,
+  "revision": 0
+}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "1.0.0",
+  "programId": "c2a5704a-0837-4fd9-b5fd-ddb1e01f5e41",
+  "sourceId": "local.library",
+  "mode": "local",
+  "createdAt": "2026-09-01T09:00:00+10:00",
+  "segments": [
+    {
+      "type": "voice",
+      "segmentId": "8fa83a97-8b22-4cb8-b056-f9150eef953b",
+      "text": "早上好，今天从一首熟悉的歌开始。",
+      "trigger": "opening"
+    },
+    {
+      "type": "track",
+      "segmentId": "712cbe67-e186-4e37-894c-f48dc8a39f22",
+      "trackId": "track:01J7CYBERKINDRED",
+      "segueText": null
+    }
+  ]
+}

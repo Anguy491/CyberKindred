@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0.0",
+  "memoryId": "cb560b5a-e2f3-4cce-903f-d57e785ddc17",
+  "status": "proposed",
+  "kind": "boundary",
+  "content": "不",
+  "confidence": 0,
+  "sourceSessionId": null,
+  "createdAt": "2026-09-01T00:00:00Z",
+  "updatedAt": "2026-09-01T00:00:00Z",
+  "approvedAt": null,
+  "lastUsedAt": null,
+  "enabled": false,
+  "revision": 0
+}

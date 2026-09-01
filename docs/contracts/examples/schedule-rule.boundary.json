@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "1.0.0",
+  "scheduleId": "bc20504c-6df1-4b5e-bb83-7286921792c4",
+  "name": "夜",
+  "timezone": "Etc/GMT+12",
+  "daysOfWeek": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+  "localTime": "00:00",
+  "enabled": false,
+  "notificationOnly": true,
+  "createdAt": "2026-09-01T00:00:00Z",
+  "updatedAt": "2026-09-01T00:00:00Z",
+  "revision": 0
+}

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "1.0.0",
+  "errorId": "ERR-1304",
+  "provider": "open_meteo",
+  "category": "unavailable",
+  "retryable": true,
+  "retryAfterMs": 1000,
+  "safeMessage": "天气服务暂时不可用，本次节目将省略天气信息。",
+  "occurredAt": "2026-09-01T09:00:00+10:00",
+  "correlationId": "85439c61-d341-4bdd-aa86-8771d7bf3068"
+}

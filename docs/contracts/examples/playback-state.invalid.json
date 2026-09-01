@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "1.0.0",
+  "sourceId": "gsmtc.apple_music",
+  "sourceKind": "system_session",
+  "status": "paused",
+  "capabilities": {
+    "play": true,
+    "pause": true,
+    "seek": true,
+    "next": true,
+    "previous": true,
+    "setQueue": true
+  },
+  "currentTrack": null,
+  "positionMs": 0,
+  "durationMs": null,
+  "revision": 3,
+  "updatedAt": "2026-09-01T09:00:00+10:00",
+  "lastError": null
+}

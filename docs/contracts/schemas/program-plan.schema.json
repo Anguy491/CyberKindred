@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cyberkindred://contracts/v1/program-plan.schema.json",
+  "title": "ProgramPlan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "programId", "sourceId", "mode", "createdAt", "segments"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "programId": { "type": "string", "format": "uuid" },
+    "sourceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$" },
+    "mode": { "enum": ["local", "system_session"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "segments": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/trackSegment" },
+          { "$ref": "#/$defs/voiceSegment" }
+        ]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "mode": { "const": "local" } }, "required": ["mode"] },
+      "then": { "properties": { "segments": { "contains": { "$ref": "#/$defs/trackSegment" }, "minContains": 1 } } }
+    },
+    {
+      "if": { "properties": { "mode": { "const": "system_session" } }, "required": ["mode"] },
+      "then": { "properties": { "segments": { "items": { "$ref": "#/$defs/voiceSegment" } } } }
+    }
+  ],
+  "$defs": {
+    "trackSegment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "segmentId", "trackId", "segueText"],
+      "properties": {
+        "type": { "const": "track" },
+        "segmentId": { "type": "string", "format": "uuid" },
+        "trackId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$" },
+        "segueText": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1, "maxLength": 400 }
+          ]
+        }
+      }
+    },
+    "voiceSegment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "segmentId", "text", "trigger"],
+      "properties": {
+        "type": { "const": "voice" },
+        "segmentId": { "type": "string", "format": "uuid" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "trigger": { "enum": ["opening", "between_tracks", "user_message", "track_changed", "closing"] }
+      }
+    }
+  }
+}

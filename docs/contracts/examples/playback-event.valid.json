@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "1.0.0",
+  "eventId": "6c485ef3-27d2-4aa0-a8f1-4cd75cb8eea2",
+  "sequence": 18,
+  "type": "state_changed",
+  "occurredAt": "2026-09-01T09:04:12+10:00",
+  "sourceId": "local.library",
+  "stateRevision": 17,
+  "reason": "adapter_update",
+  "state": {
+    "schemaVersion": "1.0.0",
+    "sourceId": "local.library",
+    "sourceKind": "local",
+    "status": "playing",
+    "capabilities": {
+      "play": true,
+      "pause": true,
+      "seek": true,
+      "next": true,
+      "previous": true,
+      "setQueue": true
+    },
+    "currentTrack": {
+      "trackId": "track:01J7CYBERKINDRED",
+      "title": "Night Signal",
+      "artist": "Example Artist",
+      "album": null,
+      "artworkUri": null,
+      "origin": "local"
+    },
+    "positionMs": 42000,
+    "durationMs": 216000,
+    "revision": 17,
+    "updatedAt": "2026-09-01T09:04:12+10:00",
+    "lastError": null
+  }
+}

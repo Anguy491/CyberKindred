@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "1.0.0",
+  "eventId": "fc92f5e6-f99c-4e96-9581-25f833379ab7",
+  "sequence": 0,
+  "type": "user_override",
+  "occurredAt": "2026-09-01T00:00:00Z",
+  "sourceId": "gsmtc.apple_music",
+  "stateRevision": 0,
+  "reason": "user_media_key",
+  "state": null
+}

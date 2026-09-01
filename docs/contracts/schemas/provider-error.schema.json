@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cyberkindred://contracts/v1/provider-error.schema.json",
+  "title": "ProviderError",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "errorId", "provider", "category", "retryable", "retryAfterMs", "safeMessage", "occurredAt", "correlationId"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "errorId": { "enum": ["ERR-1301", "ERR-1302", "ERR-1303", "ERR-1304", "ERR-1305"] },
+    "provider": { "type": "string", "minLength": 2, "maxLength": 64, "pattern": "^[a-z][a-z0-9_]+$" },
+    "category": { "enum": ["authentication", "rate_limit", "timeout", "unavailable", "invalid_response"] },
+    "retryable": { "type": "boolean" },
+    "retryAfterMs": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "integer", "minimum": 0, "maximum": 86400000 }
+      ]
+    },
+    "safeMessage": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "correlationId": { "type": "string", "format": "uuid" }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "errorId": { "const": "ERR-1301" },
+        "category": { "const": "authentication" },
+        "retryable": { "const": false },
+        "retryAfterMs": { "type": "null" }
+      }
+    },
+    {
+      "properties": {
+        "errorId": { "const": "ERR-1302" },
+        "category": { "const": "rate_limit" },
+        "retryable": { "const": true }
+      }
+    },
+    {
+      "properties": {
+        "errorId": { "const": "ERR-1303" },
+        "category": { "const": "timeout" },
+        "retryable": { "const": true },
+        "retryAfterMs": { "type": "null" }
+      }
+    },
+    {
+      "properties": {
+        "errorId": { "const": "ERR-1304" },
+        "category": { "const": "unavailable" },
+        "retryable": { "const": true }
+      }
+    },
+    {
+      "properties": {
+        "errorId": { "const": "ERR-1305" },
+        "category": { "const": "invalid_response" },
+        "retryable": { "const": false },
+        "retryAfterMs": { "type": "null" }
+      }
+    }
+  ]
+}

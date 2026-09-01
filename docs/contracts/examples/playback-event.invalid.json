@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "1.0.0",
+  "eventId": "15728a5d-4f42-49a8-b5a9-ff9f51dab948",
+  "sequence": 7,
+  "type": "source_disconnected",
+  "occurredAt": "2026-09-01T09:00:00+10:00",
+  "sourceId": "gsmtc.apple_music",
+  "stateRevision": 2,
+  "reason": "user_command",
+  "state": null
+}

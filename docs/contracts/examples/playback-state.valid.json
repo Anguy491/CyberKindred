@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "1.0.0",
+  "sourceId": "local.library",
+  "sourceKind": "local",
+  "status": "playing",
+  "capabilities": {
+    "play": true,
+    "pause": true,
+    "seek": true,
+    "next": true,
+    "previous": true,
+    "setQueue": true
+  },
+  "currentTrack": {
+    "trackId": "track:01J7CYBERKINDRED",
+    "title": "Night Signal",
+    "artist": "Example Artist",
+    "album": "Demo Album",
+    "artworkUri": "asset://artwork/track-01",
+    "origin": "local"
+  },
+  "positionMs": 42000,
+  "durationMs": 216000,
+  "revision": 17,
+  "updatedAt": "2026-09-01T09:04:12+10:00",
+  "lastError": null
+}

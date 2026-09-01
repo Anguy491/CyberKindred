@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cyberkindred://contracts/v1/memory-record.schema.json",
+  "title": "MemoryRecord",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "memoryId", "status", "kind", "content", "confidence", "sourceSessionId", "createdAt", "updatedAt", "approvedAt", "lastUsedAt", "enabled", "revision"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "memoryId": { "type": "string", "format": "uuid" },
+    "status": { "enum": ["proposed", "approved", "disabled"] },
+    "kind": { "enum": ["preference", "routine", "boundary", "biographical"] },
+    "content": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "sourceSessionId": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "format": "uuid" }
+      ]
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "approvedAt": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "format": "date-time" }
+      ]
+    },
+    "lastUsedAt": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "format": "date-time" }
+      ]
+    },
+    "enabled": { "type": "boolean" },
+    "revision": { "type": "integer", "minimum": 0 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "proposed" } }, "required": ["status"] },
+      "then": { "properties": { "approvedAt": { "type": "null" }, "enabled": { "const": false } } }
+    },
+    {
+      "if": { "properties": { "status": { "const": "approved" } }, "required": ["status"] },
+      "then": { "properties": { "approvedAt": { "type": "string", "format": "date-time" }, "enabled": { "const": true } } }
+    },
+    {
+      "if": { "properties": { "status": { "const": "disabled" } }, "required": ["status"] },
+      "then": { "properties": { "approvedAt": { "type": "string", "format": "date-time" }, "enabled": { "const": false } } }
+    }
+  ]
+}

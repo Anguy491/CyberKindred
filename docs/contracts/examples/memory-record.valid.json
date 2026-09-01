@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0.0",
+  "memoryId": "021ef42d-d8dc-4821-ad98-6f753721c8db",
+  "status": "approved",
+  "kind": "preference",
+  "content": "工作日上午更喜欢安静、节奏平稳的音乐。",
+  "confidence": 0.86,
+  "sourceSessionId": "4774bd4e-0371-4c49-8cc3-c5ff2b97adcb",
+  "createdAt": "2026-09-01T08:00:00+10:00",
+  "updatedAt": "2026-09-01T08:05:00+10:00",
+  "approvedAt": "2026-09-01T08:05:00+10:00",
+  "lastUsedAt": "2026-09-01T08:10:00+10:00",
+  "enabled": true,
+  "revision": 2
+}

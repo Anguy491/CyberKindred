@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0.0",
+  "programId": "8279ca86-2cdb-4a18-8901-0d952f85b43f",
+  "sourceId": "gsmtc.apple_music",
+  "mode": "system_session",
+  "createdAt": "2026-09-01T00:00:00Z",
+  "segments": [
+    {
+      "type": "voice",
+      "segmentId": "6644b17b-faf6-46f5-b523-b965897c2e08",
+      "text": "好",
+      "trigger": "track_changed"
+    }
+  ]
+}

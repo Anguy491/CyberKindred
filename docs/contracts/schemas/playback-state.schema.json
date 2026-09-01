@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cyberkindred://contracts/v1/playback-state.schema.json",
+  "title": "PlaybackState",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "sourceId", "sourceKind", "status", "capabilities", "currentTrack", "positionMs", "durationMs", "revision", "updatedAt", "lastError"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "sourceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$" },
+    "sourceKind": { "enum": ["local", "system_session"] },
+    "status": { "enum": ["disconnected", "idle", "loading", "playing", "paused", "stopped", "error"] },
+    "capabilities": { "$ref": "#/$defs/capabilities" },
+    "currentTrack": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/track" }
+      ]
+    },
+    "positionMs": { "type": "integer", "minimum": 0, "maximum": 86400000 },
+    "durationMs": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "integer", "minimum": 0, "maximum": 86400000 }
+      ]
+    },
+    "revision": { "type": "integer", "minimum": 0 },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "lastError": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/safeError" }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "sourceKind": { "const": "system_session" } }, "required": ["sourceKind"] },
+      "then": { "properties": { "capabilities": { "properties": { "setQueue": { "const": false } } } } }
+    },
+    {
+      "if": { "properties": { "status": { "const": "disconnected" } }, "required": ["status"] },
+      "then": { "properties": { "currentTrack": { "type": "null" }, "positionMs": { "const": 0 }, "durationMs": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "status": { "const": "error" } }, "required": ["status"] },
+      "then": { "properties": { "lastError": { "$ref": "#/$defs/safeError" } } }
+    }
+  ],
+  "$defs": {
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["play", "pause", "seek", "next", "previous", "setQueue"],
+      "properties": {
+        "play": { "type": "boolean" },
+        "pause": { "type": "boolean" },
+        "seek": { "type": "boolean" },
+        "next": { "type": "boolean" },
+        "previous": { "type": "boolean" },
+        "setQueue": { "type": "boolean" }
+      }
+    },
+    "track": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trackId", "title", "artist", "album", "artworkUri", "origin"],
+      "properties": {
+        "trackId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "artist": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1, "maxLength": 300 }
+          ]
+        },
+        "album": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1, "maxLength": 300 }
+          ]
+        },
+        "artworkUri": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "pattern": "^asset://[A-Za-z0-9._:/-]+$", "maxLength": 512 }
+          ]
+        },
+        "origin": { "enum": ["local", "system_session"] }
+      }
+    },
+    "safeError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["errorId", "safeMessage", "retryable"],
+      "properties": {
+        "errorId": { "type": "string", "pattern": "^ERR-[0-9]{4}$" },
+        "safeMessage": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "retryable": { "type": "boolean" }
+      }
+    }
+  }
+}
