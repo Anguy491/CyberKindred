@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Integration Owner |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 外部服务的认证、数据披露、能力边界、限流、缓存、降级与测试方法 |
 | Related Documents | `docs/contracts/PROVIDER-CONTRACTS.md`, `docs/security/PRIVACY-DATA-LIFECYCLE.md`, `docs/security/LEGAL-AND-LICENSING.md`, `docs/planning/RISK-REGISTER.md` |
 

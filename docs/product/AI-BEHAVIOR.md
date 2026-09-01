@@ -2,9 +2,9 @@
 
 | Metadata | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Product & AI Safety |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | AI 人格、表达边界、主播节奏、敏感场景与记忆陈述规则 |
 | Related Documents | `docs/product/PRD.md`; `docs/product/FRS.md`; `docs/architecture/AI-ORCHESTRATION.md`; `docs/security/PRIVACY-DATA-LIFECYCLE.md` |
 

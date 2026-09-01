@@ -2,9 +2,9 @@
 
 | Metadata | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Product Design |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 首发信息架构、页面行为、文案状态、键盘路径与 Nothing-inspired OLED 视觉规则 |
 | Related Documents | `docs/product/FRS.md`; `docs/product/NFRS.md`; `docs/product/AI-BEHAVIOR.md`; `docs/architecture/RUNTIME-STATE-MACHINES.md`; `docs/contracts/API-CONTRACT.md` |
 

@@ -2,15 +2,19 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Release Steward |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 用户可感知变更与破坏性契约变更历史 |
 | Related Documents | `docs/operations/BUILD-RELEASE.md`, `docs/planning/BACKLOG.md` |
 
 所有用户可感知行为、数据迁移和破坏性契约变化记录于此。版本号遵循 Semantic Versioning；内测前使用 `0.x.y`。
 
 ## [Unreleased]
+
+### Changed
+
+- Documentation Baseline v1 于 2026-09-02 获用户批准，项目进入 M1 技术探针阶段。
 
 ### Added
 

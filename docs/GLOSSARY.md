@@ -2,9 +2,9 @@
 
 | Metadata | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Product & Architecture |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 项目领域术语及其规范含义 |
 | Related Documents | `docs/product/PRD.md`; `docs/product/FRS.md`; `docs/architecture/ARCHITECTURE.md`; `docs/contracts/API-CONTRACT.md` |
 

@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Release Steward |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 版本、可复现构建、NSIS 制品、校验与回滚 |
 | Related Documents | `DEVELOPMENT-GUIDE.md`, `../testing/TEST-STRATEGY.md`, `../planning/ROADMAP.md` |
 

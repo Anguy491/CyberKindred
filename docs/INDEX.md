@@ -2,15 +2,15 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Documentation Steward |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 文档导航、领域权威性、阅读顺序与变更联动 |
 | Related Documents | `../AGENTS.md`, `planning/ROADMAP.md`, `planning/BACKLOG.md` |
 
 ## Baseline rule
 
-Documentation Baseline v1 在用户批准前保持 `Draft`。批准动作会把本索引、PRD、FRS、NFRS、架构、契约、测试策略、Roadmap 与 Backlog 一并改为 `Approved`，并创建本地标签 `docs-baseline-v1`。批准前不得创建产品代码。
+Documentation Baseline v1 已于 2026-09-02 获用户批准，基线文档状态为 `Approved`，并由本地标签 `docs-baseline-v1` 冻结。此后行为或契约变化必须按下方联动规则修改，不能静默偏离基线。
 
 ## Authority matrix
 

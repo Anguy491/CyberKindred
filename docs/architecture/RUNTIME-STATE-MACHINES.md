@@ -2,9 +2,9 @@
 
 | Metadata | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Core Architecture |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 本地播放、系统媒体、节目、TTS 打断、日程、睡眠/恢复的状态、转换、竞态与失败语义 |
 | Related Documents | [Architecture](ARCHITECTURE.md), [AI Orchestration](AI-ORCHESTRATION.md), [API Contract](../contracts/API-CONTRACT.md), [Provider Contracts](../contracts/PROVIDER-CONTRACTS.md), [Acceptance Tests](../testing/ACCEPTANCE-TESTS.md) |
 

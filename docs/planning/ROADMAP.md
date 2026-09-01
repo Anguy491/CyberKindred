@@ -2,15 +2,17 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Product Owner / Lead Agent |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 里程碑顺序、依赖与阶段退出条件 |
 | Related Documents | `../product/PRD.md`, `BACKLOG.md`, `RISK-REGISTER.md`, `../testing/TEST-STRATEGY.md` |
 
 Roadmap 描述阶段，不承载具体需求或任务状态。具体执行顺序以 `BACKLOG.md` 为准。
 
 ## M0 — Documentation Baseline v1
+
+**Status:** Complete — approved 2026-09-02.
 
 **Goal:** 在产品代码前建立可审阅、可追踪、机器可验证的事实源。
 

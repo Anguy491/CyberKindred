@@ -2,9 +2,9 @@
 
 | Metadata | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Quality Engineering |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | Documentation Baseline v1 的端到端验收场景、证据和发布判定 |
 | Related Documents | `docs/product/FRS.md`; `docs/product/NFRS.md`; `docs/testing/TEST-STRATEGY.md`; `docs/testing/TRACEABILITY.md` |
 

@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Privacy Steward |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 用户数据的来源、用途、本地存储、外发、保留、导出与删除语义 |
 | Related Documents | `docs/architecture/DATA-MODEL.md`, `docs/contracts/API-CONTRACT.md`, `docs/integrations/EXTERNAL-INTEGRATIONS.md`, `docs/security/THREAT-MODEL.md` |
 

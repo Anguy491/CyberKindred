@@ -2,9 +2,9 @@
 
 | Metadata | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Product |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 产品愿景、目标用户、首发范围、非目标和成功定义 |
 | Related Documents | `docs/product/FRS.md`; `docs/product/NFRS.md`; `docs/product/AI-BEHAVIOR.md`; `docs/product/UX-SPEC.md`; `docs/planning/ROADMAP.md` |
 

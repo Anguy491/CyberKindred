@@ -2,9 +2,9 @@
 
 | Metadata | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Product & Engineering |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 首发性能、可靠性、安全、隐私、无障碍、兼容性、成本、可维护性与离线质量门槛 |
 | Related Documents | `docs/product/FRS.md`; `docs/architecture/ARCHITECTURE.md`; `docs/security/THREAT-MODEL.md`; `docs/testing/TEST-STRATEGY.md`; `docs/testing/TRACEABILITY.md` |
 

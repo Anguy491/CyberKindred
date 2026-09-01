@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Frontend Steward |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | `src/` 内的前端执行约束 |
 | Related Documents | `../AGENTS.md`, `../docs/product/UX-SPEC.md`, `../docs/contracts/API-CONTRACT.md` |
 

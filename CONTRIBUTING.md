@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Lead Agent |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | Git、任务、审查与协作流程 |
 | Related Documents | `AGENTS.md`, `docs/planning/BACKLOG.md`, `docs/testing/TEST-STRATEGY.md` |
 

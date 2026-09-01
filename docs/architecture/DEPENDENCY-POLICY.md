@@ -2,9 +2,9 @@
 
 | Metadata | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Core Architecture & Security |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 允许、条件允许和禁止的依赖类别，版本锁定、许可证与新增生产依赖审批流程 |
 | Related Documents | [Architecture](ARCHITECTURE.md), [ADR-0001](adr/ADR-0001-tauri-react-rust.md), [ADR-0004](adr/ADR-0004-provider-abstractions.md), [Threat Model](../security/THREAT-MODEL.md), [Legal and Licensing](../security/LEGAL-AND-LICENSING.md), [Development Guide](../operations/DEVELOPMENT-GUIDE.md) |
 

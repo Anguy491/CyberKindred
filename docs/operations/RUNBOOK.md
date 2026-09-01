@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Support Steward |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 本地故障诊断、恢复、备份和数据清除 |
 | Related Documents | `../architecture/DATA-MODEL.md`, `../security/PRIVACY-DATA-LIFECYCLE.md`, `BUILD-RELEASE.md` |
 

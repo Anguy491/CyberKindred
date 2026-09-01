@@ -2,9 +2,9 @@
 
 | Metadata | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Product |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | Documentation Baseline v1 的功能行为与逐项验收条件 |
 | Related Documents | `docs/product/PRD.md`; `docs/product/AI-BEHAVIOR.md`; `docs/product/UX-SPEC.md`; `docs/contracts/API-CONTRACT.md`; `docs/testing/TRACEABILITY.md` |
 

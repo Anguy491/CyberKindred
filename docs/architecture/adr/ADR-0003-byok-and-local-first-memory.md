@@ -2,9 +2,9 @@
 
 | Metadata | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Privacy & Data Architecture |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 用户自带 OpenAI Key、Credential Manager 存储、本地数据与记忆审批模型的决策理由 |
 | Related Documents | [Data Model](../DATA-MODEL.md), [AI Orchestration](../AI-ORCHESTRATION.md), [Privacy Data Lifecycle](../../security/PRIVACY-DATA-LIFECYCLE.md), [Threat Model](../../security/THREAT-MODEL.md), [FRS](../../product/FRS.md) |
 

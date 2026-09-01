@@ -2,9 +2,9 @@
 
 | Metadata | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Playback Architecture |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 本地曲库与 Apple Music Windows 系统媒体会话并存及 capability 模型的决策理由 |
 | Related Documents | [Architecture](../ARCHITECTURE.md), [Runtime State Machines](../RUNTIME-STATE-MACHINES.md), [Provider Contracts](../../contracts/PROVIDER-CONTRACTS.md), [FRS](../../product/FRS.md) |
 

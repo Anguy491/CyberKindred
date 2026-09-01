@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Core Steward |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | `src-tauri/` 内的 Rust 执行约束 |
 | Related Documents | `../AGENTS.md`, `../docs/architecture/ARCHITECTURE.md`, `../docs/security/THREAT-MODEL.md` |
 

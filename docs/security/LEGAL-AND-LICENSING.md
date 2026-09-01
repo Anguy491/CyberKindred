@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Release Steward |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | MVP 内测的本地音乐责任、服务条款边界、归因、字体与依赖许可门槛 |
 | Related Documents | `docs/integrations/EXTERNAL-INTEGRATIONS.md`, `docs/architecture/DEPENDENCY-POLICY.md`, `docs/operations/BUILD-RELEASE.md`, `docs/security/PRIVACY-DATA-LIFECYCLE.md` |
 

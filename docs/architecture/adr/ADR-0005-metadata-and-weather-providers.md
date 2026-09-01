@@ -2,9 +2,9 @@
 
 | Metadata | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Integration Architecture |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 音乐元数据、封面与天气 provider 选型及数据最小化的决策理由 |
 | Related Documents | [AI Orchestration](../AI-ORCHESTRATION.md), [Data Model](../DATA-MODEL.md), [External Integrations](../../integrations/EXTERNAL-INTEGRATIONS.md), [Privacy Data Lifecycle](../../security/PRIVACY-DATA-LIFECYCLE.md), [Legal and Licensing](../../security/LEGAL-AND-LICENSING.md) |
 

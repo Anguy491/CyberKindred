@@ -2,9 +2,9 @@
 
 | Metadata | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Core Architecture |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | Windows 桌面技术栈及 WebView/Rust 权限边界的决策理由 |
 | Related Documents | [Architecture](../ARCHITECTURE.md), [Dependency Policy](../DEPENDENCY-POLICY.md), [NFRS](../../product/NFRS.md), [ADR-0006](ADR-0006-document-and-contract-driven-development.md) |
 

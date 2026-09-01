@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Developer Experience Steward |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | Windows 开发环境、目录与本地命令 |
 | Related Documents | `../../AGENTS.md`, `../architecture/DEPENDENCY-POLICY.md`, `BUILD-RELEASE.md` |
 

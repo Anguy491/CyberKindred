@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Security Steward |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | MVP 的资产、攻击者、信任边界、安全目标、攻击面、缓解与严重度校准 |
 | Related Documents | `SECURITY.md`, `docs/architecture/ARCHITECTURE.md`, `docs/architecture/DATA-MODEL.md`, `docs/contracts/API-CONTRACT.md`, `docs/security/PRIVACY-DATA-LIFECYCLE.md` |
 

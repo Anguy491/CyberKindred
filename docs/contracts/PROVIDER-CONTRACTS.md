@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Architecture Owner |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | Music source 与 LLM、TTS、metadata、weather provider 的统一接口和失败语义 |
 | Related Documents | `docs/contracts/API-CONTRACT.md`, `docs/contracts/schemas/`, `docs/architecture/AI-ORCHESTRATION.md`, `docs/integrations/EXTERNAL-INTEGRATIONS.md` |
 

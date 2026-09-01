@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Lead Agent |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 已知项目风险、触发条件、缓解和关闭标准 |
 | Related Documents | `ROADMAP.md`, `../security/THREAT-MODEL.md`, `../integrations/EXTERNAL-INTEGRATIONS.md` |
 

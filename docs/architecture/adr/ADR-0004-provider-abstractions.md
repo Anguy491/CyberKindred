@@ -2,9 +2,9 @@
 
 | Metadata | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Integration Architecture |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | `LLMProvider`、`TTSProvider`、`MetadataProvider`、`WeatherProvider` 抽象与 adapter 边界的决策理由 |
 | Related Documents | [Architecture](../ARCHITECTURE.md), [AI Orchestration](../AI-ORCHESTRATION.md), [Provider Contracts](../../contracts/PROVIDER-CONTRACTS.md), [Dependency Policy](../DEPENDENCY-POLICY.md), [External Integrations](../../integrations/EXTERNAL-INTEGRATIONS.md) |
 

@@ -2,9 +2,9 @@
 
 | Metadata | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Project Governance |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | Documentation Baseline、可追踪 ID、机器契约与任务门禁的决策理由 |
 | Related Documents | [Docs Index](../../INDEX.md), [FRS](../../product/FRS.md), [NFRS](../../product/NFRS.md), [API Contract](../../contracts/API-CONTRACT.md), [Traceability](../../testing/TRACEABILITY.md), [Backlog](../../planning/BACKLOG.md), [Repository AGENTS](../../../AGENTS.md) |
 

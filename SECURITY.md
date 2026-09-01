@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Security Steward |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 仓库安全底线与安全问题处理流程 |
 | Related Documents | `docs/security/THREAT-MODEL.md`, `docs/security/PRIVACY-DATA-LIFECYCLE.md` |
 

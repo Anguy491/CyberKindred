@@ -2,9 +2,9 @@
 
 | Metadata | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Core Architecture |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 系统边界、组件职责、依赖方向、运行时所有权、信任边界与部署拓扑 |
 | Related Documents | [PRD](../product/PRD.md), [FRS](../product/FRS.md), [NFRS](../product/NFRS.md), [Runtime State Machines](RUNTIME-STATE-MACHINES.md), [AI Orchestration](AI-ORCHESTRATION.md), [Data Model](DATA-MODEL.md), [API Contract](../contracts/API-CONTRACT.md), [Provider Contracts](../contracts/PROVIDER-CONTRACTS.md), [ADR-0001](adr/ADR-0001-tauri-react-rust.md) |
 

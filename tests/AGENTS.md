@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | QA Steward |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | `tests/` 内的测试执行约束 |
 | Related Documents | `../AGENTS.md`, `../docs/testing/TEST-STRATEGY.md`, `../docs/testing/TRACEABILITY.md` |
 

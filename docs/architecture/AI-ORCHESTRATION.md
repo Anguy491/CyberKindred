@@ -2,9 +2,9 @@
 
 | Metadata | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | AI & Program Architecture |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | Context 组装、候选曲目约束、节目规划、LLM/TTS 调用、校验、重试、缓存、记忆提案与 AI 降级流程 |
 | Related Documents | [AI Behavior](../product/AI-BEHAVIOR.md), [FRS](../product/FRS.md), [NFRS](../product/NFRS.md), [Architecture](ARCHITECTURE.md), [Runtime State Machines](RUNTIME-STATE-MACHINES.md), [Data Model](DATA-MODEL.md), [Provider Contracts](../contracts/PROVIDER-CONTRACTS.md), [Program Plan Schema](../contracts/schemas/program-plan.schema.json) |
 

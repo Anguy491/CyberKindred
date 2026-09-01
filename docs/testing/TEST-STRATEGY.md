@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | QA Steward |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | 测试层级、环境、fixture、质量门槛与证据 |
 | Related Documents | `ACCEPTANCE-TESTS.md`, `TRACEABILITY.md`, `../product/NFRS.md`, `../contracts/` |
 

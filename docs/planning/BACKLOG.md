@@ -2,9 +2,9 @@
 
 | Metadata | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Engineering Lead |
-| Last Verified | 2026-09-01 |
+| Last Verified | 2026-09-02 |
 | Source of Truth For | Codex 可独立认领的原子开发任务、依赖、范围、完成定义、验证命令和状态 |
 | Related Documents | `docs/planning/ROADMAP.md`; `docs/testing/TRACEABILITY.md`; `docs/testing/ACCEPTANCE-TESTS.md`; `AGENTS.md` |
 
@@ -18,7 +18,7 @@
 
 | Task ID | Milestone | Requirements | Depends on | 修改范围 | Definition of Done | Verification | Status |
 |---|---|---|---|---|---|---|---|
-| TASK-001 | M1 | FR-APL-001, FR-APL-002, FR-APL-003; NFR-PERF-004, NFR-COMPAT-003 | Baseline approval | `spikes/gsmtc/`, `docs/integrations/EXTERNAL-INTEGRATIONS.md`, ADR-0002 | 只读探针能列出会话、身份、元数据、时间线和 capability；对当前 Apple Music Windows App 留下可复现实机矩阵；不做 DOM 自动化，不进入产品运行路径。 | `cargo test --manifest-path spikes/gsmtc/Cargo.toml`; execute TEST-APL-001/002 evidence checklist | Blocked |
+| TASK-001 | M1 | FR-APL-001, FR-APL-002, FR-APL-003; NFR-PERF-004, NFR-COMPAT-003 | Baseline approval | `spikes/gsmtc/`, `docs/integrations/EXTERNAL-INTEGRATIONS.md`, ADR-0002 | 只读探针能列出会话、身份、元数据、时间线和 capability；对当前 Apple Music Windows App 留下可复现实机矩阵；不做 DOM 自动化，不进入产品运行路径。 | `cargo test --manifest-path spikes/gsmtc/Cargo.toml`; execute TEST-APL-001/002 evidence checklist | Ready |
 | TASK-002 | M1 | FR-LIB-001; NFR-PERF-003, NFR-REL-004, NFR-COMPAT-002 | Baseline approval | `spikes/audio/`, dependency findings | 探针解码六类许可 fixture、播放/暂停/seek、切换默认设备；记录错误和资源数据，确认 `rodio`/`Symphonia`/`lofty` 边界或提交 ADR 变更。 | `cargo test --manifest-path spikes/audio/Cargo.toml`; fixture hash audit | Blocked |
 | TASK-003 | M1 | FR-ONB-003, FR-SCH-002, FR-SET-003, FR-DAT-005; NFR-SEC-001, NFR-COMPAT-001 | Baseline approval | `spikes/windows/`, security/operations findings | 在标准用户账户证明 Credential Manager、通知动作、per-user 自启动和安全删除接口；无完整 secret/自动发声；结果更新风险触发器。 | `cargo test --manifest-path spikes/windows/Cargo.toml`; canary scan; VM checklist | Blocked |
 | TASK-004 | M2 | NFR-MAINT-001, NFR-MAINT-002, NFR-MAINT-003, NFR-COMPAT-001 | TASK-001, TASK-002, TASK-003 | root workspace, `src/`, `src-tauri/`, `tests/`, CI config | 建立 Tauri 2 + React + TypeScript + Rust 最小窗口、固定工具版本、lint/test/coverage/doc gates；不含产品行为；开发命令与指南一致。 | `pnpm install --frozen-lockfile`; `pnpm check`; `cargo test --workspace`; `powershell -File scripts/verify-docs.ps1` | Blocked |
