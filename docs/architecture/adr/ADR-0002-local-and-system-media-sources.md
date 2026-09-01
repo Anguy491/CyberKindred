@@ -34,3 +34,7 @@
 - 必须做真实 Windows App、有效订阅与打包态 GSMTC 探针；缺少 capability 是正常支持状态。
 - TTS 串场需要保守 pause/resume token 与竞态测试，用户/外部 App 操作始终优先。
 - 未来加入 MusicKit 或其他平台时可新增 adapter，但改变 Apple Music 用户能力仍需需求、隐私、契约与新 ADR。
+
+## M1 validation note
+
+2026-09-02 的 `TASK-001` 只读探针在 Windows 11 Home build 26200、Apple Music package `1.1540.23042.0` 上验证了 `RequestAsync → GetSessions → SourceAppUserModelId/GetPlaybackInfo/GetTimelineProperties/TryGetMediaPropertiesAsync` 路径可用。App 未播放时观察到精确 AUMID `AppleInc.AppleMusicWin_nzyj5cx40ttqa!App`、`opened` 状态、空媒体正文与受限 capability，支持“字段不推断、capability-driven、会话身份绑定”的原决策。该观察不证明所有版本 AUMID 恒定，也不完成播放中 50 次变化矩阵，因此不改变本 ADR 的产品边界。
