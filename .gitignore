@@ -1,0 +1,30 @@
+# Editors and operating system
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+.DS_Store
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+
+# JavaScript / Tauri / Rust build output
+node_modules/
+dist/
+target/
+src-tauri/target/
+coverage/
+playwright-report/
+test-results/
+
+# Local application and tool state
+.codex-log/
+*.log
+*.sqlite
+*.sqlite3
+*.db
