@@ -18,7 +18,7 @@
 
 ### Added
 
-- `TASK-001` 只读 GSMTC 技术探针：可枚举 Windows 媒体会话、元数据字段存在性、时间线与实时 capability；watch 输出自动移除媒体正文并过滤 timeline 心跳。Apple Music 空闲与播放会话实测通过，手工变化矩阵完成至少 12/50，余下延迟样本仍待执行。
+- `TASK-001` 只读 GSMTC 技术探针：可枚举 Windows 媒体会话、元数据字段存在性、时间线与实时 capability；watch 输出自动移除媒体正文并过滤 timeline 心跳。Apple Music 空闲与播放会话实测通过，M1 输入到探针收敛矩阵 50/50 在 2 秒内；产品 UI 延迟验收及 App 关闭/Web-only 隔离仍待后续验证。
 - Documentation Baseline v1：产品需求、可测量非功能需求、AI 行为与 Nothing Design 文字化 UX 规范。
 - Tauri/React/Rust 架构、运行时状态机、AI 编排、SQLite 数据模型、依赖政策及六项初始 ADR。
 - 版本化 Tauri IPC、provider contracts、六份 JSON Schema 及合法、边界、非法示例。
