@@ -2,11 +2,8 @@ packages:
   - .
 
 allowBuilds:
-  # Tauri E2E uses tauri-driver; never download browser drivers at install time.
-  edgedriver: false
   # Vite/tsx require the platform-local esbuild binary check.
   esbuild: true
-  geckodriver: false
 
 minimumReleaseAge: 1440
 

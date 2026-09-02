@@ -43,8 +43,8 @@ jobs:
       - name: Run frontend and documentation gates
         run: pnpm check
 
-      - name: Audit production frontend dependencies
-        run: pnpm audit --prod --audit-level high
+      - name: Audit complete frontend dependency tree
+        run: pnpm audit --audit-level high
 
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
