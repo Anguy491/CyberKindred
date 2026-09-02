@@ -14,7 +14,7 @@
 
 ### Changed
 
-- M2 technical checkpoint 如实记录为 `Blocked`：Rust/前端基础链路通过，但 WebdriverIO High advisory、credential 生命周期权威文档冲突及 EVT-008/009 delivery exactly-once 契约缺口未满足 hard gate，因此未激活 M3。
+- M2 technical checkpoint 仍如实记录为 `Blocked`：WebdriverIO High advisory 已通过移除依赖链并完成隔离 desktop smoke 关闭；credential 生命周期、EVT-008/009 delivery 及 model pre-save probe 公共语义仍未满足 hard gate，因此未激活 M3。
 - 对齐 SQLx 0.9 的实际 feature 名称：SQLite 基础只启用 bundled SQLite、Tokio runtime、migration/macro，不启用默认的多数据库、JSON 或 load-extension 能力。
 - 补全 `playback-state` 与 `program-plan` 条件分支中的局部 `object`/`array` 类型声明，使不改变实例语义的 v1 schema 可由 AJV strict 模式编译。
 - 为 `TASK-005` 固定 Node-only `ajv 8.20.0` 与 `ajv-formats 3.0.1`，以执行 Draft 2020-12/UUID/date-time 契约校验；两者禁止进入 WebView runtime bundle。
@@ -30,11 +30,12 @@
 ### Added
 
 - `TASK-008` blocked candidate 建立 Rust-only provider registry/config、严格 API-004..009/API-043 边界、Windows Credential Manager 内部 unsafe 隔离、显式 Responses capability probe、持久化 accepted→terminal outbox、启动恢复、24 小时/7 天 outbox retention 和脱敏诊断；默认测试不联网、不出声、不触碰真实凭据。
+- 移除含三项 High advisory 的 WebdriverIO 9.31.5 开发依赖链，改用 Node 24 built-in W3C client 直连固定 `tauri-driver`；9 条 hermetic harness 测试与匹配 Microsoft EdgeDriver 的隔离 desktop shell/navigation smoke 通过。
 - `TASK-009` 交付 RADIO/LIBRARY/YOU/SETTINGS 四页静音应用壳、OLED 三层视觉 token、本地字体/fallback 状态、全局键盘导航与可聚焦的 capability 降级原因；四页 1100×720 截图证据已归档。
 - M2 新增 Rust-only 强类型诊断日志：只写入 allowlist 字段与固定 `[redacted]` JSONL，以 5 MiB 单文件、14 天和 50 MiB 总量上限轮换清理，并拒绝 symlink/Windows reparse 路径。
 - `TASK-007` 建立 29 表 SQLite 初始迁移、单写者事务仓储、迁移前校验备份、数据库身份/完整性 fail-closed、30 天原文/voice 清理、路径 containment 与按 canonical origin 隔离的 Windows Credential Vault；默认测试不触碰真实凭据。
 - `TASK-006` 建立 API-001 Tauri 注册、统一安全 `ApiError`、deadline/幂等/revision/全局事件重同步原语，以及唯一可注入的严格 TypeScript IPC transport；WebView 静态审计拒绝直接文件、数据库、凭据和 provider 网络访问。
-- 补齐 M2 已批准的 Tauri dialog/notification/autostart 前端绑定及 Playwright、WebdriverIO、axe 测试依赖；安装期只允许 `esbuild` 本机构建检查，显式禁止 WebdriverIO 传递链下载 Edge/Gecko 驱动。
+- 补齐 M2 已批准的 Tauri dialog/notification/autostart 前端绑定及 Playwright、axe 测试依赖；安装期只允许 `esbuild` 本机构建检查，desktop driver 不通过 npm 安装脚本下载。
 - 为 M2 应用壳本地打包 Doto、Space Grotesk 与 Space Mono，固定 Google Fonts source commit、逐文件 SHA-256 和完整 OFL-1.1 文本；运行时不访问字体 CDN。
 - M2 固定并校验 `cargo-deny 0.20.2` 与 `cargo-audit 0.22.2` 本机工具，新增 Windows 目标的 registry/license/advisory/wildcard gate；无漏洞，Tauri 传递链的停止维护告警保留为可见风险。
 - `TASK-005` 交付六份 schema 的可复现 Rust/TypeScript 类型生成、canonical digest/baseline 漂移门槛、Node AJV 与 Rust offline registry 的同源 18 fixture parity，以及验证错误不回显提交内容的 canary 测试。

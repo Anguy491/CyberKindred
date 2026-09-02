@@ -12,7 +12,7 @@
 
 CyberKindred 是 Windows 10 22H2/Windows 11 上的单用户桌面 AI 陪伴电台。正常数据流是：React WebView 收集显式用户意图，经 allowlisted Tauri IPC 进入 Rust Core；Rust Core 访问用户选择的只读音乐目录、SQLite/cache、Windows Credential Manager、Windows GSMTC 与明确配置的 HTTPS provider；本地音频引擎播放用户文件和 TTS。MVP 不监听端口、不提供外部 HTTP API、不读取屏幕/麦克风，也不自动播放日程通知。
 
-当前仓库已完成 M1，并处于 M2 blocked candidate。下表控制混合了已由 hermetic 测试/独立只读复核证明的 M2 基础实现与尚待后续 milestone 的设计要求；每一行明确区分 evidence 和 unknown。M2 未因 partial implementation 获准转场：credential 生命周期、terminal delivery 契约及依赖 High advisory 仍是 hard-gate blocker，详见 [`M2 checkpoint`](../testing/checkpoints/M2.md)。
+当前仓库已完成 M1，并处于 M2 blocked candidate。下表控制混合了已由 hermetic 测试/独立只读复核证明的 M2 基础实现与尚待后续 milestone 的设计要求；每一行明确区分 evidence 和 unknown。WebdriverIO 依赖 High 已通过移除依赖链和隔离 desktop smoke 关闭；M2 仍因 credential 生命周期、terminal delivery 与 model pre-save probe 公共语义未决而不能转场，详见 [`M2 checkpoint`](../testing/checkpoints/M2.md)。
 
 ### 1.1 Components and sources
 

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "1.0.0",
+  "riskId": "RISK-015",
+  "candidateCommit": "2ae920e24a204fdcc18497c58299473802027a35",
+  "capturedAt": "2026-09-02",
+  "environment": {
+    "os": "Windows 11 x64",
+    "osBuild": "10.0.26200",
+    "node": "24.19.0",
+    "pnpm": "11.16.0",
+    "edge": "152.0.4191.53",
+    "webView2": "152.0.4191.53",
+    "containsUserIdentifiers": false
+  },
+  "drivers": {
+    "tauriDriver": {
+      "version": "2.0.6",
+      "sha256": "BF76BD3413D78212412E5AB611083BBA2EE8BC1DD354F93DD7FF1A76A43D265",
+      "source": "crates.io"
+    },
+    "edgeDriver": {
+      "version": "152.0.4191.53",
+      "sha256": "BDFB931760CF912155671C3C53AB49DD9E34899D67546D893E3F2F94D42EB349",
+      "source": "https://msedgedriver.microsoft.com/152.0.4191.53/edgedriver_win64.zip",
+      "authenticode": "Valid; Microsoft Corporation"
+    }
+  },
+  "checks": [
+    { "command": "pnpm install --frozen-lockfile --ignore-scripts", "status": "passed" },
+    { "command": "pnpm audit --audit-level high", "status": "passed", "summary": "No known vulnerabilities found" },
+    { "command": "pnpm check", "status": "passed", "summary": "45 frontend tests and 9 desktop-harness self-tests passed" },
+    { "command": "pnpm test:e2e", "status": "passed", "summary": "2 isolated desktop shell cases passed" },
+    { "command": "post-run process check", "status": "passed", "summary": "No CyberKindred, tauri-driver or msedgedriver process remained" },
+    { "command": "post-run data-root check", "status": "passed", "summary": "Dedicated E2E APPDATA and LOCALAPPDATA roots were absent" }
+  ],
+  "isolation": {
+    "identifier": "com.cyberkindred.desktop.e2e",
+    "driverEndpoint": "loopback-only",
+    "providerCallsTriggered": false,
+    "credentialMutationsTriggered": false,
+    "audioActionsTriggered": false,
+    "realUserDataUsed": false
+  },
+  "knownGaps": [
+    "Desktop CI provisioning is deferred until a matching EdgeDriver can be pinned without an unreviewed downloader; the local Windows smoke is the M2 evidence.",
+    "Provider and credential desktop scenarios require injected fakes before they may be added to the default E2E suite."
+  ]
+}

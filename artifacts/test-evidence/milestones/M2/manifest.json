@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0.0",
   "milestone": "M2",
-  "lastCommittedFoundation": "ec4ae288dc14829749c1b381b4162589ef3b95bd",
+  "lastCommittedFoundation": "2ae920e24a204fdcc18497c58299473802027a35",
   "candidateState": "blocked_uncommitted_provider_worktree",
   "capturedAt": "2026-09-02",
   "environment": {
@@ -15,7 +15,8 @@
   "milestoneSmokes": [
     { "id": "frontend-check", "status": "passed", "summary": "45 tests; build/type/lint/docs pass" },
     { "id": "rust-workspace", "status": "passed", "summary": "100 passed; 2 explicit live canaries ignored; 0 failed" },
-    { "id": "dependency-policy", "status": "failed", "summary": "Cargo gates pass; npm WebdriverIO chain retains High advisories" },
+    { "id": "dependency-policy", "status": "passed", "summary": "Cargo gates pass; full npm tree reports no known vulnerability after WebdriverIO removal" },
+    { "id": "desktop-shell-e2e", "status": "passed", "summary": "Isolated Windows Tauri boot and Settings navigation passed; dedicated data and processes cleaned" },
     { "id": "provider-contract-review", "status": "failed", "summary": "No Critical; strict terminal delivery exactly-once remains unproven" }
   ],
   "acceptanceInventory": [
@@ -36,14 +37,13 @@
     { "id": "critical-high-security-findings", "status": "failed" }
   ],
   "actualFailures": [
-    { "id": "RISK-015", "status": "failed" },
     { "id": "RISK-016", "status": "failed" },
     { "id": "RISK-017", "status": "failed" },
     { "id": "RISK-018", "status": "failed" }
   ],
   "knownGaps": [
     { "id": "windows-live-credential-canaries", "status": "not_run", "targetMilestone": "M2/M7" },
-    { "id": "windows-desktop-e2e", "status": "not_run", "targetMilestone": "M2/M7" },
+    { "id": "windows-desktop-e2e-full-flows", "status": "not_run", "targetMilestone": "M2/M7" },
     { "id": "windows10-clean-vm", "status": "not_run", "targetMilestone": "M7" }
   ],
   "checkpointConclusion": "blocked",
