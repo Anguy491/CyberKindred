@@ -1,0 +1,19 @@
+[package]
+name = "cyberkindred"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+name = "cyberkindred_lib"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[build-dependencies]
+tauri-build = { workspace = true, features = [] }
+
+[dependencies]
+tauri = { workspace = true, features = [] }
+
+[lints]
+workspace = true

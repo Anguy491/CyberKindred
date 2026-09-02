@@ -25,6 +25,7 @@
 
 ### Added
 
+- `TASK-004` 建立可启动的静音 Tauri/React/Rust 空壳、exact tool/dependency pins、双 lockfile、严格 CSP/最小 capability、基础测试/coverage、locked Rust 门槛与 Windows CI；本机 debug executable 启动并显示 `CyberKindred` 窗口。
 - `TASK-003` Windows 标准用户探针完成：Windows Password Vault canary 写/读/删、显式 HKCU 自启动启停、静音通知 action 模型、精确 reset、WebView2/toolchain preflight 与去标识 evidence 均通过自动/本机 smoke；真实 toast、tray、登录周期、NSIS 与 Windows 10 VM 留作已记录 known gaps。
 - `ADR-0007` 记录 milestone-based prototype delivery、单 milestone 多任务受控并行、checkpoint evidence 与 known-gap 规则。
 - `TASK-002` 本地音频探针实现已标记 `Done`：含六类 CC0 生成 fixture 与 SHA-256 清单、Symphonia 0.6.1 全量解码报告、lofty 标签/封面报告、rodio 交互播放/暂停/seek、默认设备重建后保持暂停、损坏文件隔离、脱敏事件与 CPU/内存采样手册。人工证据在 M1 checkpoint 与其他探针结果一并审阅。

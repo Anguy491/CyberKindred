@@ -34,3 +34,7 @@ CyberKindred v1 只面向 Windows，需要现代 UI、系统托盘/通知/自启
 ## M1 validation note
 
 2026-09-02 的 `TASK-003` 在 Windows 11 x64 标准用户账户验证了 WinRT Password Vault canary 写入/匹配/删除、精确 HKCU Run 启停以及 namespaced reset，不需要管理员权限；WebView2 Runtime 也可从系统注册信息检测。默认 preflight、通知 action simulation 与自启动命令均保持静音且没有 provider/网络能力。真实 Tauri window、toast activation、tray、login cycle 与 per-user NSIS 尚未运行，明确递延至 M2/M5/M6/M7，因此本观察支持但不扩大本 ADR 的权限或部署边界。
+
+## M2 foundation validation note
+
+2026-09-02 的 `TASK-004` 在 Windows 11 x64 标准用户账户构建并启动了 Tauri 2.11.5 + React 19.2.8 + TypeScript 7.0.2 的静音空壳窗口。production CSP 只允许本地资源和 Tauri IPC，main window capability 只有 `core:default`，没有 command、plugin、provider、文件、数据库、Credential、音频或任意网络能力。两套 lockfile、strict TypeScript、Oxlint、Vitest coverage、Vite build、Rust fmt/clippy/test 和文档门槛均可从固定工具版本执行；这验证技术栈基础但不提前证明后续 IPC、数据、provider、installer 或产品行为。

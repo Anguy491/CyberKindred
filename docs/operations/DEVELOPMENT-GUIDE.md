@@ -19,7 +19,7 @@
 
 Verified on the baseline host at 2026-09-01: Node `24.19.0`, npm `11.17.0`, pnpm `11.16.0`, rustc/cargo `1.98.0`, .NET `9.0.305`.
 
-## Planned repository layout
+## Repository layout
 
 ```text
 src/                    React/TypeScript UI
@@ -29,32 +29,35 @@ docs/                   approved product/engineering baseline
 scripts/                repository verification utilities
 ```
 
-Only `src/AGENTS.md`, `src-tauri/AGENTS.md` and `tests/AGENTS.md` exist before user approval; their directories are not product scaffolding.
+`TASK-004` established the checked-in React/Vite frontend, Tauri/Rust shell and foundation tests. Generated output remains excluded from version control.
 
-## Setup after TASK-004
+## Setup
 
 ```powershell
 corepack enable
 pnpm install --frozen-lockfile
 rustup show
-pnpm verify:docs
+pnpm check
+cargo test --workspace --all-features --locked
 ```
 
 Dependency installation must use the committed lockfiles. Do not install packages globally except toolchain components documented here.
 
-## Planned commands
+## Commands
 
 ```powershell
 pnpm dev
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm test:coverage
+pnpm check
 pnpm test:contracts
 pnpm test:e2e
-pnpm tauri build
+pnpm tauri build --no-bundle
 cargo fmt --all -- --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-features
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo test --workspace --all-features --locked
 ```
 
 ## Fast iteration loop

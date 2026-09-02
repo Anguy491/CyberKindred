@@ -15,9 +15,12 @@ Thumbs.db
 
 # JavaScript / Tauri / Rust build output
 node_modules/
+.pnpm-store/
+*.tsbuildinfo
 dist/
 target/
 src-tauri/target/
+src-tauri/gen/schemas/
 coverage/
 playwright-report/
 test-results/
