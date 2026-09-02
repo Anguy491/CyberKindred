@@ -28,6 +28,7 @@
 
 ### Added
 
+- 补齐 M2 已批准的 Tauri dialog/notification/autostart 前端绑定及 Playwright、WebdriverIO、axe 测试依赖；安装期只允许 `esbuild` 本机构建检查，显式禁止 WebdriverIO 传递链下载 Edge/Gecko 驱动。
 - 为 M2 应用壳本地打包 Doto、Space Grotesk 与 Space Mono，固定 Google Fonts source commit、逐文件 SHA-256 和完整 OFL-1.1 文本；运行时不访问字体 CDN。
 - M2 固定并校验 `cargo-deny 0.20.2` 与 `cargo-audit 0.22.2` 本机工具，新增 Windows 目标的 registry/license/advisory/wildcard gate；无漏洞，Tauri 传递链的停止维护告警保留为可见风险。
 - `TASK-005` 交付六份 schema 的可复现 Rust/TypeScript 类型生成、canonical digest/baseline 漂移门槛、Node AJV 与 Rust offline registry 的同源 18 fixture parity，以及验证错误不回显提交内容的 canary 测试。
