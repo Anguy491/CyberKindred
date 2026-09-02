@@ -1,5 +1,6 @@
 [package]
 name = "cyberkindred"
+publish = false
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,15 +14,18 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 tauri-build = { workspace = true, features = [] }
 
 [dependencies]
-jsonschema.workspace = true
 chrono.workspace = true
+hex.workspace = true
+jsonschema.workspace = true
 secrecy.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+sha2.workspace = true
 sqlx = { workspace = true, features = ["runtime-tokio", "sqlite-bundled", "migrate", "macros"] }
 tauri = { workspace = true, features = [] }
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
+url.workspace = true
 uuid = { workspace = true, features = ["v7", "serde"] }
 windows = { workspace = true, features = ["Foundation_Collections", "Security_Credentials"] }
 zeroize.workspace = true

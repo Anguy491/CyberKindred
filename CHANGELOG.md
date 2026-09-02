@@ -28,6 +28,7 @@
 
 ### Added
 
+- M2 固定并校验 `cargo-deny 0.20.2` 与 `cargo-audit 0.22.2` 本机工具，新增 Windows 目标的 registry/license/advisory/wildcard gate；无漏洞，Tauri 传递链的停止维护告警保留为可见风险。
 - `TASK-005` 交付六份 schema 的可复现 Rust/TypeScript 类型生成、canonical digest/baseline 漂移门槛、Node AJV 与 Rust offline registry 的同源 18 fixture parity，以及验证错误不回显提交内容的 canary 测试。
 - `TASK-004` 建立可启动的静音 Tauri/React/Rust 空壳、exact tool/dependency pins、双 lockfile、严格 CSP/最小 capability、基础测试/coverage、locked Rust 门槛与 Windows CI；本机 debug executable 启动并显示 `CyberKindred` 窗口。
 - `TASK-003` Windows 标准用户探针完成：Windows Password Vault canary 写/读/删、显式 HKCU 自启动启停、静音通知 action 模型、精确 reset、WebView2/toolchain preflight 与去标识 evidence 均通过自动/本机 smoke；真实 toast、tray、登录周期、NSIS 与 Windows 10 VM 留作已记录 known gaps。

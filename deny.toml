@@ -1,0 +1,51 @@
+# Dependency-policy gate for the Windows-first prototype.
+# Keep this file deliberately small: cargo-deny defaults remain active unless a
+# stricter repository rule is stated below.
+
+[graph]
+targets = ["x86_64-pc-windows-msvc"]
+all-features = true
+
+[advisories]
+# Unmaintained transitive crates remain visible in cargo-audit evidence, while
+# direct/workspace usage is denied. Actual vulnerabilities remain denied.
+unmaintained = "workspace"
+ignore = []
+
+[licenses]
+confidence-threshold = 0.8
+allow = [
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "MIT",
+  "MIT-0",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Zlib",
+]
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "simplest-path"
+workspace-default-features = "allow"
+external-default-features = "allow"
+allow = []
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[sources.allow-org]
+github = []
+gitlab = []
+bitbucket = []
