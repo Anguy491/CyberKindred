@@ -1,4 +1,4 @@
-use super::{CanonicalOrigin, StorageError, StorageReason};
+use super::{StorageError, StorageReason};
 use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
 
@@ -65,6 +65,8 @@ pub struct RetentionResult {
     pub messages_deleted: u64,
     pub summaries_created: u64,
     pub voice_text_cleared: u64,
+    pub delivered_outbox_deleted: u64,
+    pub expired_undelivered_outbox_deleted: u64,
 }
 
 /// Parameterized, transactional application repository.
@@ -174,43 +176,6 @@ impl Repository {
             .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))
     }
 
-    /// Upserts an allowlisted, non-secret JSON setting.
-    ///
-    /// # Errors
-    ///
-    /// Returns a stable storage error when the key/value is not allowlisted or
-    /// the transaction fails.
-    pub async fn set_setting(
-        &self,
-        key: &str,
-        value: &serde_json::Value,
-        schema_version: i64,
-        updated_at_ms: i64,
-    ) -> Result<(), StorageError> {
-        validate_setting(key, value, schema_version)?;
-        let encoded = serde_json::to_string(value)
-            .map_err(|_| StorageError::new(StorageReason::InvalidSetting))?;
-        let mut transaction = self
-            .writer
-            .begin()
-            .await
-            .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))?;
-        sqlx::query(
-            "INSERT INTO app_settings(key, value_json, schema_version, updated_at_ms) VALUES(?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, schema_version = excluded.schema_version, updated_at_ms = excluded.updated_at_ms",
-        )
-        .bind(key)
-        .bind(encoded)
-        .bind(schema_version)
-        .bind(updated_at_ms)
-        .execute(&mut *transaction)
-        .await
-        .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))?;
-        transaction
-            .commit()
-            .await
-            .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))
-    }
-
     /// Returns only a count for inventory; message content never leaves storage.
     ///
     /// # Errors
@@ -222,47 +187,6 @@ impl Repository {
             .await
             .map_err(|_| StorageError::new(StorageReason::StorageReadFailed))
     }
-}
-
-fn validate_setting(
-    key: &str,
-    value: &serde_json::Value,
-    schema_version: i64,
-) -> Result<(), StorageError> {
-    let lower = key.to_ascii_lowercase();
-    let forbidden = [
-        "secret",
-        "credential",
-        "api_key",
-        "apikey",
-        "token",
-        "password",
-        "authorization",
-    ];
-    let allowed = key.starts_with("ui.")
-        || key.starts_with("audio.")
-        || key.starts_with("program.")
-        || key.starts_with("privacy.")
-        || key.starts_with("provider.openai.tts_")
-        || matches!(
-            key,
-            "provider.openai.model"
-                | "provider.openai.base_url"
-                | "os.tray"
-                | "os.autostart"
-                | "os.notifications"
-        );
-    if schema_version <= 0 || !allowed || forbidden.iter().any(|needle| lower.contains(needle)) {
-        return Err(StorageError::new(StorageReason::InvalidSetting));
-    }
-    if key == "provider.openai.base_url" {
-        let Some(origin) = value.as_str() else {
-            return Err(StorageError::new(StorageReason::InvalidSetting));
-        };
-        CanonicalOrigin::parse(origin)
-            .map_err(|_| StorageError::new(StorageReason::InvalidSetting))?;
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -364,33 +288,24 @@ mod tests {
     async fn repository_rejects_secret_settings_and_unsafe_origins() {
         let (temp, storage, repository) = repository_fixture().await;
         let canary = "ck-task007-secret-canary-never-in-sqlite";
+        let secret_insert = sqlx::query(
+            "INSERT INTO app_settings(key, value_json, schema_version, updated_at_ms) VALUES(?, ?, 1, 1)",
+        )
+        .bind("provider.openai.api_key")
+        .bind(serde_json::to_string(canary).expect("encode canary"))
+        .execute(&repository.writer)
+        .await;
+        assert!(secret_insert.is_err());
+
+        let unsafe_settings = crate::storage::StoredProviderSettings {
+            provider_origin: "http://127.0.0.1".to_owned(),
+            ..crate::storage::StoredProviderSettings::default()
+        };
         assert!(
             repository
-                .set_setting("provider.openai.api_key", &serde_json::json!(canary), 1, 1)
+                .save_provider_settings(0, &unsafe_settings, 1, false)
                 .await
                 .is_err()
-        );
-        assert!(
-            repository
-                .set_setting(
-                    "provider.openai.base_url",
-                    &serde_json::json!("http://127.0.0.1"),
-                    1,
-                    1
-                )
-                .await
-                .is_err()
-        );
-        assert!(
-            repository
-                .set_setting(
-                    "provider.openai.base_url",
-                    &serde_json::json!("https://api.openai.com"),
-                    1,
-                    1
-                )
-                .await
-                .is_ok()
         );
         storage.passive_checkpoint().await.expect("checkpoint");
         let data_root = temp.path().join("data");

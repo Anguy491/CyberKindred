@@ -5,14 +5,23 @@
 
 mod database;
 mod error;
+mod operation_outbox;
 mod paths;
+mod provider_settings;
+mod provider_status;
 mod repository;
 mod retention;
 mod secret;
 
 pub use database::{APPLICATION_ID, LATEST_SCHEMA_VERSION, Storage};
 pub use error::{StorageError, StorageReason};
+pub use operation_outbox::OperationTerminalRecord;
 pub use paths::{AppPaths, CacheArea, resolve_read_only_library_path};
+pub(crate) use provider_settings::{StoredProviderSettings, StoredWeatherLocation};
+pub use provider_status::{
+    NewProviderOutcome, ProviderOutcomeStatus, ProviderRequestKind, ProviderStatusSnapshot,
+    ProviderUsageProvider,
+};
 pub use repository::{ChatRole, NewChatMessage, Repository, RetentionResult};
 pub use secret::{
     CanonicalOrigin, CredentialTarget, SecretError, SecretValue, SecretVault,

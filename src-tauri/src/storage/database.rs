@@ -31,6 +31,12 @@ impl Storage {
             return Err(StorageError::new(StorageReason::MigrationFailed));
         }
         let database_path = paths.database_path();
+        if database_path.exists() {
+            let validation = connect_validation_pool(&database_path).await?;
+            let result = preflight_existing(&validation, INITIAL_MIGRATION_SQL).await;
+            validation.close().await;
+            result?;
+        }
         let writer = connect_pool(&database_path, 1, true).await?;
         if let Err(error) = initialize(&writer, paths, app_version, INITIAL_MIGRATION_SQL).await {
             writer.close().await;
@@ -93,6 +99,23 @@ impl Storage {
     }
 }
 
+async fn connect_validation_pool(database_path: &Path) -> Result<SqlitePool, StorageError> {
+    let options = SqliteConnectOptions::new()
+        .filename(database_path)
+        .read_only(true)
+        .immutable(true)
+        .foreign_keys(true)
+        .busy_timeout(Duration::from_millis(3_000))
+        .pragma("temp_store", "MEMORY")
+        .disable_statement_logging();
+
+    SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .map_err(|_| StorageError::new(StorageReason::StorageIntegrityFailed))
+}
+
 async fn connect_pool(
     database_path: &Path,
     max_connections: u32,
@@ -146,6 +169,37 @@ async fn initialize(
         apply_initial_migration(pool, app_version, migration_sql).await?;
     }
 
+    verify_current_schema(pool, migration_sql).await
+}
+
+/// Verifies an existing file through a read-only connection before any writer
+/// or WAL configuration is opened against it.
+async fn preflight_existing(
+    pool: &SqlitePool,
+    migration_sql: &'static str,
+) -> Result<(), StorageError> {
+    verify_integrity(pool).await?;
+    let application_id = pragma_i64(pool, "PRAGMA application_id").await?;
+    let user_version = pragma_i64(pool, "PRAGMA user_version").await?;
+    if application_id != 0 && application_id != APPLICATION_ID {
+        return Err(StorageError::new(StorageReason::ForeignDatabase));
+    }
+    if user_version > LATEST_SCHEMA_VERSION {
+        return Err(StorageError::new(StorageReason::DatabaseVersionUnsupported));
+    }
+    if user_version == 0 {
+        let table_count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+        )
+        .fetch_one(pool)
+        .await
+        .map_err(|_| StorageError::new(StorageReason::StorageReadFailed))?;
+        return if table_count == 0 {
+            Ok(())
+        } else {
+            Err(StorageError::new(StorageReason::ForeignDatabase))
+        };
+    }
     verify_current_schema(pool, migration_sql).await
 }
 
@@ -270,6 +324,7 @@ fn migration_checksum(migration_sql: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
 
     fn temporary_paths() -> (tempfile::TempDir, AppPaths) {
         let temp = tempfile::tempdir().expect("temporary root");
@@ -280,6 +335,27 @@ mod tests {
         )
         .expect("scoped app paths");
         (temp, paths)
+    }
+
+    fn database_artifacts(paths: &AppPaths) -> BTreeMap<String, String> {
+        let database_path = paths.database_path();
+        let prefix = database_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .expect("database filename");
+        std::fs::read_dir(database_path.parent().expect("database parent"))
+            .expect("data directory")
+            .filter_map(Result::ok)
+            .filter_map(|entry| {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if entry.file_type().ok()?.is_file() && name.starts_with(prefix) {
+                    let bytes = std::fs::read(entry.path()).expect("database artifact");
+                    Some((name, hex::encode(Sha256::digest(bytes))))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     #[tokio::test]
@@ -366,11 +442,13 @@ mod tests {
             .await
             .expect("tamper fixture");
         storage.close().await;
+        let before = database_artifacts(&paths);
 
         let Err(error) = Storage::open(&paths, "0.1.0").await else {
             panic!("checksum mismatch must fail closed");
         };
         assert_eq!(error.reason(), StorageReason::MigrationFailed);
+        assert_eq!(database_artifacts(&paths), before);
     }
 
     #[tokio::test]
@@ -415,11 +493,13 @@ mod tests {
             .await
             .expect("foreign application id fixture");
         pool.close().await;
+        let before = database_artifacts(&paths);
 
         let Err(error) = Storage::open(&paths, "0.1.0").await else {
             panic!("foreign database must fail closed");
         };
         assert_eq!(error.reason(), StorageReason::ForeignDatabase);
+        assert_eq!(database_artifacts(&paths), before);
         let verification = connect_pool(&paths.database_path(), 1, false)
             .await
             .expect("verification pool");

@@ -61,6 +61,11 @@ fn rotates_before_an_append_would_cross_the_single_file_bound() -> Result<(), Bo
         item_count: 1,
         bytes_removed: MAX_FILE_BYTES,
     })?;
+    log.write(DiagnosticEvent::OutboxDeliveryExpired {
+        correlation_id: Uuid::nil(),
+        occurred_at_ms: NOW_MS + 3,
+        item_count: 1,
+    })?;
 
     let active_length = fs::metadata(&active_path)?.len();
     assert!(active_length > 0);

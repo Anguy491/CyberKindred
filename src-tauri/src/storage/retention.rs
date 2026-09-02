@@ -3,6 +3,9 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 const MAX_RETENTION_BATCH: u32 = 500;
+const DAY_MS: i64 = 24 * 60 * 60 * 1_000;
+const DELIVERED_OUTBOX_RETENTION_MS: i64 = DAY_MS;
+const UNDELIVERED_OUTBOX_RETENTION_MS: i64 = 7 * DAY_MS;
 
 impl Repository {
     /// Runs one absolute-time retention batch.
@@ -14,7 +17,7 @@ impl Repository {
     /// # Errors
     ///
     /// Returns a stable storage error and rolls back the whole batch if summary
-    /// generation, message deletion, voice scrubbing, or commit fails.
+    /// generation, content deletion, outbox expiry, or commit fails.
     pub async fn run_retention_batch(
         &self,
         now_ms: i64,
@@ -93,6 +96,15 @@ impl Repository {
             .rows_affected()
         };
 
+        let processed = messages_deleted.saturating_add(voice_text_cleared);
+        let remaining = u64::from(limit)
+            .saturating_sub(processed)
+            .min(u64::from(u32::MAX));
+        let remaining = i64::try_from(remaining)
+            .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))?;
+        let (delivered_outbox_deleted, expired_undelivered_outbox_deleted) =
+            delete_expired_outbox(&mut transaction, now_ms, remaining).await?;
+
         transaction
             .commit()
             .await
@@ -101,8 +113,46 @@ impl Repository {
             messages_deleted,
             summaries_created,
             voice_text_cleared,
+            delivered_outbox_deleted,
+            expired_undelivered_outbox_deleted,
         })
     }
+}
+
+async fn delete_expired_outbox(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    now_ms: i64,
+    limit: i64,
+) -> Result<(u64, u64), StorageError> {
+    if limit == 0 {
+        return Ok((0, 0));
+    }
+    let delivered_cutoff = now_ms.saturating_sub(DELIVERED_OUTBOX_RETENTION_MS);
+    let undelivered_cutoff = now_ms.saturating_sub(UNDELIVERED_OUTBOX_RETENTION_MS);
+    let candidates: Vec<(String, bool)> = sqlx::query_as(
+        "SELECT id, delivered_at_ms IS NULL FROM outbox_events WHERE (delivered_at_ms IS NOT NULL AND delivered_at_ms <= ?) OR (delivered_at_ms IS NULL AND created_at_ms <= ?) ORDER BY CASE WHEN delivered_at_ms IS NULL THEN created_at_ms ELSE delivered_at_ms END, id LIMIT ?",
+    )
+    .bind(delivered_cutoff)
+    .bind(undelivered_cutoff)
+    .bind(limit)
+    .fetch_all(&mut **transaction)
+    .await
+    .map_err(|_| StorageError::new(StorageReason::StorageReadFailed))?;
+    let delivered = candidates.iter().filter(|(_, pending)| !pending).count();
+    let undelivered = candidates.len().saturating_sub(delivered);
+    for (id, _) in candidates {
+        sqlx::query("DELETE FROM outbox_events WHERE id = ?")
+            .bind(id)
+            .execute(&mut **transaction)
+            .await
+            .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))?;
+    }
+    Ok((
+        u64::try_from(delivered)
+            .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))?,
+        u64::try_from(undelivered)
+            .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))?,
+    ))
 }
 
 fn retention_source_hash(
@@ -122,8 +172,6 @@ fn retention_source_hash(
 mod tests {
     use super::*;
     use crate::storage::{AppPaths, ChatRole, NewChatMessage, Storage};
-
-    const DAY_MS: i64 = 24 * 60 * 60 * 1_000;
 
     async fn retention_fixture() -> (tempfile::TempDir, Storage, Repository) {
         let temp = tempfile::tempdir().expect("temporary root");
@@ -304,6 +352,47 @@ mod tests {
         assert_eq!(
             repository.message_count().await.expect("remaining count"),
             1
+        );
+        storage.close().await;
+    }
+
+    #[tokio::test]
+    async fn retention_applies_exact_outbox_boundaries_and_reports_expired_pending() {
+        let (_temp, storage, repository) = retention_fixture().await;
+        let now_ms = 8 * DAY_MS;
+        for (id, created_at_ms, delivered_at_ms) in [
+            ("delivered-before", 0, Some(now_ms - DAY_MS - 1)),
+            ("delivered-exact", 0, Some(now_ms - DAY_MS)),
+            ("delivered-young", 0, Some(now_ms - DAY_MS + 1)),
+            ("pending-before", now_ms - 7 * DAY_MS - 1, None),
+            ("pending-exact", now_ms - 7 * DAY_MS, None),
+            ("pending-young", now_ms - 7 * DAY_MS + 1, None),
+        ] {
+            sqlx::query(
+                "INSERT INTO outbox_events(id, aggregate_type, aggregate_id, aggregate_revision, event_type, payload_json, created_at_ms, delivered_at_ms) VALUES(?, 'retention-fixture', ?, 0, 'fixture', '{}', ?, ?)",
+            )
+            .bind(id)
+            .bind(format!("aggregate-{id}"))
+            .bind(created_at_ms)
+            .bind(delivered_at_ms)
+            .execute(&repository.writer)
+            .await
+            .expect("outbox fixture");
+        }
+
+        let result = repository
+            .run_retention_batch(now_ms, 500)
+            .await
+            .expect("outbox retention");
+        assert_eq!(result.delivered_outbox_deleted, 2);
+        assert_eq!(result.expired_undelivered_outbox_deleted, 2);
+        let remaining: Vec<String> = sqlx::query_scalar("SELECT id FROM outbox_events ORDER BY id")
+            .fetch_all(&repository.writer)
+            .await
+            .expect("remaining outbox");
+        assert_eq!(
+            remaining,
+            vec!["delivered-young".to_owned(), "pending-young".to_owned()]
         );
         storage.close().await;
     }

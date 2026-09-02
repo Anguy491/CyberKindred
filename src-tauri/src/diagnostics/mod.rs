@@ -99,6 +99,11 @@ pub enum DiagnosticEvent {
         duration_ms: u64,
         attempt: u8,
     },
+    OutboxDeliveryExpired {
+        correlation_id: Uuid,
+        occurred_at_ms: i64,
+        item_count: u64,
+    },
     MaintenanceCompleted {
         correlation_id: Uuid,
         occurred_at_ms: i64,
@@ -127,6 +132,7 @@ enum DiagnosticLevel {
 enum DiagnosticReason {
     FoundationStarted,
     OperationFailed,
+    OutboxDeliveryExpired,
     RetentionApplied,
 }
 
@@ -182,6 +188,23 @@ impl RedactedDiagnostic {
                 duration_ms: Some(duration_ms),
                 attempt: Some(attempt),
                 item_count: None,
+                bytes_removed: None,
+                detail: REDACTED,
+            },
+            DiagnosticEvent::OutboxDeliveryExpired {
+                correlation_id,
+                occurred_at_ms,
+                item_count,
+            } => Self {
+                schema_version: "1.0.0",
+                code: DiagnosticCode::OperationOutcome,
+                level: DiagnosticLevel::Error,
+                reason: DiagnosticReason::OutboxDeliveryExpired,
+                correlation_id,
+                occurred_at_ms,
+                duration_ms: None,
+                attempt: None,
+                item_count: Some(item_count),
                 bytes_removed: None,
                 detail: REDACTED,
             },
@@ -349,6 +372,7 @@ fn event_time_ms(event: DiagnosticEvent) -> i64 {
     match event {
         DiagnosticEvent::ApplicationStarted { occurred_at_ms, .. }
         | DiagnosticEvent::OperationFailed { occurred_at_ms, .. }
+        | DiagnosticEvent::OutboxDeliveryExpired { occurred_at_ms, .. }
         | DiagnosticEvent::MaintenanceCompleted { occurred_at_ms, .. } => occurred_at_ms,
     }
 }

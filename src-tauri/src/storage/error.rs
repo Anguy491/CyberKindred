@@ -16,6 +16,7 @@ pub enum StorageReason {
     ForeignDatabase,
     InvalidSetting,
     EntityNotFound,
+    RevisionConflict,
 }
 
 impl StorageReason {
@@ -32,6 +33,7 @@ impl StorageReason {
             Self::MigrationFailed => "migration_failed",
             Self::DatabaseVersionUnsupported => "database_version_unsupported",
             Self::EntityNotFound => "entity_not_found",
+            Self::RevisionConflict => "revision_conflict",
         }
     }
 }

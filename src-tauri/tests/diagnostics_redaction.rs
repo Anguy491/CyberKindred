@@ -93,16 +93,24 @@ fn writer_emits_utf8_jsonl_for_each_allowlisted_event() -> Result<(), Box<dyn Er
         item_count: 2,
         bytes_removed: 128,
     })?;
+    log.write(DiagnosticEvent::OutboxDeliveryExpired {
+        correlation_id,
+        occurred_at_ms: 1_788_278_400_002,
+        item_count: 3,
+    })?;
 
     let output = fs::read_to_string(temporary.path().join(diagnostics::ACTIVE_FILE_NAME))?;
     let lines = output.lines().collect::<Vec<_>>();
-    assert_eq!(lines.len(), 2);
-    for line in lines {
+    assert_eq!(lines.len(), 3);
+    for line in &lines {
         let value: Value = serde_json::from_str(line)?;
         assert_eq!(
             value.get("detail"),
             Some(&Value::String("[redacted]".into()))
         );
     }
+    let expired: Value = serde_json::from_str(lines[2])?;
+    assert_eq!(expired["reason"], "outbox_delivery_expired");
+    assert_eq!(expired["itemCount"], 3);
     Ok(())
 }
