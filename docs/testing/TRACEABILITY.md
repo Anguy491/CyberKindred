@@ -22,6 +22,8 @@ M3 `TASK-011` 已集成六格式授权根扫描、坏文件隔离、碰撞容忍
 
 M3 `TASK-012`–`TASK-014` 已集成 path-free API-015/曲库 UI、严格 MusicBrainz/CAA 最小披露与限流缓存边界，以及 API-016–API-023/EVT-001 串行本地播放 actor。Library 的 focused Rust/TypeScript/axe 路径、metadata hermetic provider/低置信保留原标签、本地六格式解码与未授权零设备打开均通过；真实听感、双设备切换、联网 metadata artifact 持久化与 desktop library E2E 保留到 M3 checkpoint 如实标注。
 
+M3 `TASK-015` 已集成最多 200 个 path-free 真实候选的确定性评分、冷却降级、ProgramPlan schema/domain 双重校验、provider 非法 ID 拒绝与文字/本地队列 fallback；SQLite adapter 仅投影 adopted 标签和活动反馈，计划与 segments 原子持久化且启动恢复把未终止节目转为 interrupted。TEST-LIB-004 的固定时钟/seed、反馈、画像、批准记忆、冷却和候选外 ID 路径由 focused hermetic tests 覆盖。
+
 ## 2. Functional requirements
 
 ### 2.1 Onboarding

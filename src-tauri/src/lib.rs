@@ -8,8 +8,10 @@ pub mod metadata;
 mod onboarding;
 pub mod playback;
 mod playback_repository;
+pub mod program;
 pub mod providers;
 pub mod scanner;
+pub mod speech;
 pub mod storage;
 
 use chrono::Utc;
@@ -70,6 +72,7 @@ fn api_v1_get_capabilities(
     Ok(capabilities.get_capabilities(request))
 }
 
+#[allow(clippy::too_many_lines)] // Composition stays explicit so managed state ownership is auditable.
 fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     let now_ms = Utc::now().timestamp_millis();
     let paths = AppPaths::create(

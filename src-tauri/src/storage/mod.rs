@@ -10,6 +10,8 @@ mod onboarding;
 mod operation_outbox;
 mod paths;
 mod playback_tracks;
+mod program_candidates;
+mod program_runs;
 mod provider_settings;
 mod provider_status;
 mod repository;
@@ -28,6 +30,7 @@ pub(crate) use onboarding::{
 pub use operation_outbox::OperationTerminalRecord;
 pub use paths::{AppPaths, CacheArea, resolve_read_only_library_path};
 pub(crate) use playback_tracks::StoredPlaybackTrack;
+pub(crate) use program_runs::{StoredProgramSegmentStatus, StoredProgramStatus};
 pub(crate) use provider_settings::{StoredProviderSettings, StoredWeatherLocation};
 pub(crate) use provider_status::ProviderStatusPromotion;
 pub use provider_status::{
