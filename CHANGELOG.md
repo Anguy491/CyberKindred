@@ -28,6 +28,7 @@
 
 ### Added
 
+- `TASK-009` 交付 RADIO/LIBRARY/YOU/SETTINGS 四页静音应用壳、OLED 三层视觉 token、本地字体/fallback 状态、全局键盘导航与可聚焦的 capability 降级原因；四页 1100×720 截图证据已归档。
 - M2 新增 Rust-only 强类型诊断日志：只写入 allowlist 字段与固定 `[redacted]` JSONL，以 5 MiB 单文件、14 天和 50 MiB 总量上限轮换清理，并拒绝 symlink/Windows reparse 路径。
 - `TASK-007` 建立 29 表 SQLite 初始迁移、单写者事务仓储、迁移前校验备份、数据库身份/完整性 fail-closed、30 天原文/voice 清理、路径 containment 与按 canonical origin 隔离的 Windows Credential Vault；默认测试不触碰真实凭据。
 - `TASK-006` 建立 API-001 Tauri 注册、统一安全 `ApiError`、deadline/幂等/revision/全局事件重同步原语，以及唯一可注入的严格 TypeScript IPC transport；WebView 静态审计拒绝直接文件、数据库、凭据和 provider 网络访问。
