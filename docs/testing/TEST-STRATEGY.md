@@ -27,7 +27,7 @@
 | Rust unit | `cargo test` | selection、state machines、validation、retention、errors | Never |
 | Contract | Rust fixtures + TypeScript AJV | IPC/provider request/response/event/error parity | Never |
 | Integration | Tauri mocks + temporary filesystem/SQLite + fake transports | commands、migrations、scan、queue、memory、schedules | Never |
-| Desktop E2E | WebdriverIO + `tauri-driver` on Windows | onboarding、navigation、radio、settings、restart | Mocked by default |
+| Desktop E2E | Repository-owned Node 24 W3C WebDriver harness + `tauri-driver` on Windows | onboarding、navigation、radio、settings、restart | Mocked by default |
 | Performance | release build harness + controlled library generator | start, scan, memory, DB and audio budgets | Never |
 | Security/privacy | unit/integration/static checks | secret leakage、path scope、redaction、export/delete、CSP/IPC | Never |
 | Live integration | tagged manual/automation | OpenAI, MusicBrainz, Open-Meteo, Apple Music | Explicit |
@@ -47,6 +47,8 @@
 | `pnpm verify:docs` | Links, IDs, metadata, traceability and schema examples |
 
 Before M2, `scripts/verify-docs.ps1` is the canonical documentation gate.
+
+`pnpm test:e2e` uses only Node 24 built-ins to speak the W3C WebDriver protocol to the pinned `tauri-driver`; it does not depend on WebdriverIO or download a browser driver during `pnpm install`. The harness builds the unpackaged desktop executable when needed, owns a loopback-only driver process/session, always attempts session deletion and process cleanup, and accepts an optional case-name filter after `--`. Windows CI must provision the Edge WebDriver that matches the installed WebView2/Edge runtime before invoking this command. Renderer-only Playwright evidence remains a separate layer and never substitutes for this desktop path.
 
 M1 的 `TASK-002` 真实解码听感、播放/暂停/seek、默认设备切换、错误隔离与资源采样仍使用 `spikes/audio/MANUAL-TEST.md` 的 `Manual-TASK-002`，但证据与其他探针在 M1 checkpoint 集中审阅，不再形成任务级签字点。`cargo fmt`、`cargo clippy` 和 release build 是建议的快速自检；后续产品自动化仍由 `TEST-LIB-001`、`TEST-RAD-002`、`TEST-APL-004` 与 M7 release gate 覆盖。
 

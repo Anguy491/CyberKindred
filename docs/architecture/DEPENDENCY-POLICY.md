@@ -109,7 +109,7 @@ UI 字体 `Space Grotesk`、`Space Mono`、`Doto` 作为本地静态资产按 SI
 |---|---|---|
 | `vitest`, React Testing Library, `@testing-library/user-event`, `jsdom` | TypeScript 单元/组件测试 | 禁止真实网络；fake IPC。 |
 | `playwright` | 浏览器态前端流程、截图与 axe 驱动 | 只验证 React 页面；不把浏览器结果当作打包后的 Tauri/Windows 行为证据。 |
-| WebdriverIO + `tauri-driver` | 打包后的 Windows desktop E2E | 使用 fake provider；真实 Apple Music 用例显式标签、默认跳过。 |
+| Repository-owned Node 24 W3C WebDriver harness + `tauri-driver` | 打包后的 Windows desktop E2E | harness 只使用 Node built-ins 与 loopback W3C WebDriver；不引入浏览器自动化 npm 依赖，不在安装期下载 driver；使用 fake provider，真实 Apple Music 用例显式标签、默认跳过。 |
 | `axe-core` / `@axe-core/playwright` | 自动无障碍规则 | 仅 dev dependency，不进入安装包；保留 MPL-2.0 notices，不修改上游文件。 |
 | Rust `proptest` | 状态机/候选/保留 property tests | 固定 seed 可复现失败。 |
 | Rust `wiremock` | provider integration fake | 只绑定 loopback 随机端口。 |
@@ -118,7 +118,9 @@ UI 字体 `Space Grotesk`、`Space Mono`、`Doto` 作为本地静态资产按 SI
 | `cargo-deny`, `cargo-audit`, `pnpm audit` | license/advisory/duplicate 检查 | CI 和 release 必跑；例外必须有到期日与风险记录。 |
 | `cargo-nextest` | Rust test runner | 可选执行工具，不改变测试语义。 |
 
-测试包同样固定：`vitest 4.1.11`、`@vitest/coverage-v8 4.1.11`、`@testing-library/dom 10.4.1`、`@testing-library/react 16.3.3`、`@testing-library/user-event 14.6.6`、`@testing-library/jest-dom 7.0.1`、`jsdom 30.0.1`、`ajv 8.20.0`、`ajv-formats 3.0.1`、`playwright 1.62.1`、`webdriverio/@wdio/cli/@wdio/local-runner/@wdio/mocha-framework 9.31.5`、`axe-core/@axe-core/playwright 4.13.0`；Rust dev-dependencies 固定 `proptest 1.11.0`、`wiremock 0.6.5`、`tempfile 3.27.0`、`insta 1.48.0`。AJV 仅在 Node contract suite 中编译 schema；禁止把其动态代码生成器导入 `src/` 或 WebView bundle。CI toolchain binary 固定为 `tauri-driver 2.0.6`、`cargo-nextest 0.9.143`、`cargo-deny 0.20.2`、`cargo-audit 0.22.2` 与 `cargo-llvm-cov 0.9.0`；M2 在工具清单记录 registry source、安装版本与本机 executable SHA-256，它们不进入应用依赖图。
+测试包同样固定：`vitest 4.1.11`、`@vitest/coverage-v8 4.1.11`、`@testing-library/dom 10.4.1`、`@testing-library/react 16.3.3`、`@testing-library/user-event 14.6.6`、`@testing-library/jest-dom 7.0.1`、`jsdom 30.0.1`、`ajv 8.20.0`、`ajv-formats 3.0.1`、`playwright 1.62.1`、`axe-core/@axe-core/playwright 4.13.0`；Rust dev-dependencies 固定 `proptest 1.11.0`、`wiremock 0.6.5`、`tempfile 3.27.0`、`insta 1.48.0`。Desktop E2E client 固定为 repository-owned Node 24 built-in harness，不解析 WebdriverIO/Selenium npm tree；AJV 仅在 Node contract suite 中编译 schema，禁止把其动态代码生成器导入 `src/` 或 WebView bundle。CI toolchain binary 固定为 `tauri-driver 2.0.6`、`cargo-nextest 0.9.143`、`cargo-deny 0.20.2`、`cargo-audit 0.22.2` 与 `cargo-llvm-cov 0.9.0`；M2 在工具清单记录 registry source、安装版本与本机 executable SHA-256，它们不进入应用依赖图。
+
+M2 `RISK-015` review removed the pinned WebdriverIO 9.31.5 development chain after the locked tree reported unmitigated High advisories. The replacement preserves direct Windows `tauri-driver` coverage through the standardized W3C protocol, adds no dependency or application capability, and keeps renderer-only Playwright evidence explicitly separate.
 
 ## 4. Conditional 依赖
 
