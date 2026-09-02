@@ -79,6 +79,7 @@ UI 字体 `Space Grotesk`、`Space Mono`、`Doto` 作为本地静态资产按 SI
 | `@types/react`, `@types/react-dom` | `19.2.18`, `19.2.5` | React/DOM compile-time types |
 | `@types/node` | `24.13.3` | Node/Vite configuration compile-time types |
 | `oxlint` | `1.81.0` | TypeScript/React static lint；只作为开发依赖，不启用 optional type-aware plugin |
+| `ajv`, `ajv-formats` | `8.20.0`, `3.0.1` | Node-only Draft 2020-12 contract tests；不得打入 WebView runtime bundle |
 
 | Rust crate | Exact version | Rust crate | Exact version |
 |---|---:|---|---:|
@@ -115,7 +116,7 @@ UI 字体 `Space Grotesk`、`Space Mono`、`Doto` 作为本地静态资产按 SI
 | `cargo-deny`, `cargo-audit`, `pnpm audit` | license/advisory/duplicate 检查 | CI 和 release 必跑；例外必须有到期日与风险记录。 |
 | `cargo-nextest` | Rust test runner | 可选执行工具，不改变测试语义。 |
 
-测试包同样固定：`vitest 4.1.11`、`@vitest/coverage-v8 4.1.11`、`@testing-library/dom 10.4.1`、`@testing-library/react 16.3.3`、`@testing-library/user-event 14.6.6`、`@testing-library/jest-dom 7.0.1`、`jsdom 30.0.1`、`playwright 1.62.1`、`webdriverio/@wdio/cli/@wdio/local-runner/@wdio/mocha-framework 9.31.5`、`axe-core/@axe-core/playwright 4.13.0`；Rust dev-dependencies 固定 `proptest 1.11.0`、`wiremock 0.6.5`、`tempfile 3.27.0`、`insta 1.48.0`。CI toolchain binary 固定为 `tauri-driver 2.0.6`、`cargo-nextest 0.9.143`、`cargo-deny 0.20.2`、`cargo-audit 0.22.2` 与 `cargo-llvm-cov 0.9.0`；M2 在工具清单记录 registry source、安装版本与本机 executable SHA-256，它们不进入应用依赖图。
+测试包同样固定：`vitest 4.1.11`、`@vitest/coverage-v8 4.1.11`、`@testing-library/dom 10.4.1`、`@testing-library/react 16.3.3`、`@testing-library/user-event 14.6.6`、`@testing-library/jest-dom 7.0.1`、`jsdom 30.0.1`、`ajv 8.20.0`、`ajv-formats 3.0.1`、`playwright 1.62.1`、`webdriverio/@wdio/cli/@wdio/local-runner/@wdio/mocha-framework 9.31.5`、`axe-core/@axe-core/playwright 4.13.0`；Rust dev-dependencies 固定 `proptest 1.11.0`、`wiremock 0.6.5`、`tempfile 3.27.0`、`insta 1.48.0`。AJV 仅在 Node contract suite 中编译 schema；禁止把其动态代码生成器导入 `src/` 或 WebView bundle。CI toolchain binary 固定为 `tauri-driver 2.0.6`、`cargo-nextest 0.9.143`、`cargo-deny 0.20.2`、`cargo-audit 0.22.2` 与 `cargo-llvm-cov 0.9.0`；M2 在工具清单记录 registry source、安装版本与本机 executable SHA-256，它们不进入应用依赖图。
 
 ## 4. Conditional 依赖
 

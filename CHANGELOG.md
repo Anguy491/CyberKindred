@@ -14,6 +14,7 @@
 
 ### Changed
 
+- 为 `TASK-005` 固定 Node-only `ajv 8.20.0` 与 `ajv-formats 3.0.1`，以执行 Draft 2020-12/UUID/date-time 契约校验；两者禁止进入 WebView runtime bundle。
 - M1 technical checkpoint 记录为 `Passed with known gaps` 并自动激活 M2；真实听感/双设备、通知/托盘/登录、NSIS 和完整跨版本矩阵保持 `Not Run`，未改写为通过。
 - 补齐 M2 脚手架所需的 `tauri-build`、React/Node types、coverage、lint 与 Cargo CI tool exact pins；避免 TypeScript 7 与不兼容的 typescript-eslint peer range。
 - Documentation Baseline v1 于 2026-09-02 获用户批准，项目进入 M1 技术探针阶段。
