@@ -10,6 +10,7 @@ import {
   type IntegrationStatus,
   type LibraryRoot,
   type LibraryRootsResponse,
+  type MusicSourcesResponse,
   type OnboardingProfile,
   type OnboardingState,
   type OnboardingStep,
@@ -20,6 +21,11 @@ import {
   type TrackView,
   type TracksPage,
   type SettingsView,
+  type SelectMusicSourceResponse,
+  type PlaybackState,
+  type ProgramPlan,
+  type StartProgramResponse,
+  type CancelOperationResponse,
   type TestProviderResponse,
   type ValidateSecretResponse,
   type VoiceView,
@@ -229,6 +235,48 @@ export function parseVoicesResponse(value: unknown): VoicesResponse {
   return value as unknown as VoicesResponse;
 }
 
+export function parseMusicSourcesResponse(value: unknown): MusicSourcesResponse {
+  if (!isRecord(value) || !hasExactKeys(value, ["sources"])
+    || !Array.isArray(value.sources) || !value.sources.every(isSourceSummary)
+    || new Set(value.sources.map((source) => (source as SourceSummary).sourceId)).size
+      !== value.sources.length) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as MusicSourcesResponse;
+}
+
+export function parseSelectMusicSourceResponse(value: unknown): SelectMusicSourceResponse {
+  if (!isRecord(value) || !hasExactKeys(value, ["requestId", "state"])
+    || !isUuid(value.requestId) || !isPlaybackState(value.state)) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as SelectMusicSourceResponse;
+}
+
+export function parsePlaybackState(value: unknown): PlaybackState {
+  if (!isPlaybackState(value)) throw new IpcResponseValidationError();
+  return value;
+}
+
+export function parseStartProgramResponse(value: unknown): StartProgramResponse {
+  if (!isRecord(value) || !hasExactKeys(value, ["requestId", "programId", "plan"])
+    || !isUuid(value.requestId) || !isUuid(value.programId)
+    || (value.plan !== null && !isProgramPlan(value.plan))
+    || (value.plan !== null && value.plan.programId !== value.programId)) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as StartProgramResponse;
+}
+
+export function parseCancelOperationResponse(value: unknown): CancelOperationResponse {
+  if (!isRecord(value) || !hasExactKeys(value, ["requestId", "operationId", "state"])
+    || !isUuid(value.requestId) || !isUuid(value.operationId)
+    || (value.state !== "cancelled" && value.state !== "already_terminal")) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as CancelOperationResponse;
+}
+
 export function normalizeApiError(value: unknown): ApiError {
   if (isApiError(value)) {
     return value;
@@ -301,12 +349,87 @@ function isSourceSummary(value: unknown): value is SourceSummary {
   ])) {
     return false;
   }
-  return isSafeToken(value.sourceId)
+  return isContractToken(value.sourceId, 128)
     && (value.kind === "local" || value.kind === "system_session")
     && isSafeDisplay(value.displayName, 200)
     && typeof value.connected === "boolean"
     && isSourceCapabilities(value.capabilities)
     && !(value.kind === "system_session" && value.capabilities.setQueue);
+}
+
+export function isPlaybackState(value: unknown): value is PlaybackState {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "schemaVersion", "sourceId", "sourceKind", "status", "capabilities", "currentTrack",
+    "positionMs", "durationMs", "revision", "updatedAt", "lastError",
+  ])) return false;
+  const disconnected = value.status === "disconnected";
+  const error = value.status === "error";
+  return value.schemaVersion === IPC_SCHEMA_VERSION
+    && isContractToken(value.sourceId, 128)
+    && (value.sourceKind === "local" || value.sourceKind === "system_session")
+    && isPlaybackStatus(value.status)
+    && isSourceCapabilities(value.capabilities)
+    && !(value.sourceKind === "system_session" && value.capabilities.setQueue)
+    && (value.currentTrack === null || isPlaybackTrack(value.currentTrack))
+    && isBoundedMilliseconds(value.positionMs)
+    && (value.durationMs === null || isBoundedMilliseconds(value.durationMs))
+    && isNonNegativeInteger(value.revision)
+    && isTimestamp(value.updatedAt)
+    && (value.lastError === null || isPlaybackSafeError(value.lastError))
+    && (!disconnected || (value.currentTrack === null && value.positionMs === 0 && value.durationMs === null))
+    && (!error || value.lastError !== null);
+}
+
+export function isProgramPlan(value: unknown): value is ProgramPlan {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "schemaVersion", "programId", "sourceId", "mode", "createdAt", "segments",
+  ])) return false;
+  if (value.schemaVersion !== IPC_SCHEMA_VERSION || !isUuid(value.programId)
+    || !isContractToken(value.sourceId, 128)
+    || (value.mode !== "local" && value.mode !== "system_session")
+    || !isTimestamp(value.createdAt) || !Array.isArray(value.segments)
+    || value.segments.length < 1 || value.segments.length > 200
+    || !value.segments.every(isProgramSegment)) return false;
+  const trackCount = value.segments.filter((segment) => (segment as { type?: unknown }).type === "track").length;
+  return value.mode === "local" ? trackCount > 0 : trackCount === 0;
+}
+
+function isPlaybackStatus(value: unknown): boolean {
+  return value === "disconnected" || value === "idle" || value === "loading"
+    || value === "playing" || value === "paused" || value === "stopped" || value === "error";
+}
+
+function isPlaybackTrack(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, [
+    "trackId", "title", "artist", "album", "artworkUri", "origin",
+  ]) && isContractToken(value.trackId, 128)
+    && isContractText(value.title, 1, 300)
+    && (value.artist === null || isContractText(value.artist, 1, 300))
+    && (value.album === null || isContractText(value.album, 1, 300))
+    && (value.artworkUri === null || (typeof value.artworkUri === "string"
+      && value.artworkUri.length <= 512 && /^asset:\/\/[A-Za-z0-9._:/-]+$/u.test(value.artworkUri)))
+    && (value.origin === "local" || value.origin === "system_session");
+}
+
+function isPlaybackSafeError(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, ["errorId", "safeMessage", "retryable"])
+    && typeof value.errorId === "string" && /^ERR-[0-9]{4}$/u.test(value.errorId)
+    && isContractText(value.safeMessage, 1, 300) && typeof value.retryable === "boolean";
+}
+
+function isProgramSegment(value: unknown): boolean {
+  if (!isRecord(value) || !isUuid(value.segmentId)) return false;
+  if (value.type === "track") {
+    return hasExactKeys(value, ["type", "segmentId", "trackId", "segueText"])
+      && isContractToken(value.trackId, 128)
+      && (value.segueText === null || isContractText(value.segueText, 1, 400));
+  }
+  return value.type === "voice"
+    && hasExactKeys(value, ["type", "segmentId", "text", "trigger"])
+    && isContractText(value.text, 1, 500)
+    && (value.trigger === "opening" || value.trigger === "between_tracks"
+      || value.trigger === "user_message" || value.trigger === "track_changed"
+      || value.trigger === "closing");
 }
 
 function isSourceCollection(value: unknown, features: unknown): value is SourceSummary[] {
@@ -483,6 +606,15 @@ function isTimestamp(value: unknown): value is string {
 
 function isSafeToken(value: unknown): value is string {
   return typeof value === "string" && /^[A-Za-z0-9_.:-]{1,100}$/u.test(value);
+}
+
+function isContractToken(value: unknown, maxLength: number): value is string {
+  return typeof value === "string" && value.length <= maxLength
+    && /^[A-Za-z0-9._:-]+$/u.test(value);
+}
+
+function isBoundedMilliseconds(value: unknown): value is number {
+  return isNonNegativeInteger(value) && value <= 86_400_000;
 }
 
 function isNullableSafeToken(value: unknown): value is string | null {

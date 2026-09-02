@@ -1,6 +1,6 @@
 import type { IpcTransport, IpcUnlisten } from "./transport";
 import { IPC_SCHEMA_VERSION, type PublicEventPayload } from "./types";
-import { isApiError, isRecord } from "./validation";
+import { isApiError, isPlaybackState, isRecord } from "./validation";
 
 export const PUBLIC_EVENT_NAMES = [
   "cyberkindred://v1/playback/event",
@@ -286,6 +286,53 @@ function parseEventPayload(
       return "invalid_event";
     }
   }
+  if (eventName === "cyberkindred://v1/playback/event") {
+    const stateRequired = envelope.type === "state_changed"
+      || envelope.type === "track_changed" || envelope.type === "capabilities_changed";
+    const disconnectedReasonValid = envelope.type !== "source_disconnected"
+      || envelope.reason === "session_lost" || envelope.reason === "session_replaced"
+      || envelope.reason === "media_error";
+    if (
+      !hasExactKeys(envelope, [
+        "schemaVersion", "eventId", "sequence", "type", "occurredAt", "sourceId",
+        "stateRevision", "reason", "state",
+      ])
+      || !isUuid(envelope.eventId)
+      || !isPlaybackEventType(envelope.type)
+      || !isSourceId(envelope.sourceId)
+      || !isNonNegativeSafeInteger(envelope.stateRevision)
+      || !isPlaybackReason(envelope.reason)
+      || (envelope.state !== null && !isPlaybackState(envelope.state))
+      || (stateRequired && envelope.state === null)
+      || !disconnectedReasonValid
+    ) {
+      return "invalid_event";
+    }
+  }
+  if (eventName === "cyberkindred://v1/program/state") {
+    if (
+      !hasExactKeys(envelope, [
+        "schemaVersion", "sequence", "occurredAt", "programId", "state", "safeMessage",
+      ])
+      || !isUuid(envelope.programId)
+      || !isProgramState(envelope.state)
+      || (envelope.safeMessage !== null && !isBoundedEventText(envelope.safeMessage, 300))
+    ) {
+      return "invalid_event";
+    }
+  }
+  if (eventName === "cyberkindred://v1/program/segment") {
+    if (
+      !hasExactKeys(envelope, [
+        "schemaVersion", "sequence", "occurredAt", "programId", "segmentId", "state",
+      ])
+      || !isUuid(envelope.programId)
+      || !isUuid(envelope.segmentId)
+      || !isProgramSegmentState(envelope.state)
+    ) {
+      return "invalid_event";
+    }
+  }
   return envelope;
 }
 
@@ -373,6 +420,33 @@ function isCancelledOperationKind(
 
 function isLibraryScanState(value: unknown): value is "running" | "completed" | "cancelled" | "failed" {
   return value === "running" || value === "completed" || value === "cancelled" || value === "failed";
+}
+
+function isPlaybackEventType(value: unknown): boolean {
+  return value === "state_changed" || value === "track_changed"
+    || value === "capabilities_changed" || value === "source_disconnected"
+    || value === "user_override" || value === "program_interrupted";
+}
+
+function isPlaybackReason(value: unknown): boolean {
+  return value === null || value === "adapter_update" || value === "user_command"
+    || value === "session_lost" || value === "session_replaced" || value === "user_media_key"
+    || value === "tts_resume_aborted" || value === "media_error";
+}
+
+function isProgramState(value: unknown): boolean {
+  return value === "planning" || value === "running" || value === "paused"
+    || value === "stopping" || value === "completed" || value === "failed";
+}
+
+function isProgramSegmentState(value: unknown): boolean {
+  return value === "queued" || value === "playing" || value === "completed"
+    || value === "skipped" || value === "failed";
+}
+
+function isSourceId(value: unknown): boolean {
+  return typeof value === "string" && value.length <= 128
+    && /^[A-Za-z0-9._:-]+$/u.test(value);
 }
 
 function isNonNegativeSafeInteger(value: unknown): value is number {

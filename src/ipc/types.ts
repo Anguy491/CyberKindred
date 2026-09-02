@@ -1,3 +1,7 @@
+import type { PlaybackState, ProgramPlan } from "../contracts";
+
+export type { PlaybackEvent, PlaybackState, ProgramPlan } from "../contracts";
+
 export const IPC_SCHEMA_VERSION = "1.0.0" as const;
 
 export type ErrorId =
@@ -57,6 +61,58 @@ export interface SourceSummary {
   readonly displayName: string;
   readonly connected: boolean;
   readonly capabilities: SourceCapabilities;
+}
+
+export interface MusicSourcesResponse {
+  readonly sources: ReadonlyArray<SourceSummary>;
+}
+
+export interface SelectMusicSourceRequest {
+  readonly clientRequestId: string;
+  readonly sourceId: string;
+}
+
+export interface SelectMusicSourceResponse {
+  readonly requestId: string;
+  readonly state: PlaybackState;
+}
+
+export interface PlaybackControlRequest {
+  readonly clientRequestId: string;
+  readonly expectedStateRevision: number;
+}
+
+export interface SeekPlaybackRequest extends PlaybackControlRequest {
+  readonly positionMs: number;
+}
+
+export interface StartProgramRequest {
+  readonly clientRequestId: string;
+  readonly sourceId: string;
+  readonly trigger: "manual" | "notification";
+}
+
+export interface StartProgramResponse {
+  readonly requestId: string;
+  readonly programId: string;
+  readonly plan: ProgramPlan | null;
+}
+
+export interface StopProgramRequest {
+  readonly clientRequestId: string;
+  readonly programId: string;
+}
+
+export interface CancelOperationRequest {
+  readonly clientRequestId: string;
+  readonly operationId: string;
+  readonly expectedKind: "chat" | "voice_preview" | "library_scan" | "data_export";
+}
+
+export interface CancelOperationResponse {
+  readonly requestId: string;
+  readonly operationId: string;
+  readonly state: "cancelled" | "already_terminal";
 }
 
 export interface AppCapabilities {
@@ -329,6 +385,20 @@ export interface LibraryScanEvent extends EventEnvelope {
   readonly discovered: number;
   readonly failed: number;
   readonly safeMessage: string | null;
+}
+
+export interface ProgramStateEvent extends EventEnvelope {
+  readonly schemaVersion: typeof IPC_SCHEMA_VERSION;
+  readonly programId: string;
+  readonly state: "planning" | "running" | "paused" | "stopping" | "completed" | "failed";
+  readonly safeMessage: string | null;
+}
+
+export interface ProgramSegmentEvent extends EventEnvelope {
+  readonly schemaVersion: typeof IPC_SCHEMA_VERSION;
+  readonly programId: string;
+  readonly segmentId: string;
+  readonly state: "queued" | "playing" | "completed" | "skipped" | "failed";
 }
 
 export interface VoiceView {

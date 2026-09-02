@@ -162,9 +162,9 @@ describe("TASK-006/TASK-008 typed IPC client", () => {
     await vi.waitFor(() => expect(reasons).toContain("initial"));
     expect([...transport.listeners.keys()]).toEqual(PUBLIC_EVENT_NAMES);
 
-    transport.emit("cyberkindred://v1/playback/event", event(1));
+    transport.emit("cyberkindred://v1/playback/event", playbackEvent(1));
     expect(received).toHaveLength(1);
-    transport.emit("cyberkindred://v1/playback/event", event(3));
+    transport.emit("cyberkindred://v1/playback/event", playbackEvent(3));
     await vi.waitFor(() => expect(reasons).toContain("sequence_gap"));
     expect(received).toHaveLength(1);
 
@@ -196,7 +196,7 @@ describe("TASK-006/TASK-008 typed IPC client", () => {
     transport.emit("cyberkindred://v1/operation/completed", completedEvent(2, OPERATION_A));
     expect(received).toHaveLength(1);
 
-    transport.emit("cyberkindred://v1/playback/event", event(3));
+    transport.emit("cyberkindred://v1/playback/event", playbackEvent(3));
     expect(received).toHaveLength(2);
     transport.emit("cyberkindred://v1/operation/failed", failedEvent(4, OPERATION_B));
     expect(received).toHaveLength(3);
@@ -211,7 +211,7 @@ describe("TASK-006/TASK-008 typed IPC client", () => {
     expect(received).toHaveLength(4);
     expect(reasons.filter((reason) => reason === "terminal")).toHaveLength(3);
 
-    transport.emit("cyberkindred://v1/playback/event", event(8));
+    transport.emit("cyberkindred://v1/playback/event", playbackEvent(8));
     expect(received).toHaveLength(5);
     expect(reasons).not.toContain("sequence_gap");
     expect(reasons).not.toContain("invalid_event");
@@ -250,7 +250,7 @@ describe("TASK-006/TASK-008 typed IPC client", () => {
     await vi.waitFor(() => expect(reasons.filter((reason) => reason === "invalid_event")).toHaveLength(3));
     expect(received).toHaveLength(3);
 
-    transport.emit("cyberkindred://v1/playback/event", event(7));
+    transport.emit("cyberkindred://v1/playback/event", playbackEvent(7));
     expect(received).toHaveLength(4);
     expect(reasons).not.toContain("sequence_gap");
     stop();
@@ -298,7 +298,7 @@ describe("TASK-006/TASK-008 typed IPC client", () => {
       },
     });
     await vi.waitFor(() => expect(reasons).toContain("initial"));
-    transport.emit("cyberkindred://v1/playback/event", { ...event(1), schemaVersion: "2.0.0" });
+    transport.emit("cyberkindred://v1/playback/event", { ...playbackEvent(1), schemaVersion: "2.0.0" });
     await vi.waitFor(() => expect(reasons).toContain("protocol_mismatch"));
     expect(onEvent).not.toHaveBeenCalled();
     stop();
@@ -327,6 +327,37 @@ function event(sequence: number): PublicEventPayload {
     schemaVersion: "1.0.0",
     sequence,
     occurredAt: "2026-09-02T00:00:00Z",
+  };
+}
+
+function playbackEvent(sequence: number): PublicEventPayload {
+  return {
+    ...event(sequence),
+    eventId: "018f1f64-4ca0-7a2a-8e91-e89c389b3b99",
+    type: "state_changed",
+    sourceId: "local",
+    stateRevision: sequence,
+    reason: "adapter_update",
+    state: {
+      schemaVersion: "1.0.0",
+      sourceId: "local",
+      sourceKind: "local",
+      status: "idle",
+      capabilities: {
+        play: true,
+        pause: true,
+        seek: true,
+        next: true,
+        previous: true,
+        setQueue: true,
+      },
+      currentTrack: null,
+      positionMs: 0,
+      durationMs: null,
+      revision: sequence,
+      updatedAt: "2026-09-02T00:00:00Z",
+      lastError: null,
+    },
   };
 }
 

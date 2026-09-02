@@ -8,12 +8,23 @@ import type {
   DeleteSecretRequest,
   DeleteSecretResponse,
   LibraryRootsResponse,
+  MusicSourcesResponse,
   ListTracksRequest,
   OnboardingState,
   OperationAccepted,
   PickLibraryRootResponse,
   SaveOnboardingStepRequest,
   SettingsView,
+  SelectMusicSourceRequest,
+  SelectMusicSourceResponse,
+  PlaybackControlRequest,
+  PlaybackState,
+  SeekPlaybackRequest,
+  StartProgramRequest,
+  StartProgramResponse,
+  StopProgramRequest,
+  CancelOperationRequest,
+  CancelOperationResponse,
   StartLibraryScanRequest,
   TestProviderRequest,
   TestProviderResponse,
@@ -30,11 +41,16 @@ import {
   parseCancelLibraryScanResponse,
   parseDeleteSecretResponse,
   parseLibraryRootsResponse,
+  parseMusicSourcesResponse,
   parseTracksPage,
   parseOnboardingState,
   parseOperationAccepted,
   parsePickLibraryRootResponse,
   parseSettingsView,
+  parseSelectMusicSourceResponse,
+  parsePlaybackState,
+  parseStartProgramResponse,
+  parseCancelOperationResponse,
   parseTestProviderResponse,
   parseValidateSecretResponse,
   parseVoicesResponse,
@@ -184,6 +200,74 @@ export class CyberKindredIpcClient {
     );
   }
 
+  /** API-016: lists the authoritative source catalog and capabilities. */
+  async listMusicSources(): Promise<MusicSourcesResponse> {
+    return this.#invokeValidated(
+      "api_v1_list_music_sources", { request: {} }, READ_FAST_TIMEOUT_MS, parseMusicSourcesResponse,
+    );
+  }
+
+  /** API-017: selects one source without starting audio. */
+  async selectMusicSource(request: SelectMusicSourceRequest): Promise<SelectMusicSourceResponse> {
+    return this.#invokeValidated(
+      "api_v1_select_music_source", { request }, STANDARD_TIMEOUT_MS, parseSelectMusicSourceResponse,
+    );
+  }
+
+  /** API-018: reads the authoritative playback snapshot. */
+  async getPlaybackState(): Promise<PlaybackState> {
+    return this.#invokeValidated(
+      "api_v1_get_playback_state", { request: {} }, READ_FAST_TIMEOUT_MS, parsePlaybackState,
+    );
+  }
+
+  /** API-019: resumes playback from the advertised revision. */
+  async play(request: PlaybackControlRequest): Promise<PlaybackState> {
+    return this.#playbackCommand("api_v1_play", request);
+  }
+
+  /** API-020: pauses playback from the advertised revision. */
+  async pause(request: PlaybackControlRequest): Promise<PlaybackState> {
+    return this.#playbackCommand("api_v1_pause", request);
+  }
+
+  /** API-021: seeks to an absolute bounded position. */
+  async seek(request: SeekPlaybackRequest): Promise<PlaybackState> {
+    return this.#playbackCommand("api_v1_seek", request);
+  }
+
+  /** API-022: advances from the advertised revision. */
+  async next(request: PlaybackControlRequest): Promise<PlaybackState> {
+    return this.#playbackCommand("api_v1_next", request);
+  }
+
+  /** API-023: returns to the previous item from the advertised revision. */
+  async previous(request: PlaybackControlRequest): Promise<PlaybackState> {
+    return this.#playbackCommand("api_v1_previous", request);
+  }
+
+  /** API-024: starts only from a manual click or confirmed notification. */
+  async startProgram(request: StartProgramRequest): Promise<StartProgramResponse> {
+    return this.#invokeValidated(
+      "api_v1_start_program", { request }, PROVIDER_TIMEOUT_MS, parseStartProgramResponse,
+    );
+  }
+
+  /** API-025: idempotently stops one active program. */
+  async stopProgram(request: StopProgramRequest): Promise<Ack> {
+    return this.#invokeValidated(
+      "api_v1_stop_program", { request }, STANDARD_TIMEOUT_MS, parseAck,
+    );
+  }
+
+  /** API-038: cancels one accepted operation by its declared kind. */
+  async cancelOperation(request: CancelOperationRequest): Promise<CancelOperationResponse> {
+    return this.#invokeValidated(
+      "api_v1_cancel_operation", { request }, OPERATION_ACCEPT_TIMEOUT_MS,
+      parseCancelOperationResponse,
+    );
+  }
+
   /** API-043: reads the local path-free voice catalog. */
   async listVoices(): Promise<VoicesResponse> {
     return this.#invokeValidated(
@@ -227,6 +311,13 @@ export class CyberKindredIpcClient {
         clearTimeout(timeoutHandle);
       }
     }
+  }
+
+  async #playbackCommand(
+    command: string,
+    request: PlaybackControlRequest | SeekPlaybackRequest,
+  ): Promise<PlaybackState> {
+    return this.#invokeValidated(command, { request }, STANDARD_TIMEOUT_MS, parsePlaybackState);
   }
 
   async #invokeValidated<Response>(
