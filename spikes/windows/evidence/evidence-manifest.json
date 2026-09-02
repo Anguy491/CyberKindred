@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.0.0",
+  "taskId": "TASK-003",
+  "candidateCommit": "recorded-by-m1-checkpoint",
+  "environmentCohort": "windows-11-x64-standard-user",
+  "artifacts": [
+    {
+      "id": "task-003-matrix",
+      "path": "spikes/windows/evidence/TASK-003-MATRIX.md",
+      "status": "passed_with_known_gaps",
+      "containsSecret": false,
+      "containsAbsoluteUserPath": false
+    }
+  ],
+  "manualNotRun": [
+    "real-notification-action",
+    "tray-action",
+    "login-cycle-autostart",
+    "nsis-install-uninstall",
+    "windows-10-clean-standard-user-vm"
+  ]
+}
