@@ -1,6 +1,6 @@
 import type { PlaybackState, ProgramPlan } from "../contracts";
 
-export type { PlaybackEvent, PlaybackState, ProgramPlan } from "../contracts";
+export type { MemoryRecord, PlaybackEvent, PlaybackState, ProgramPlan } from "../contracts";
 
 export const IPC_SCHEMA_VERSION = "1.0.0" as const;
 

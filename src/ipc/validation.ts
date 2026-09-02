@@ -11,6 +11,7 @@ import {
   type LibraryRoot,
   type LibraryRootsResponse,
   type MusicSourcesResponse,
+  type MemoryRecord,
   type OnboardingProfile,
   type OnboardingState,
   type OnboardingStep,
@@ -392,6 +393,33 @@ export function isProgramPlan(value: unknown): value is ProgramPlan {
     || !value.segments.every(isProgramSegment)) return false;
   const trackCount = value.segments.filter((segment) => (segment as { type?: unknown }).type === "track").length;
   return value.mode === "local" ? trackCount > 0 : trackCount === 0;
+}
+
+export function isMemoryRecord(value: unknown): value is MemoryRecord {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "schemaVersion", "memoryId", "status", "kind", "content", "confidence",
+    "sourceSessionId", "createdAt", "updatedAt", "approvedAt", "lastUsedAt", "enabled",
+    "revision",
+  ])) return false;
+  const statusCoherent = value.status === "proposed"
+    ? value.approvedAt === null && value.enabled === false
+    : value.status === "approved"
+      ? isTimestamp(value.approvedAt) && value.enabled === true
+      : value.status === "disabled" && isTimestamp(value.approvedAt) && value.enabled === false;
+  return value.schemaVersion === IPC_SCHEMA_VERSION
+    && isUuid(value.memoryId)
+    && (value.status === "proposed" || value.status === "approved" || value.status === "disabled")
+    && (value.kind === "preference" || value.kind === "routine"
+      || value.kind === "boundary" || value.kind === "biographical")
+    && isContractText(value.content, 1, 500)
+    && typeof value.confidence === "number" && Number.isFinite(value.confidence)
+    && value.confidence >= 0 && value.confidence <= 1
+    && (value.sourceSessionId === null || isUuid(value.sourceSessionId))
+    && isTimestamp(value.createdAt) && isTimestamp(value.updatedAt)
+    && (value.approvedAt === null || isTimestamp(value.approvedAt))
+    && (value.lastUsedAt === null || isTimestamp(value.lastUsedAt))
+    && typeof value.enabled === "boolean" && isNonNegativeInteger(value.revision)
+    && statusCoherent;
 }
 
 function isPlaybackStatus(value: unknown): boolean {

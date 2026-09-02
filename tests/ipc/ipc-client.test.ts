@@ -168,7 +168,7 @@ describe("TASK-006/TASK-008 typed IPC client", () => {
     await vi.waitFor(() => expect(reasons).toContain("sequence_gap"));
     expect(received).toHaveLength(1);
 
-    transport.emit("cyberkindred://v1/app/resumed", event(4));
+    transport.emit("cyberkindred://v1/app/resumed", resumedEvent(4));
     await vi.waitFor(() => expect(reasons).toContain("resume"));
     transport.emit("cyberkindred://v1/operation/completed", completedEvent(5));
     await vi.waitFor(() => expect(reasons).toContain("terminal"));
@@ -359,6 +359,10 @@ function playbackEvent(sequence: number): PublicEventPayload {
       lastError: null,
     },
   };
+}
+
+function resumedEvent(sequence: number): PublicEventPayload {
+  return { ...event(sequence), sleptAt: null };
 }
 
 const OPERATION_A = "018f1f64-4ca0-7a2a-8e91-e89c389b3a31";

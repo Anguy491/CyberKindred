@@ -1,6 +1,6 @@
 import type { IpcTransport, IpcUnlisten } from "./transport";
 import { IPC_SCHEMA_VERSION, type PublicEventPayload } from "./types";
-import { isApiError, isPlaybackState, isRecord } from "./validation";
+import { isApiError, isMemoryRecord, isPlaybackState, isRecord } from "./validation";
 
 export const PUBLIC_EVENT_NAMES = [
   "cyberkindred://v1/playback/event",
@@ -333,6 +333,40 @@ function parseEventPayload(
       return "invalid_event";
     }
   }
+  if (eventName === "cyberkindred://v1/chat/message") {
+    if (
+      !hasExactKeys(envelope, [
+        "schemaVersion", "sequence", "occurredAt", "operationId", "programId", "role",
+        "text", "final",
+      ])
+      || !isUuid(envelope.operationId) || !isUuid(envelope.programId)
+      || (envelope.role !== "user" && envelope.role !== "assistant")
+      || !isEventText(envelope.text, 20_000) || typeof envelope.final !== "boolean"
+    ) {
+      return "invalid_event";
+    }
+  }
+  if (eventName === "cyberkindred://v1/memory/proposed") {
+    if (!hasExactKeys(envelope, ["schemaVersion", "sequence", "occurredAt", "memory"])
+      || !isMemoryRecord(envelope.memory) || envelope.memory.status !== "proposed") {
+      return "invalid_event";
+    }
+  }
+  if (eventName === "cyberkindred://v1/schedule/due") {
+    if (!hasExactKeys(envelope, [
+      "schemaVersion", "sequence", "occurredAt", "scheduleId", "occurrenceId",
+      "notificationShown",
+    ]) || !isUuid(envelope.scheduleId) || !isUuid(envelope.occurrenceId)
+      || typeof envelope.notificationShown !== "boolean") {
+      return "invalid_event";
+    }
+  }
+  if (eventName === "cyberkindred://v1/app/resumed") {
+    if (!hasExactKeys(envelope, ["schemaVersion", "sequence", "occurredAt", "sleptAt"])
+      || (envelope.sleptAt !== null && !isTimestamp(envelope.sleptAt))) {
+      return "invalid_event";
+    }
+  }
   return envelope;
 }
 
@@ -456,6 +490,17 @@ function isNonNegativeSafeInteger(value: unknown): value is number {
 function isBoundedEventText(value: unknown, maxCodePoints: number): value is string {
   return typeof value === "string" && Array.from(value).length >= 1
     && Array.from(value).length <= maxCodePoints && !/\p{Cc}/u.test(value);
+}
+
+function isEventText(value: unknown, maxCodePoints: number): value is string {
+  if (typeof value !== "string") return false;
+  const length = Array.from(value).length;
+  return length >= 1 && length <= maxCodePoints
+    && !Array.from(value).some((character) => /\p{Cc}/u.test(character) && !/\s/u.test(character));
+}
+
+function isTimestamp(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 40 && !Number.isNaN(Date.parse(value));
 }
 
 function hasExactKeys(

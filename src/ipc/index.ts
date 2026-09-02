@@ -24,6 +24,7 @@ export type {
   LibraryRoot,
   LibraryRootsResponse,
   LibraryScanEvent,
+  MemoryRecord,
   MusicSourcesResponse,
   ListTracksRequest,
   MusicSourceKind,
