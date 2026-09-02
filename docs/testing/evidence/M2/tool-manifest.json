@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-02T20:04:10.8973966+10:00",
+  "hostTarget": "x86_64-pc-windows-msvc",
+  "installationPolicy": "Exact crates.io versions installed with cargo install --locked; paths are normalized to avoid committing a user profile path.",
+  "tools": [
+    {
+      "name": "cargo-audit",
+      "version": "0.22.2",
+      "source": "crates.io",
+      "executable": "$CARGO_HOME/bin/cargo-audit.exe",
+      "sha256": "A34B0A28C9FDE0612A5F70B8384DA7B6A28209890ACEF03D4BA6189D4C892460"
+    },
+    {
+      "name": "cargo-deny",
+      "version": "0.20.2",
+      "source": "crates.io",
+      "executable": "$CARGO_HOME/bin/cargo-deny.exe",
+      "sha256": "10F147690979A7C5D6C0D71AC077CF26575CDA068BB1318F1EA1F135B1FDD241"
+    },
+    {
+      "name": "cargo-nextest",
+      "version": "0.9.143",
+      "source": "crates.io",
+      "executable": "$CARGO_HOME/bin/cargo-nextest.exe",
+      "sha256": "A06857A583679F4EC76645EA2F921864E49D28BD6F6C7A0D61F7BCCFEEDA7FA2",
+      "installNote": "The tool's own published Cargo.lock references yanked chacha20 0.10.0; this dependency is not present in CyberKindred Cargo.lock."
+    },
+    {
+      "name": "cargo-llvm-cov",
+      "version": "0.9.0",
+      "source": "crates.io",
+      "executable": "$CARGO_HOME/bin/cargo-llvm-cov.exe",
+      "sha256": "7983344D19FDC9B08F26F2E6D3B9CEFF3BD652A0E271500CCA57098B1D66EC9C"
+    },
+    {
+      "name": "tauri-driver",
+      "version": "2.0.6",
+      "source": "crates.io",
+      "executable": "$CARGO_HOME/bin/tauri-driver.exe",
+      "sha256": "BF76BD3413D78212412E5AB611083BBA2EE8BC1DD354F93DD7FF1A76A43D265A"
+    }
+  ],
+  "pinnedRuntime": {
+    "node": "24.19.0",
+    "pnpm": "11.16.0",
+    "rustc": "1.98.0",
+    "cargo": "1.98.0",
+    "llvm": "22.1.8"
+  }
+}
