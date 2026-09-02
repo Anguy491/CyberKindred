@@ -42,7 +42,7 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M2 — Application foundation
 
-**Status:** In Progress — activated automatically after the M1 checkpoint on 2026-09-02.
+**Status:** Blocked — M2 hard gates did not pass on 2026-09-02; see [`M2 checkpoint`](../testing/checkpoints/M2.md). M2 remains the only active milestone.
 
 **Goal:** 建立可测试的 Tauri/React/Rust 外壳与契约边界。
 

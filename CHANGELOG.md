@@ -14,6 +14,7 @@
 
 ### Changed
 
+- M2 technical checkpoint 如实记录为 `Blocked`：Rust/前端基础链路通过，但 WebdriverIO High advisory、credential 生命周期权威文档冲突及 EVT-008/009 delivery exactly-once 契约缺口未满足 hard gate，因此未激活 M3。
 - 对齐 SQLx 0.9 的实际 feature 名称：SQLite 基础只启用 bundled SQLite、Tokio runtime、migration/macro，不启用默认的多数据库、JSON 或 load-extension 能力。
 - 补全 `playback-state` 与 `program-plan` 条件分支中的局部 `object`/`array` 类型声明，使不改变实例语义的 v1 schema 可由 AJV strict 模式编译。
 - 为 `TASK-005` 固定 Node-only `ajv 8.20.0` 与 `ajv-formats 3.0.1`，以执行 Draft 2020-12/UUID/date-time 契约校验；两者禁止进入 WebView runtime bundle。
@@ -28,6 +29,7 @@
 
 ### Added
 
+- `TASK-008` blocked candidate 建立 Rust-only provider registry/config、严格 API-004..009/API-043 边界、Windows Credential Manager 内部 unsafe 隔离、显式 Responses capability probe、持久化 accepted→terminal outbox、启动恢复、24 小时/7 天 outbox retention 和脱敏诊断；默认测试不联网、不出声、不触碰真实凭据。
 - `TASK-009` 交付 RADIO/LIBRARY/YOU/SETTINGS 四页静音应用壳、OLED 三层视觉 token、本地字体/fallback 状态、全局键盘导航与可聚焦的 capability 降级原因；四页 1100×720 截图证据已归档。
 - M2 新增 Rust-only 强类型诊断日志：只写入 allowlist 字段与固定 `[redacted]` JSONL，以 5 MiB 单文件、14 天和 50 MiB 总量上限轮换清理，并拒绝 symlink/Windows reparse 路径。
 - `TASK-007` 建立 29 表 SQLite 初始迁移、单写者事务仓储、迁移前校验备份、数据库身份/完整性 fail-closed、30 天原文/voice 清理、路径 containment 与按 canonical origin 隔离的 Windows Credential Vault；默认测试不触碰真实凭据。
