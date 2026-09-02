@@ -1,0 +1,508 @@
+use super::{AppPaths, Repository, StorageError, StorageReason};
+use chrono::Utc;
+use sha2::{Digest, Sha256};
+use sqlx::{
+    ConnectOptions, SqlitePool,
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
+};
+use std::{path::Path, time::Duration};
+
+pub const APPLICATION_ID: i64 = 1_129_008_708;
+pub const LATEST_SCHEMA_VERSION: i64 = 1;
+const INITIAL_MIGRATION_NAME: &str = "initial_schema";
+const INITIAL_MIGRATION_SQL: &str = include_str!("../../migrations/V0001__initial_schema.sql");
+
+/// Open, verified storage. A value is returned only after every migration and
+/// post-migration integrity check succeeds.
+pub struct Storage {
+    writer: SqlitePool,
+    reader: SqlitePool,
+}
+
+impl Storage {
+    /// Opens the app database under validated Tauri-resolved paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable storage or migration error when identity, integrity,
+    /// version, checksum, backup, migration, or pool initialization fails.
+    pub async fn open(paths: &AppPaths, app_version: &str) -> Result<Self, StorageError> {
+        if app_version.is_empty() || app_version.len() > 100 {
+            return Err(StorageError::new(StorageReason::MigrationFailed));
+        }
+        let database_path = paths.database_path();
+        let writer = connect_pool(&database_path, 1, true).await?;
+        if let Err(error) = initialize(&writer, paths, app_version, INITIAL_MIGRATION_SQL).await {
+            writer.close().await;
+            return Err(error);
+        }
+
+        let reader = match connect_pool(&database_path, 4, false).await {
+            Ok(pool) => pool,
+            Err(error) => {
+                writer.close().await;
+                return Err(error);
+            }
+        };
+        Ok(Self { writer, reader })
+    }
+
+    #[must_use]
+    pub fn repository(&self) -> Repository {
+        Repository::new(self.writer.clone())
+    }
+
+    /// Runs a bounded SQLite integrity check through the read pool.
+    ///
+    /// # Errors
+    ///
+    /// Returns `storage_integrity_failed` when SQLite does not report `ok`.
+    pub async fn verify_integrity(&self) -> Result<(), StorageError> {
+        verify_integrity(&self.reader).await
+    }
+
+    /// Performs the normal-exit passive WAL checkpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns `storage_write_failed` if SQLite cannot checkpoint the WAL.
+    pub async fn passive_checkpoint(&self) -> Result<(), StorageError> {
+        let _: (i64, i64, i64) = sqlx::query_as("PRAGMA wal_checkpoint(PASSIVE)")
+            .fetch_one(&self.writer)
+            .await
+            .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))?;
+        Ok(())
+    }
+
+    /// Performs the truncate checkpoint required before a package or backup.
+    ///
+    /// # Errors
+    ///
+    /// Returns `storage_write_failed` if SQLite cannot checkpoint the WAL.
+    pub async fn truncate_checkpoint(&self) -> Result<(), StorageError> {
+        let _: (i64, i64, i64) = sqlx::query_as("PRAGMA wal_checkpoint(TRUNCATE)")
+            .fetch_one(&self.writer)
+            .await
+            .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))?;
+        Ok(())
+    }
+
+    pub async fn close(self) {
+        self.reader.close().await;
+        self.writer.close().await;
+    }
+}
+
+async fn connect_pool(
+    database_path: &Path,
+    max_connections: u32,
+    create_if_missing: bool,
+) -> Result<SqlitePool, StorageError> {
+    let options = SqliteConnectOptions::new()
+        .filename(database_path)
+        .create_if_missing(create_if_missing)
+        .foreign_keys(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .synchronous(SqliteSynchronous::Normal)
+        .busy_timeout(Duration::from_millis(3_000))
+        .pragma("temp_store", "MEMORY")
+        .disable_statement_logging();
+
+    SqlitePoolOptions::new()
+        .max_connections(max_connections)
+        .connect_with(options)
+        .await
+        .map_err(|_| StorageError::new(StorageReason::StorageIntegrityFailed))
+}
+
+async fn initialize(
+    pool: &SqlitePool,
+    paths: &AppPaths,
+    app_version: &str,
+    migration_sql: &'static str,
+) -> Result<(), StorageError> {
+    verify_integrity(pool).await?;
+    let application_id = pragma_i64(pool, "PRAGMA application_id").await?;
+    let user_version = pragma_i64(pool, "PRAGMA user_version").await?;
+
+    if application_id != 0 && application_id != APPLICATION_ID {
+        return Err(StorageError::new(StorageReason::ForeignDatabase));
+    }
+    if user_version > LATEST_SCHEMA_VERSION {
+        return Err(StorageError::new(StorageReason::DatabaseVersionUnsupported));
+    }
+
+    if user_version == 0 {
+        let table_count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+        )
+        .fetch_one(pool)
+        .await
+        .map_err(|_| StorageError::new(StorageReason::StorageReadFailed))?;
+        if table_count != 0 {
+            return Err(StorageError::new(StorageReason::ForeignDatabase));
+        }
+        create_verified_backup(pool, paths, user_version).await?;
+        apply_initial_migration(pool, app_version, migration_sql).await?;
+    }
+
+    verify_current_schema(pool, migration_sql).await
+}
+
+async fn apply_initial_migration(
+    pool: &SqlitePool,
+    app_version: &str,
+    migration_sql: &'static str,
+) -> Result<(), StorageError> {
+    let mut transaction = pool
+        .begin()
+        .await
+        .map_err(|_| StorageError::new(StorageReason::MigrationFailed))?;
+    if sqlx::raw_sql(migration_sql)
+        .execute(&mut *transaction)
+        .await
+        .is_err()
+    {
+        let _ = transaction.rollback().await;
+        return Err(StorageError::new(StorageReason::MigrationFailed));
+    }
+    let checksum = migration_checksum(migration_sql);
+    let now_ms = Utc::now().timestamp_millis();
+    if sqlx::query(
+        "INSERT INTO schema_migrations(version, name, checksum_sha256, applied_at_ms, app_version) VALUES(?, ?, ?, ?, ?)",
+    )
+    .bind(LATEST_SCHEMA_VERSION)
+    .bind(INITIAL_MIGRATION_NAME)
+    .bind(checksum)
+    .bind(now_ms)
+    .bind(app_version)
+    .execute(&mut *transaction)
+    .await
+    .is_err()
+        || sqlx::query("PRAGMA application_id = 1129008708")
+            .execute(&mut *transaction)
+            .await
+            .is_err()
+        || sqlx::query("PRAGMA user_version = 1")
+            .execute(&mut *transaction)
+            .await
+            .is_err()
+    {
+        let _ = transaction.rollback().await;
+        return Err(StorageError::new(StorageReason::MigrationFailed));
+    }
+    transaction
+        .commit()
+        .await
+        .map_err(|_| StorageError::new(StorageReason::MigrationFailed))
+}
+
+async fn verify_current_schema(
+    pool: &SqlitePool,
+    migration_sql: &'static str,
+) -> Result<(), StorageError> {
+    verify_integrity(pool).await?;
+    let application_id = pragma_i64(pool, "PRAGMA application_id").await?;
+    let user_version = pragma_i64(pool, "PRAGMA user_version").await?;
+    if application_id != APPLICATION_ID {
+        return Err(StorageError::new(StorageReason::ForeignDatabase));
+    }
+    if user_version != LATEST_SCHEMA_VERSION {
+        return Err(StorageError::new(StorageReason::DatabaseVersionUnsupported));
+    }
+
+    let row: (String, String) =
+        sqlx::query_as("SELECT name, checksum_sha256 FROM schema_migrations WHERE version = ?")
+            .bind(LATEST_SCHEMA_VERSION)
+            .fetch_one(pool)
+            .await
+            .map_err(|_| StorageError::new(StorageReason::MigrationFailed))?;
+    if row.0 != INITIAL_MIGRATION_NAME || row.1 != migration_checksum(migration_sql) {
+        return Err(StorageError::new(StorageReason::MigrationFailed));
+    }
+    Ok(())
+}
+
+async fn verify_integrity(pool: &SqlitePool) -> Result<(), StorageError> {
+    let result: String = sqlx::query_scalar("PRAGMA integrity_check(1)")
+        .fetch_one(pool)
+        .await
+        .map_err(|_| StorageError::new(StorageReason::StorageIntegrityFailed))?;
+    if result != "ok" {
+        return Err(StorageError::new(StorageReason::StorageIntegrityFailed));
+    }
+    Ok(())
+}
+
+async fn pragma_i64(pool: &SqlitePool, statement: &'static str) -> Result<i64, StorageError> {
+    sqlx::query_scalar(statement)
+        .fetch_one(pool)
+        .await
+        .map_err(|_| StorageError::new(StorageReason::StorageReadFailed))
+}
+
+async fn create_verified_backup(
+    pool: &SqlitePool,
+    paths: &AppPaths,
+    current_version: i64,
+) -> Result<(), StorageError> {
+    let utc_label = Utc::now().format("%Y%m%dT%H%M%S%3fZ").to_string();
+    let backup_path = paths.migration_backup_path(current_version, &utc_label)?;
+    let backup_text = backup_path
+        .to_str()
+        .ok_or_else(|| StorageError::new(StorageReason::PathDenied))?;
+    sqlx::query("VACUUM INTO ?")
+        .bind(backup_text)
+        .execute(pool)
+        .await
+        .map_err(|_| StorageError::new(StorageReason::MigrationFailed))?;
+
+    let backup_pool = connect_pool(&backup_path, 1, false).await?;
+    let verification = verify_integrity(&backup_pool).await;
+    backup_pool.close().await;
+    verification
+}
+
+fn migration_checksum(migration_sql: &str) -> String {
+    hex::encode(Sha256::digest(migration_sql.as_bytes()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temporary_paths() -> (tempfile::TempDir, AppPaths) {
+        let temp = tempfile::tempdir().expect("temporary root");
+        let paths = AppPaths::create(
+            temp.path().join("data"),
+            temp.path().join("cache"),
+            temp.path().join("logs"),
+        )
+        .expect("scoped app paths");
+        (temp, paths)
+    }
+
+    #[tokio::test]
+    async fn repository_migrates_empty_database_and_reopens_idempotently() {
+        let (_temp, paths) = temporary_paths();
+        let storage = Storage::open(&paths, "0.1.0").await.expect("initial open");
+        assert_eq!(
+            pragma_i64(&storage.reader, "PRAGMA application_id")
+                .await
+                .expect("application id"),
+            APPLICATION_ID
+        );
+        assert_eq!(
+            pragma_i64(&storage.reader, "PRAGMA user_version")
+                .await
+                .expect("user version"),
+            LATEST_SCHEMA_VERSION
+        );
+        storage.close().await;
+
+        let reopened = Storage::open(&paths, "0.1.0")
+            .await
+            .expect("idempotent reopen");
+        reopened.verify_integrity().await.expect("integrity");
+        reopened.close().await;
+    }
+
+    #[tokio::test]
+    async fn repository_initial_schema_contains_every_documented_table() {
+        let (_temp, paths) = temporary_paths();
+        let storage = Storage::open(&paths, "0.1.0").await.expect("open");
+        let names: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        )
+        .fetch_all(&storage.reader)
+        .await
+        .expect("table list");
+        for required in [
+            "app_settings",
+            "chat_sessions",
+            "cover_art_cache",
+            "cover_art_negative_cache",
+            "feedback",
+            "library_roots",
+            "memories",
+            "memory_proposal_sources",
+            "memory_proposals",
+            "memory_revisions",
+            "messages",
+            "os_integration_state",
+            "outbox_events",
+            "playback_events",
+            "program_runs",
+            "program_segments",
+            "provider_usage",
+            "scan_jobs",
+            "schedule_occurrences",
+            "schedule_rules",
+            "schema_migrations",
+            "session_summaries",
+            "track_external_metadata",
+            "tracks",
+            "tts_cache_entries",
+            "tts_cache_leases",
+            "tts_cache_references",
+            "user_profile",
+            "weather_cache",
+        ] {
+            assert!(
+                names.iter().any(|name| name == required),
+                "missing {required}"
+            );
+        }
+        storage.close().await;
+    }
+
+    #[tokio::test]
+    async fn repository_rejects_checksum_tampering_without_opening_state() {
+        let (_temp, paths) = temporary_paths();
+        let storage = Storage::open(&paths, "0.1.0").await.expect("open");
+        sqlx::query("UPDATE schema_migrations SET checksum_sha256 = ? WHERE version = 1")
+            .bind("0".repeat(64))
+            .execute(&storage.writer)
+            .await
+            .expect("tamper fixture");
+        storage.close().await;
+
+        let Err(error) = Storage::open(&paths, "0.1.0").await else {
+            panic!("checksum mismatch must fail closed");
+        };
+        assert_eq!(error.reason(), StorageReason::MigrationFailed);
+    }
+
+    #[tokio::test]
+    async fn repository_migration_failure_rolls_back_and_preserves_verified_backup() {
+        let (_temp, paths) = temporary_paths();
+        let pool = connect_pool(&paths.database_path(), 1, true)
+            .await
+            .expect("fixture pool");
+        let failure = initialize(
+            &pool,
+            &paths,
+            "0.1.0",
+            "CREATE TABLE partial(id INTEGER); THIS IS NOT VALID SQL;",
+        )
+        .await
+        .expect_err("invalid migration must fail");
+        assert_eq!(failure.reason(), StorageReason::MigrationFailed);
+        let partial_count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'partial'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("schema inspection");
+        assert_eq!(partial_count, 0);
+        pool.close().await;
+
+        let backups = std::fs::read_dir(paths.backups_dir())
+            .expect("backup directory")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("backup entries");
+        assert_eq!(backups.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn repository_rejects_foreign_application_id_without_rewriting_it() {
+        let (_temp, paths) = temporary_paths();
+        let pool = connect_pool(&paths.database_path(), 1, true)
+            .await
+            .expect("fixture pool");
+        sqlx::query("PRAGMA application_id = 42")
+            .execute(&pool)
+            .await
+            .expect("foreign application id fixture");
+        pool.close().await;
+
+        let Err(error) = Storage::open(&paths, "0.1.0").await else {
+            panic!("foreign database must fail closed");
+        };
+        assert_eq!(error.reason(), StorageReason::ForeignDatabase);
+        let verification = connect_pool(&paths.database_path(), 1, false)
+            .await
+            .expect("verification pool");
+        assert_eq!(
+            pragma_i64(&verification, "PRAGMA application_id")
+                .await
+                .expect("preserved id"),
+            42
+        );
+        verification.close().await;
+    }
+
+    #[tokio::test]
+    async fn repository_rejects_future_schema_version() {
+        let (_temp, paths) = temporary_paths();
+        let pool = connect_pool(&paths.database_path(), 1, true)
+            .await
+            .expect("fixture pool");
+        sqlx::query("PRAGMA application_id = 1129008708")
+            .execute(&pool)
+            .await
+            .expect("application id fixture");
+        sqlx::query("PRAGMA user_version = 2")
+            .execute(&pool)
+            .await
+            .expect("future version fixture");
+        pool.close().await;
+
+        let Err(error) = Storage::open(&paths, "0.1.0").await else {
+            panic!("future database must fail closed");
+        };
+        assert_eq!(error.reason(), StorageReason::DatabaseVersionUnsupported);
+    }
+
+    #[tokio::test]
+    async fn repository_rejects_corrupt_database_bytes() {
+        let (_temp, paths) = temporary_paths();
+        std::fs::write(paths.database_path(), b"not a sqlite database")
+            .expect("corrupt database fixture");
+        let Err(error) = Storage::open(&paths, "0.1.0").await else {
+            panic!("corrupt database must fail closed");
+        };
+        assert_eq!(error.reason(), StorageReason::StorageIntegrityFailed);
+    }
+
+    #[tokio::test]
+    async fn repository_schema_enforces_foreign_keys_checks_and_active_scan_uniqueness() {
+        let (_temp, paths) = temporary_paths();
+        let storage = Storage::open(&paths, "0.1.0").await.expect("open");
+
+        let invalid_foreign_key = sqlx::query(
+            "INSERT INTO scan_jobs(id, root_id, status, app_version) VALUES('scan-orphan', 'missing-root', 'queued', '0.1.0')",
+        )
+        .execute(&storage.writer)
+        .await;
+        assert!(invalid_foreign_key.is_err());
+
+        let invalid_json = sqlx::query(
+            "INSERT INTO app_settings(key, value_json, schema_version, updated_at_ms) VALUES('ui.fixture', 'not-json', 1, 0)",
+        )
+        .execute(&storage.writer)
+        .await;
+        assert!(invalid_json.is_err());
+
+        sqlx::query(
+            "INSERT INTO library_roots(id, canonical_path, path_key, display_name, enabled, created_at_ms) VALUES('root-1', 'fixture-path-never-exposed', 'fixture-path-key', 'Fixture', 1, 0)",
+        )
+        .execute(&storage.writer)
+        .await
+        .expect("library root fixture");
+        sqlx::query(
+            "INSERT INTO scan_jobs(id, root_id, status, app_version) VALUES('scan-1', 'root-1', 'running', '0.1.0')",
+        )
+        .execute(&storage.writer)
+        .await
+        .expect("first active scan");
+        let duplicate_active = sqlx::query(
+            "INSERT INTO scan_jobs(id, root_id, status, app_version) VALUES('scan-2', 'root-1', 'queued', '0.1.0')",
+        )
+        .execute(&storage.writer)
+        .await;
+        assert!(duplicate_active.is_err());
+
+        storage.close().await;
+    }
+}
