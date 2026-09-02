@@ -28,6 +28,7 @@
 
 ### Added
 
+- M2 新增 Rust-only 强类型诊断日志：只写入 allowlist 字段与固定 `[redacted]` JSONL，以 5 MiB 单文件、14 天和 50 MiB 总量上限轮换清理，并拒绝 symlink/Windows reparse 路径。
 - `TASK-007` 建立 29 表 SQLite 初始迁移、单写者事务仓储、迁移前校验备份、数据库身份/完整性 fail-closed、30 天原文/voice 清理、路径 containment 与按 canonical origin 隔离的 Windows Credential Vault；默认测试不触碰真实凭据。
 - `TASK-006` 建立 API-001 Tauri 注册、统一安全 `ApiError`、deadline/幂等/revision/全局事件重同步原语，以及唯一可注入的严格 TypeScript IPC transport；WebView 静态审计拒绝直接文件、数据库、凭据和 provider 网络访问。
 - 补齐 M2 已批准的 Tauri dialog/notification/autostart 前端绑定及 Playwright、WebdriverIO、axe 测试依赖；安装期只允许 `esbuild` 本机构建检查，显式禁止 WebdriverIO 传递链下载 Edge/Gecko 驱动。
