@@ -123,7 +123,7 @@ Canonical machine DTOs are `program-plan.schema.json`, `playback-state.schema.js
 | API-011 `api_v1_pick_and_add_library_root` | `{ clientRequestId }` | `{ requestId; root: LibraryRoot | null; revision }` | User-controlled picker | 10-minute key; cancel returns `root: null` |
 | API-012 `api_v1_remove_library_root` | `{ clientRequestId; rootId; expectedRevision }` | `Ack` | 5 s | 10-minute key |
 | API-013 `api_v1_start_library_scan` | `{ clientRequestId; rootIds: string[] }` | `OperationAccepted` | 2 s accept | 10-minute key |
-| API-014 `api_v1_cancel_library_scan` | `{ clientRequestId; operationId }` | `Ack` | 2 s | Idempotent cancel |
+| API-014 `api_v1_cancel_library_scan` | `{ clientRequestId; operationId }` | `{ requestId; operationId; state: "cancelled" | "already_terminal" }` | 2 s | Idempotent cancel |
 | API-015 `api_v1_list_tracks` | `PageRequest & { query: string | null; sort: "title" | "artist" | "album" | "recent"; filters: TrackFilters }` | `Page<TrackView>` | 5 s | Read, idempotent |
 
 `LibraryRoot` exposes `{ rootId, displayName, available }`; absolute paths never cross into WebView. `TrackFilters` is `{ availability: "playable" | "missing" | null; matchStatus: "matched" | "unmatched" | "review" | null }`；两个字段 AND 组合，null 表示不过滤。`TrackView` exposes `{ trackId; availability: "playable" | "missing" | "corrupt" | "unsupported"; durationMs; artworkAvailable; original: { title; artist; album }; enriched: { title; artist; album; provider: "musicbrainz"; confidence } | null; matchStatus: "matched" | "unmatched" | "review" }`, but no absolute path。搜索同时匹配 title、artist、album 且保留 filters。Empty `rootIds` in API-013 means all configured roots. Scan progress is delivered by EVT-005.
@@ -185,7 +185,7 @@ Schedules are notification-only by schema; OS notification action `start` is an 
 
 ## 4. Events
 
-Events use Tauri `emit` and are process-local. Subscribers must treat them as hints and re-read state after a sequence gap. Each payload includes `schemaVersion: "1.0.0"`, an increasing process-local `sequence`, and `occurredAt`; sequence resets on app restart. 每个 accepted operation 在 Rust 权威状态中只能从 accepted 原子转换为 completed、failed 或 cancelled 之一，且只能转换一次。持久化 operation terminal 通过 outbox 重放，因此 EVT-008/009/011 的 transport 是 at-least-once：崩溃窗口或恢复可再次投递同一 `operationId` 的同一权威 terminal。前端必须按 `operationId` 幂等去重；重复投递不是第二个权威结果。
+Events use Tauri `emit` and are process-local. Subscribers must treat them as hints and re-read state after a sequence gap. Each payload includes `schemaVersion: "1.0.0"`, an increasing process-local `sequence`, and `occurredAt`; sequence resets on app restart. 每个 accepted operation 在 Rust 权威状态中只能从 accepted 原子转换为 completed、failed 或 cancelled 之一，且只能转换一次。持久化 operation terminal 通过 outbox 重放，因此 EVT-005/008/009/011 的 transport 是 at-least-once：崩溃窗口或恢复可再次投递同一 `operationId` 的同一权威 terminal。前端必须按 `operationId` 幂等去重；重复投递不是第二个权威结果。
 
 | ID / event name | Payload | Delivery semantics |
 |---|---|---|
@@ -193,7 +193,7 @@ Events use Tauri `emit` and are process-local. Subscribers must treat them as hi
 | EVT-002 `cyberkindred://v1/program/state` | `{ schemaVersion; sequence; occurredAt; programId; state: "planning" | "running" | "paused" | "stopping" | "completed" | "failed"; safeMessage: string | null }` | Coarse user-visible projection；相邻内部状态可合并 |
 | EVT-003 `cyberkindred://v1/program/segment` | `{ schemaVersion; sequence; occurredAt; programId; segmentId; state: "queued" | "playing" | "completed" | "skipped" | "failed" }` | Coarse user-visible projection；相邻内部状态可合并 |
 | EVT-004 `cyberkindred://v1/chat/message` | `{ schemaVersion; sequence; occurredAt; operationId; programId; role: "user" | "assistant"; text; final: boolean }` | Ordered per operation; final exactly once on success |
-| EVT-005 `cyberkindred://v1/library/scan` | `{ schemaVersion; sequence; occurredAt; operationId; state: "running" | "completed" | "cancelled" | "failed"; scanned; discovered; failed; safeMessage: string | null }` | Progress may coalesce; terminal event exactly once |
+| EVT-005 `cyberkindred://v1/library/scan` | `{ schemaVersion; sequence; occurredAt; operationId; state: "running" | "completed" | "cancelled" | "failed"; scanned; discovered; failed; safeMessage: string | null }` | Progress may coalesce；one authoritative terminal；terminal transport at-least-once；consumer dedupes `operationId` |
 | EVT-006 `cyberkindred://v1/memory/proposed` | `{ schemaVersion; sequence; occurredAt; memory: MemoryRecord }` | At-most-once; UI re-queries on focus |
 | EVT-007 `cyberkindred://v1/schedule/due` | `{ schemaVersion; sequence; occurredAt; scheduleId; occurrenceId; notificationShown: boolean }` | At-most-once per occurrence |
 | EVT-008 `cyberkindred://v1/operation/completed` | `{ schemaVersion; sequence; occurredAt; operationId; kind: "voice_preview" | "data_export"; outputLabel: string | null }` | One authoritative success；at-least-once transport；consumer dedupes `operationId` |
@@ -201,7 +201,7 @@ Events use Tauri `emit` and are process-local. Subscribers must treat them as hi
 | EVT-010 `cyberkindred://v1/app/resumed` | `{ schemaVersion; sequence; occurredAt; sleptAt: string | null }` | Emitted after resume reconciliation |
 | EVT-011 `cyberkindred://v1/operation/cancelled` | `{ schemaVersion; sequence; occurredAt; operationId; kind: "chat" | "voice_preview" | "library_scan" | "data_export" }` | One authoritative cancellation；at-least-once transport；consumer dedupes `operationId` |
 
-EVT-002/003 只是内部状态机面向 UI 的 coarse projection，不是逐转换审计流；订阅者不得以缺少中间 event 推断非法转换，必须在 sequence gap、resume 或 terminal 之后通过 read command 重取权威状态。对 EVT-008/009/011，订阅者先按 `operationId` 去重再应用 terminal UI side effect；同一 operation 的重复投递必须成为 no-op，若观察到不同 terminal kind 则停止应用增量并重取权威状态。No event contains secret material or absolute local paths. EVT-004 assistant text is user-visible conversation content and must not be written to diagnostic logs. Apple/GSMTC track metadata、timeline、capability payload 与 playback event 不进入 EVT-004、EVT-006、EVT-008/009 的 provider-derived content；Apple track-aware 文本只能是本机 deterministic 产物。
+EVT-002/003 只是内部状态机面向 UI 的 coarse projection，不是逐转换审计流；订阅者不得以缺少中间 event 推断非法转换，必须在 sequence gap、resume 或 terminal 之后通过 read command 重取权威状态。对 EVT-005/008/009/011，订阅者先按 `operationId` 去重再应用 terminal UI side effect；同一 operation 的相同 terminal 重复投递必须成为 no-op，若观察到不同 terminal kind 则停止应用增量并重取权威状态。No event contains secret material or absolute local paths. EVT-004 assistant text is user-visible conversation content and must not be written to diagnostic logs. Apple/GSMTC track metadata、timeline、capability payload 与 playback event 不进入 EVT-004、EVT-006、EVT-008/009 的 provider-derived content；Apple track-aware 文本只能是本机 deterministic 产物。
 
 API-038 成功后该 operation 只可产生 EVT-011（library scan 另产生 EVT-005 `cancelled`）；已在 UI/SQLite 接受的用户 chat 原文保留，但 late provider output 被丢弃，不产生 assistant final message、Memory Proposal、summary、TTS 或 playback side effect。
 

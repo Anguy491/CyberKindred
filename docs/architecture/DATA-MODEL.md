@@ -81,6 +81,12 @@ Logs/                          # Tauri app_log_dir；结构化且脱敏
 
 `id TEXT PRIMARY KEY`、`root_id TEXT NOT NULL REFERENCES library_roots(id)`、`status TEXT NOT NULL CHECK(status IN ('queued','running','completed','cancelled','failed','interrupted'))`、`files_seen INTEGER NOT NULL DEFAULT 0`、`tracks_indexed INTEGER NOT NULL DEFAULT 0`、`errors_count INTEGER NOT NULL DEFAULT 0`、`started_at_ms INTEGER`、`finished_at_ms INTEGER`、`error_code TEXT`、`app_version TEXT NOT NULL`。partial unique index `ux_scan_one_active_root(root_id) WHERE status IN ('queued','running')`。
 
+#### `scan_operations` / `scan_operation_roots`
+
+API-013 的一个 `operationId` 可以覆盖一个或多个 root，不能把单个 `scan_jobs.id` 冒充多 root operation。`scan_operations` 保存 `{ id TEXT PRIMARY KEY; status accepted|running|completed|cancelled|failed|interrupted; files_seen; tracks_indexed; errors_count; started_at_ms; finished_at_ms; error_code; app_version }`，是 EVT-005 terminal 的唯一权威状态。`scan_operation_roots` 以 `(operation_id,root_id)` 为主键，将 operation 映射到每个 root 的唯一 `scan_job_id`；三列均为外键并级联清理。operation、root job 与 terminal outbox 必须在同一 SQLite transaction 中转换；进度可合并，terminal 只能从非终态写入一次。已投递 terminal 保留 24 小时、未投递 terminal 最多保留 7 天；恢复时 `accepted/running` 标记 `interrupted`，后续 API-013 以新的 operation 增量续扫。
+
+V0002 只新增这两个关联表和索引，不重写音轨或源路径；升级前先创建 migration backup，失败则整个 migration transaction 回滚并保留 V0001 数据库。回滚到不识别 schema version 2 的旧程序必须拒绝打开而不是降级写入；恢复方式是使用升级前 backup 或继续运行兼容 V0002 的程序。
+
 #### `tracks`
 
 | 列组 | 字段 |
