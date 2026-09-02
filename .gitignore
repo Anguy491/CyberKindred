@@ -21,6 +21,7 @@ src-tauri/target/
 coverage/
 playwright-report/
 test-results/
+spikes/audio/evidence-local/
 
 # Local application and tool state
 .codex-log/

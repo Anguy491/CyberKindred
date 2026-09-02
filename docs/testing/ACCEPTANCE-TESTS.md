@@ -5,16 +5,17 @@
 | Status | Approved |
 | Owner | Quality Engineering |
 | Last Verified | 2026-09-02 |
-| Source of Truth For | Documentation Baseline v1 的端到端验收场景、证据和发布判定 |
-| Related Documents | `docs/product/FRS.md`; `docs/product/NFRS.md`; `docs/testing/TEST-STRATEGY.md`; `docs/testing/TRACEABILITY.md` |
+| Source of Truth For | Documentation Baseline v1 的端到端验收场景库存、证据格式和 beta 发布判定 |
+| Related Documents | `docs/product/FRS.md`; `docs/product/NFRS.md`; `docs/testing/TEST-STRATEGY.md`; `docs/testing/TRACEABILITY.md`; `docs/planning/ROADMAP.md` |
 
 ## 1. 执行约定
 
-- 每个场景都必须保存：版本、Windows 版本、机器/VM 标识、fixture 版本、开始与结束时间、结果和失败证据。
+- 本文件定义最终 beta 所需的完整场景库存，不要求在 M1–M6 的每个 checkpoint 全量执行。checkpoint subset 与递延规则以 `TEST-STRATEGY.md` 为准。
+- 每个实际执行的场景都保存：版本、Windows 版本、机器/VM 标识、fixture 版本、开始与结束时间、结果和失败证据；未执行场景记为 `Not Run`，不能记为通过。
 - `Automated` 场景在隔离环境中使用 fake provider；`Manual-Windows` 使用真实 Windows 行为但不得调用付费服务；`Manual-Live` 只有带 `CYBERKINDRED_LIVE_TEST=1` 标签并由测试人员主动执行时才可访问真实服务。
 - 文中的“无声音”通过系统 loopback 捕获和应用事件日志共同判定；“无 secret”通过唯一 canary 值扫描判定。
 - Apple Music 验收指 Windows App 的 GSMTC 会话。Web 版只验证“不做 DOM 自动化并给出指引”。
-- 任何 `P0` 关联场景失败都阻断候选版本；`P1` 必须在发布冻结前通过。
+- M1–M6 只有当前 milestone 主路径或 prototype hard gate 失败才阻断 checkpoint；其他 `P0`/`P1` 场景可作为 known gap 递延。M7 beta release candidate 中任何 `P0` 关联场景失败都阻断，`P1` 必须在发布冻结前通过。
 
 ## 2. 引导与首次运行
 
@@ -98,6 +99,8 @@
 | TEST-OFF-002 | NFR-OFF-003 | Automated network-control | 断网制造各 provider 失败后恢复；10 秒内只自动刷新非付费状态，不自动重放文本/TTS/其他可能计费或出声动作，显式重试后才调用。 |
 | TEST-RESOURCE-001 | NFR-PERF-005 | Manual performance | 分别采集空闲托盘与本地播放 10 分钟 WPR：前者工作集≤250 MB、CPU 5 分钟均值<1%；后者工作集≤500 MB、CPU均值<10%。 |
 
-## 8. 发布证据索引
+## 8. Checkpoint 与发布证据索引
 
-每次候选版本在 `artifacts/test-evidence/<version>/manifest.json` 记录所有 `TEST-*` 的结果、证据相对路径与校验和。目录属于本地/CI 制品，不提交可能含个人信息、Apple Music 元数据或绝对路径的原始证据；仓库只保留去标识汇总。豁免必须先改变需求基线并取得用户批准，不能把 `skipped` 当作通过。
+M1–M6 每次 checkpoint 在 `artifacts/test-evidence/milestones/<milestone>/manifest.json` 记录 candidate commit、选中的 `TEST-*` 或 milestone-specific smoke、结果、证据相对路径、known gaps 与目标 milestone。未选中测试记为 `Not Run`；实际失败记为 `Failed`，即使 Product Owner 接受债务也不能改写为 `Passed`。
+
+M7 beta candidate 在 `artifacts/test-evidence/<version>/manifest.json` 记录全部适用 `TEST-*` 的结果、证据相对路径与校验和。目录属于本地/CI 制品，不提交可能含个人信息、Apple Music 元数据或绝对路径的原始证据；仓库只保留去标识汇总。发布门槛豁免必须先改变需求基线并取得用户批准，不能把 `skipped` 或 `Not Run` 当作通过。

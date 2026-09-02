@@ -94,6 +94,8 @@ UI 字体 `Space Grotesk`、`Space Mono`、`Doto` 作为本地静态资产按 SI
 | `zeroize` | `1.9.0` | `jsonschema` | `0.52.1` |
 | `mime` | `0.3.17` | `infer` | `0.22.0` |
 
+`TASK-002` 的依赖图确认 `rodio 0.22.2` 内部仍解析到 `symphonia 0.5.5`，与项目 direct pin `symphonia 0.6.1` 并存且不能类型级合并。M1 探针只在可丢弃交互播放中使用 `rodio::Decoder`；产品路径必须保持 `rodio` 负责 output/player、direct `symphonia 0.6.1` 负责流式 decode、`lofty 0.25.1` 负责只读标签/封面的 ARCH-005 边界。`TASK-014` 若不能以有界内存、可 seek 的 `Source`/mixer adapter 落实该边界，须在实现前按依赖变更流程对齐版本或提交 ADR，不得静默复制探针的双 decoder 路径。
+
 ## 3. Approved 开发与测试依赖
 
 | 依赖/工具 | 用途 | 约束 |

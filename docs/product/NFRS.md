@@ -10,7 +10,7 @@
 
 ## 1. 验证基线
 
-除条目另有说明，桌面性能测试使用 Windows 10 22H2 或 Windows 11、4 核 2.0 GHz 以上 CPU、8 GB RAM、SSD、1920×1080@100% 缩放、10,000 首混合格式本地曲库，执行 3 次后取最差结果。网络测试使用 100 Mbps 下行、20 Mbps 上行、40 ms RTT 的受控网络。`P0` 为发布阻断，`P1` 为发布前必须满足但允许在后续里程碑验证。
+除条目另有说明，桌面性能测试使用 Windows 10 22H2 或 Windows 11、4 核 2.0 GHz 以上 CPU、8 GB RAM、SSD、1920×1080@100% 缩放、10,000 首混合格式本地曲库，执行 3 次后取最差结果。网络测试使用 100 Mbps 下行、20 Mbps 上行、40 ms RTT 的受控网络。`P0` 为 M7 beta 发布阻断，`P1` 为发布前必须满足但允许在后续 milestone 验证。M1–M6 prototype checkpoint 只强制当前主路径与 `TEST-STRATEGY.md` 定义的 hard gates；其他阈值可登记为 known gap，不能伪记为已满足。
 
 ## 2. Performance
 

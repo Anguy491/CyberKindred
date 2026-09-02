@@ -1,26 +1,30 @@
-# CyberKindred Atomic Backlog
+# CyberKindred Delivery Backlog
 
 | Metadata | Value |
 |---|---|
 | Status | Approved |
 | Owner | Engineering Lead |
 | Last Verified | 2026-09-02 |
-| Source of Truth For | Codex 可独立认领的原子开发任务、依赖、范围、完成定义、验证命令和状态 |
-| Related Documents | `docs/planning/ROADMAP.md`; `docs/testing/TRACEABILITY.md`; `docs/testing/ACCEPTANCE-TESTS.md`; `AGENTS.md` |
+| Source of Truth For | milestone 内可认领的开发切片、依赖、范围、快速自检和交付状态 |
+| Related Documents | `docs/planning/ROADMAP.md`; `docs/testing/TEST-STRATEGY.md`; `docs/testing/TRACEABILITY.md`; `docs/testing/ACCEPTANCE-TESTS.md`; `AGENTS.md` |
 
 ## 1. 生命周期与认领规则
 
-状态只有 `Blocked`、`Ready`、`In Progress`、`Review`、`Done`。Documentation Baseline v1 获用户批准前，以下任务全部保持 `Blocked`；批准后只把依赖已满足的最前任务改为 `Ready`。Codex 每次只能把一个任务置为 `In Progress`。完成时必须在同一原子提交中更新实现、相应测试、本文件、`TRACEABILITY.md` 和 `CHANGELOG.md`。
+状态只有 `Blocked`、`Ready`、`In Progress`、`Review`、`Done`。任务是 milestone 内部开发切片，不是用户验收单位：`Done` 表示范围已集成且相关快速自检通过，或非硬门槛的未执行检查已明确登记；它不表示 Product Owner 已逐任务签字。`Review` 只表示代码、文档或集成审查中，不用于等待人工验收。
 
-任务不得把范围扩大到表中“修改范围”之外。若完成定义与需求、ADR 或公共契约冲突，停止任务并先发起文档变更。`Manual-*` 验证可由开发者留下待执行证据，但关联任务在该证据完成前不得标记 `Done`。
+同一时刻只推进一个 Active milestone。该 milestone 中依赖已完成、修改范围不重叠且写入责任明确的多个任务可同时进入 `In Progress`；跨 milestone 工作默认保持 `Blocked`。任务不得把范围扩大到表中“修改范围”之外。若交付切片与需求、ADR 或公共契约冲突，停止任务并先发起文档变更。
+
+表中“建议自检”用于尽快发现局部回归，不构成逐任务验收清单。开发者应执行与实际改动相关且成本合理的子集；未运行的非硬门槛检查进入 milestone known gaps。任何涉及 secret、路径/权限、日志脱敏、未确认出声/付费调用、公共契约、数据损坏或 Critical/High 安全问题的检查不可递延。实现、直接相关测试和行为/契约文档应随逻辑提交同步；Backlog、`TRACEABILITY.md` 与 `CHANGELOG.md` 的非契约性整理最迟在 milestone checkpoint 前完成。
+
+阻塞处理遵循三次上限：同一自动排障 fingerprint 只允许三次能产生新信息的尝试，第三次失败后将依赖/硬门槛任务标为 `Blocked` 并转向其他 `Ready` 任务。明确需要用户授权、登录、设备交互或人工判定的步骤只请求一次并立即等待；非硬门槛验证可记入 known gaps，已完成实现的任务不因此停留在 `Review`。没有其他可执行任务时暂停 Goal，不轮询等待中的外部状态。
 
 ## 2. 原子任务
 
-| Task ID | Milestone | Requirements | Depends on | 修改范围 | Definition of Done | Verification | Status |
+| Task ID | Milestone | Requirements | Depends on | 修改范围 | 交付切片 | 建议自检 | Status |
 |---|---|---|---|---|---|---|---|
 | TASK-001 | M1 | FR-APL-001, FR-APL-002, FR-APL-003; NFR-PERF-004, NFR-COMPAT-003 | Baseline approval | `spikes/gsmtc/`, `docs/integrations/EXTERNAL-INTEGRATIONS.md`, ADR-0002 | 只读探针能列出会话、身份、元数据、时间线和 capability；对当前 Apple Music Windows App 留下可复现实机矩阵；不做 DOM 自动化，不进入产品运行路径。 | `cargo test --manifest-path spikes/gsmtc/Cargo.toml`; execute TEST-APL-001/002 evidence checklist | Done |
-| TASK-002 | M1 | FR-LIB-001; NFR-PERF-003, NFR-REL-004, NFR-COMPAT-002 | Baseline approval | `spikes/audio/`, dependency findings | 探针解码六类许可 fixture、播放/暂停/seek、切换默认设备；记录错误和资源数据，确认 `rodio`/`Symphonia`/`lofty` 边界或提交 ADR 变更。 | `cargo test --manifest-path spikes/audio/Cargo.toml`; fixture hash audit | Ready |
-| TASK-003 | M1 | FR-ONB-003, FR-SCH-002, FR-SET-003, FR-DAT-005; NFR-SEC-001, NFR-COMPAT-001 | Baseline approval | `spikes/windows/`, security/operations findings | 在标准用户账户证明 Credential Manager、通知动作、per-user 自启动和安全删除接口；无完整 secret/自动发声；结果更新风险触发器。 | `cargo test --manifest-path spikes/windows/Cargo.toml`; canary scan; VM checklist | Blocked |
+| TASK-002 | M1 | FR-LIB-001; NFR-PERF-003, NFR-REL-004, NFR-COMPAT-002 | Baseline approval | `spikes/audio/`, dependency findings | 探针解码六类许可 fixture、播放/暂停/seek、切换默认设备；记录错误和资源数据，确认 `rodio`/`Symphonia`/`lofty` 边界或提交 ADR 变更。 | execute `Manual-TASK-002` in `spikes/audio/MANUAL-TEST.md`; fixture hash audit included in the manual evidence | Done |
+| TASK-003 | M1 | FR-ONB-003, FR-SCH-002, FR-SET-003, FR-DAT-005; NFR-SEC-001, NFR-COMPAT-001 | Baseline approval | `spikes/windows/`, security/operations findings | 在标准用户账户证明 Credential Manager、通知动作、per-user 自启动和安全删除接口；无完整 secret/自动发声；结果更新风险触发器。 | `cargo test --manifest-path spikes/windows/Cargo.toml`; canary scan; VM checklist | Ready |
 | TASK-004 | M2 | NFR-MAINT-001, NFR-MAINT-002, NFR-MAINT-003, NFR-COMPAT-001 | TASK-001, TASK-002, TASK-003 | root workspace, `src/`, `src-tauri/`, `tests/`, CI config | 建立 Tauri 2 + React + TypeScript + Rust 最小窗口、固定工具版本、lint/test/coverage/doc gates；不含产品行为；开发命令与指南一致。 | `pnpm install --frozen-lockfile`; `pnpm check`; `cargo test --workspace`; `powershell -File scripts/verify-docs.ps1` | Blocked |
 | TASK-005 | M2 | NFR-MAINT-001, NFR-MAINT-003 | TASK-004 | schema codegen, Rust/TypeScript contract models, contract tests | 六个 JSON Schema 生成或验证双语言公共类型；合法/边界/非法 fixture 在两端结果一致；schema 版本和破坏性检查可自动执行。 | `pnpm test:contracts`; `cargo test contract_`; `powershell -File scripts/verify-docs.ps1` | Blocked |
 | TASK-006 | M2 | FR-RAD-004, FR-SET-004; NFR-SEC-002, NFR-SEC-004, NFR-MAINT-003 | TASK-005 | Tauri command/event shell, CSP/capabilities, frontend IPC client | 实现 API-001 及统一 `ApiError`、超时、幂等键、revision 和事件订阅/重同步骨架；前端无直接文件、数据库或 provider 网络访问。 | `cargo test ipc_`; `pnpm test -- ipc`; CSP/static network audit | Blocked |
@@ -53,4 +57,8 @@
 
 ## 3. 里程碑放行
 
-技术探针可以推翻某个实现选择，但不能静默改变用户行为。若 TASK-001/002/003 触发 `RISK-001`、`RISK-002` 或新的系统权限，先更新 ADR、需求、威胁模型、契约和本 Backlog，再请求用户批准。M7 完成只产生内测候选；签名、发布、上传或向外部用户分发仍需单独授权。
+用户验收以 milestone 为单位。全部计划内任务达到 `Done` 后，由 Lead Agent 生成单一 checkpoint：可运行或可演示 candidate、完成范围、主路径结果、硬门槛结果、未运行/失败检查及其计划 milestone。Product Owner 可接受、带已登记的非关键债务接受或退回；接受后才把下一 milestone 设为 Active。不得把失败写成通过，也不得用任务 `Done` 推断 milestone 已获接受。
+
+M1–M6 使用 prototype gate：主开发机上能启动或完成该 milestone 的主路径；改动过的 schema/公共契约有效；没有已知数据损坏、secret 泄露、越权文件/网络访问、未经确认的声音或付费调用、Critical/High 安全问题。逐行覆盖率、完整 Win10/Win11 与缩放矩阵、全状态截图、Narrator 全流程、10,000 首性能和长时间 soak 可作为 known gaps 递延到 M7，除非某项本身就是该 milestone 要消除的技术风险。
+
+技术探针可以推翻某个实现选择，但不能静默改变用户行为。`TASK-002` 的 `Manual-TASK-002` 与其他 M1 探针证据在 M1 checkpoint 一次性汇总，不再作为单独任务签字点。若 TASK-001/002/003 触发 `RISK-001`、`RISK-002` 或新的系统权限，先更新 ADR、需求、威胁模型、契约和本 Backlog，再请求用户批准。M7 完成只产生内测候选；签名、发布、上传或向外部用户分发仍需单独授权。

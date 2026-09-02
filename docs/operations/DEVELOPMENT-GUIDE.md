@@ -57,6 +57,17 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-features
 ```
 
+## Fast iteration loop
+
+Daily development optimizes for short feedback inside the Active milestone:
+
+1. Claim one or more dependency-ready tasks only when their write scopes do not overlap.
+2. Run the narrowest relevant lint/typecheck/build and focused tests while iterating; changed contracts and prototype hard gates are never skipped.
+3. Move an integrated slice to `Review`/`Done` without waiting for Product Owner task-level acceptance. Record expensive or non-critical unrun checks in the milestone known gaps.
+4. When all planned slices are integrated, build one candidate and run the milestone checkpoint subset from `TEST-STRATEGY.md`.
+
+Do not run the full E2E, coverage, platform, accessibility, performance and soak matrix after every task. Those checks are selected when they prove the current milestone and are otherwise consolidated at M7.
+
 Before application scaffolding, run documentation checks directly:
 
 ```powershell

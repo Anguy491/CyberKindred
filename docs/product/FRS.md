@@ -5,15 +5,15 @@
 | Status | Approved |
 | Owner | Product |
 | Last Verified | 2026-09-02 |
-| Source of Truth For | Documentation Baseline v1 的功能行为与逐项验收条件 |
+| Source of Truth For | Documentation Baseline v1 的功能行为与最终 beta 逐项验收条件 |
 | Related Documents | `docs/product/PRD.md`; `docs/product/AI-BEHAVIOR.md`; `docs/product/UX-SPEC.md`; `docs/contracts/API-CONTRACT.md`; `docs/testing/TRACEABILITY.md` |
 
 ## 1. 约定
 
-- `P0`：首发阻断需求；不满足则不能交付内测版。
-- `P1`：首发必需但可在对应里程碑后段完成；最终候选仍必须满足。
+- `P0`：M7 beta 发布阻断需求；M1–M6 原型可只实现当前 milestone 主路径，但不得宣称未实现能力已完成。
+- `P1`：beta 首发必需，可在后续 milestone 完成；M7 最终候选必须满足。
 - 前置条件只描述执行该场景所需状态，不替代需求依赖。
-- Given/When/Then 是最低验收条件；非功能门槛见 `NFRS.md`。
+- Given/When/Then 是功能达到 beta-ready 时的最低验收条件；milestone checkpoint 选择当前范围内的子集，规则见 `TEST-STRATEGY.md` 与 `ROADMAP.md`。安全/隐私硬门槛不因原型阶段递延。
 - AI 语气、安全和记忆陈述以 `AI-BEHAVIOR.md` 为唯一事实源，视觉交互以 `UX-SPEC.md` 为唯一事实源。
 
 ## 2. Onboarding

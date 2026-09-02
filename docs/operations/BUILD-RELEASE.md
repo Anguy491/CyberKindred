@@ -24,6 +24,8 @@
 
 ## Reproducible build checklist
 
+This checklist applies to M7 beta/release artifacts. M1–M6 milestone candidates may use ordinary development builds and the prototype checkpoint defined by `TEST-STRATEGY.md`; they must not be labeled or distributed as beta releases.
+
 1. 工作区干净且 HEAD 在待发布提交；版本同时更新 Tauri config、package metadata 与 Changelog。
 2. 仅使用 committed `pnpm-lock.yaml`、`Cargo.lock` 与固定 toolchain。
 3. 在无 live flags、无开发 secret 的新 shell 中安装并运行全部默认质量门槛。

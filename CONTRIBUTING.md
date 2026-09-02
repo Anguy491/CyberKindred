@@ -20,14 +20,20 @@
 ## Git workflow
 
 1. `main` 保持可解释、可验证；功能工作使用短分支或独立工作树。
-2. 一次提交只完成一个逻辑目标；M1 起的实现提交在消息中包含 `TASK-*`，M0 文档基线提交使用明确的文档层级 scope。
-3. 提交前运行该任务规定的验证；不提交生成缓存、secret、用户数据或构建产物。
+2. 一次提交只完成一个逻辑目标；M1 起的实现提交在消息中包含 `TASK-*`，同一 milestone 可包含多个短提交，不要求每个 task 单独等待用户验收。
+3. 提交前运行与改动相关的快速自检；完整场景与证据在 milestone checkpoint 集中执行。不提交生成缓存、secret、用户数据或构建产物。
 4. 不自动推送、发布、创建远端资源或重写共享历史。
 5. 文档基线经用户批准后创建本地 `docs-baseline-v1` 标签；产品代码与标签都不得在批准前产生。
 
 ## Task lifecycle
 
-`Blocked -> Ready -> In Progress -> Review -> Done`。同一时刻最多一个任务由主代理标记为 `In Progress`。任务只有在验收条件、测试证据、文档联动与原子提交齐全后才能进入 `Done`。
+`Blocked -> Ready -> In Progress -> Review -> Done`。同一时刻只允许一个 Active milestone；其中依赖已满足且文件所有权不冲突的任务可以并行。`Review` 是代码/文档审查，不是用户签字等待区；`Done` 表示实现已集成、快速自检通过或例外已登记，可进入 milestone candidate。用户验收只发生在 milestone checkpoint。
+
+milestone checkpoint 提供一个可运行或可演示的 candidate、一次聚合验收记录、已完成范围和 known gaps。Product Owner 可选择接受、带已登记债务接受或退回；接受后才启动下一 milestone。M1–M6 的非关键测试债务可递延到 M7，硬门槛不得递延。
+
+## Blocker handling
+
+同一技术 blocker 最多进行三次能产生新信息的尝试，并明确记录 `1/3`、`2/3`、`3/3`。第三次失败后停止重试：非硬门槛转为 known gap，硬门槛/依赖任务转为 `Blocked`，再继续不依赖它的工作。已经确认只能由用户完成的授权、登录、设备操作或人工验收只请求一次并立即等待，不执行三次无意义重试；没有其他可推进工作时暂停 Goal，用户回来后从记录的恢复条件继续。
 
 ## Specification changes
 

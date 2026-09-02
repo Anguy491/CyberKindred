@@ -59,6 +59,7 @@ ADR_FILES = [
         (4, "provider-abstractions"),
         (5, "metadata-and-weather-providers"),
         (6, "document-and-contract-driven-development"),
+        (7, "milestone-prototype-delivery"),
     ]
 ]
 

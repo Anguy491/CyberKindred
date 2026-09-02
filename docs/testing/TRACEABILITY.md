@@ -10,9 +10,9 @@
 
 ## 1. 使用规则
 
-本矩阵只建立引用，不重新定义需求或契约。表中 `Contract` 的 schema 文件名均位于 `docs/contracts/schemas/`；provider interface 指 `PROVIDER-CONTRACTS.md`。实现 PR/提交必须更新受影响行。任何空单元格、引用不存在、需求无测试/任务或任务无需求都阻断开发。一个测试可覆盖多项需求，但测试失败时必须能回溯到具体需求断言。
+本矩阵只建立引用，不重新定义需求或契约。表中 `Contract` 的 schema 文件名均位于 `docs/contracts/schemas/`；provider interface 指 `PROVIDER-CONTRACTS.md`。行为、契约或需求映射改变时必须更新受影响行，纯实现切片的状态整理可在 milestone checkpoint 集中完成。任何空单元格、引用不存在、需求无测试/任务或任务无需求都阻断开发。一个测试可覆盖多项需求，但测试失败时必须能回溯到具体需求断言。矩阵完整表示 beta 目标，不表示每个 `TEST-*` 都要在 M1–M6 的每次 checkpoint 执行。
 
-任务状态仍以 [`BACKLOG.md`](../planning/BACKLOG.md) 为准。`TASK-001` 的 M1 `TEST-APL-001/002` 证据归档于 [`TASK-001-MATRIX.md`](../../spikes/gsmtc/evidence/TASK-001-MATRIX.md)；M6 产品 UI 验收仍由 `TASK-025` 承担。
+任务状态仍以 [`BACKLOG.md`](../planning/BACKLOG.md) 为准，milestone 状态与用户验收以 [`ROADMAP.md`](../planning/ROADMAP.md) 为准。`TASK-001` 的 M1 `TEST-APL-001/002` 证据归档于 [`TASK-001-MATRIX.md`](../../spikes/gsmtc/evidence/TASK-001-MATRIX.md)；M6 产品 UI 验收仍由 `TASK-025` 承担。`TASK-002` 的 [`Manual-TASK-002`](../../spikes/audio/MANUAL-TEST.md) 与其他探针证据在 M1 checkpoint 集中审阅；它不替代本矩阵为 FR-LIB-001、NFR-PERF-003、NFR-REL-004、NFR-COMPAT-002 映射的后续产品 `TEST-*`。
 
 ## 2. Functional requirements
 
@@ -157,4 +157,4 @@
 
 ## 4. Coverage summary and audit method
 
-本基线追踪 48 个 `FR-*` 与 34 个 `NFR-*`，每行均具有 UX、架构、契约、验收测试、原子任务和里程碑。`scripts/verify-docs.ps1` 检查 ID 唯一性、引用和需求/任务覆盖；语义审查还必须确认表中引用确实实现该断言。若新增需求，先增加权威需求 ID，再在同一变更中补齐本矩阵、验收场景和 Backlog；禁止先创建无需求任务。
+本基线追踪 48 个 `FR-*` 与 34 个 `NFR-*`，每行均具有 UX、架构、契约、验收测试、交付任务和里程碑。`scripts/verify-docs.ps1` 检查 ID 唯一性、引用和需求/任务覆盖；语义审查还必须确认表中引用确实实现该断言。若新增需求，先增加权威需求 ID，再在同一变更中补齐本矩阵、验收场景和 Backlog；禁止先创建无需求任务。M1–M6 可只执行当前 checkpoint subset，但 M7 前所有适用边必须有 passing evidence。

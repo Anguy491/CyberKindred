@@ -6,7 +6,7 @@
 | Owner | QA Steward |
 | Last Verified | 2026-09-02 |
 | Source of Truth For | 测试层级、环境、fixture、质量门槛与证据 |
-| Related Documents | `ACCEPTANCE-TESTS.md`, `TRACEABILITY.md`, `../product/NFRS.md`, `../contracts/` |
+| Related Documents | `ACCEPTANCE-TESTS.md`, `TRACEABILITY.md`, `../product/NFRS.md`, `../planning/ROADMAP.md`, `../architecture/adr/ADR-0007-milestone-prototype-delivery.md`, `../contracts/` |
 
 ## Principles
 
@@ -15,6 +15,7 @@
 - 每个测试至少引用一个 `FR-*` 或 `NFR-*`；每个首发需求至少有一项自动或明确的手工验收。
 - provider/source 使用真实实现的 contract suite 加 transport/session fake；外部服务只在显式 live suite 中验证。
 - 时间、天气、文件系统、随机数、音频设备和系统媒体会话均通过可注入边界测试。
+- `ACCEPTANCE-TESTS.md` 是最终 beta 的测试库存；M1–M6 每次只选择能证明当前 milestone 主路径与硬门槛的 checkpoint subset，未选择的场景不是失败，但必须在 known gaps 中可追踪。
 
 ## Test layers
 
@@ -47,6 +48,8 @@
 
 Before M2, `scripts/verify-docs.ps1` is the canonical documentation gate.
 
+M1 的 `TASK-002` 真实解码听感、播放/暂停/seek、默认设备切换、错误隔离与资源采样仍使用 `spikes/audio/MANUAL-TEST.md` 的 `Manual-TASK-002`，但证据与其他探针在 M1 checkpoint 集中审阅，不再形成任务级签字点。`cargo fmt`、`cargo clippy` 和 release build 是建议的快速自检；后续产品自动化仍由 `TEST-LIB-001`、`TEST-RAD-002`、`TEST-APL-004` 与 M7 release gate 覆盖。
+
 ## Fixtures and fakes
 
 - Audio fixtures are programmatically generated short WAV plus explicitly licensed/generated MP3/FLAC/OGG/M4A samples; no copyrighted user track.
@@ -59,21 +62,27 @@ Before M2, `scripts/verify-docs.ps1` is the canonical documentation gate.
 
 ## Quality gates
 
-### Per task
+### Task self-checks
 
-- All task-linked tests pass; changed contract examples and traceability pass.
-- Changed TypeScript/Rust lines target at least 90% coverage; critical state transitions and security validators require branch-complete tests.
-- No skipped/focused tests, unexplained warnings, unbounded waits or live calls in default suites.
+- 执行与实际改动直接相关的最快 lint/typecheck/build 与 focused test；具体命令由 Backlog 的“建议自检”提供，允许按改动范围裁剪。
+- 改动公共 schema/IPC/provider contract 时，相关合法/边界/非法示例与两端校验必须通过；不得把契约失败递延到 milestone。
+- 任务 `Done` 不要求逐任务覆盖率、完整 E2E、平台矩阵或人工签字。未执行的非硬门槛检查在 checkpoint known gaps 中登记，不得伪记为通过。
+- 默认自检不访问真实付费服务，不使用用户音乐，不自动出声；focused/skipped 标记不得进入 M7 release candidate。
 
-### Per milestone
+### M1–M6 prototype checkpoint
+
+- candidate 在主要开发机可启动，并能完成 Roadmap 为当前 milestone 定义的主路径或技术演示。
+- 对当前主路径至少保留一次成功证据和一个最重要失败/降级路径的结果；测试可以是 focused automation、人工 smoke 或两者组合。
+- 相关 hard gates 全部通过：secret 不进入前端/日志，文件和网络不越权，声音与可能付费动作只由用户明确触发，改动过的公共契约有效，无已知数据损坏，无 open Critical/High security finding。
+- 覆盖率只采集趋势，不设阻塞阈值；完整 Win10/Win11、分辨率/缩放、Narrator、10,000 首、200 次采样与 soak 默认递延到 M7，除非它们是当前 milestone 的明确目标。
+- checkpoint 记录 candidate commit、环境、已执行检查、实际失败、known gaps、规避方式和目标 milestone。Product Owner 可接受非关键债务，但不能把失败标记成通过。
+
+### M7 beta release
 
 - Repository line coverage at least 80% and branch coverage at least 70%; coverage is evidence, not a substitute for scenario completeness.
-- Every milestone exit criterion has recorded evidence in `ACCEPTANCE-TESTS.md` or a linked artifact.
+- Every P0/P1 requirement and applicable `TEST-*` has recorded passing evidence in `ACCEPTANCE-TESTS.md` or a linked artifact.
 - Zero open Critical/High security finding; Medium findings require Product Owner acceptance and `RISK-*`.
 - Contract schema/examples are 100% validated and current migrations pass from every supported schema version.
-
-### Beta release
-
 - Full default suite passes twice on clean checkout/build.
 - Manual Windows 10 22H2 and Windows 11 x64 smoke test passes.
 - Real Apple Music subscription suite and 10,000-track performance suite pass in recorded environments.

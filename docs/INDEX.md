@@ -6,7 +6,7 @@
 | Owner | Documentation Steward |
 | Last Verified | 2026-09-02 |
 | Source of Truth For | 文档导航、领域权威性、阅读顺序与变更联动 |
-| Related Documents | `../AGENTS.md`, `planning/ROADMAP.md`, `planning/BACKLOG.md` |
+| Related Documents | `../AGENTS.md`, `planning/ROADMAP.md`, `planning/BACKLOG.md`, `architecture/adr/ADR-0007-milestone-prototype-delivery.md` |
 
 ## Baseline rule
 
@@ -30,6 +30,7 @@ Documentation Baseline v1 已于 2026-09-02 获用户批准，基线文档状态
 | 数据收集、外发、保留与删除 | `security/PRIVACY-DATA-LIFECYCLE.md` | 设置文案、日志代码 |
 | 测试层级与质量门槛 | `testing/TEST-STRATEGY.md` | Backlog、CI 配置 |
 | 可执行顺序与任务状态 | `planning/BACKLOG.md` | Roadmap、提交信息 |
+| 里程碑范围、阶段退出与用户验收 | `planning/ROADMAP.md` | Task DoD、测试用例 |
 
 权威文档按领域裁决，不存在一条覆盖所有领域的总优先级。若两个权威来源冲突，相关任务停止，先由 Product Owner 确认行为，再更新受影响文档与 ADR。
 
@@ -41,7 +42,7 @@ Documentation Baseline v1 已于 2026-09-02 获用户批准，基线文档状态
 
 ### Implementation task
 
-`AGENTS -> BACKLOG current task -> linked FR/NFR -> relevant architecture/ADR -> contract/schema -> tests`
+`AGENTS -> ROADMAP active milestone -> BACKLOG claimed task(s) -> linked FR/NFR -> relevant architecture/ADR -> contract/schema -> milestone-relevant tests`
 
 ### Security or privacy change
 
@@ -75,6 +76,8 @@ Documentation Baseline v1 已于 2026-09-02 获用户批准，基线文档状态
 | Add/change persistence | Data model, privacy lifecycle, threat model, migration/recovery tests, Runbook |
 | Change architecture choice | New/superseding ADR, Architecture, Dependency Policy, Risk Register |
 | Add external service/data flow | External Integrations, Privacy, Threat Model, Legal/Licensing, NFR cost/offline tests |
+
+实现期间可把非契约性的 Backlog、Traceability 与 Changelog 整理批量留到当前 milestone checkpoint，但不得让代码与公共契约、安全/隐私语义或用户已批准行为发生暂时漂移。任务状态只追踪内部交付；milestone 状态和验收结论由 Roadmap 与 checkpoint 记录裁决。
 
 ## Status and ID discipline
 
