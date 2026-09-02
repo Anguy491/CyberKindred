@@ -9,12 +9,14 @@ mod library_roots;
 mod onboarding;
 mod operation_outbox;
 mod paths;
+mod playback_tracks;
 mod provider_settings;
 mod provider_status;
 mod repository;
 mod retention;
 mod scanner;
 mod secret;
+pub(crate) mod track_catalog;
 
 pub use database::{APPLICATION_ID, LATEST_SCHEMA_VERSION, Storage};
 pub use error::{StorageError, StorageReason};
@@ -25,6 +27,7 @@ pub(crate) use onboarding::{
 };
 pub use operation_outbox::OperationTerminalRecord;
 pub use paths::{AppPaths, CacheArea, resolve_read_only_library_path};
+pub(crate) use playback_tracks::StoredPlaybackTrack;
 pub(crate) use provider_settings::{StoredProviderSettings, StoredWeatherLocation};
 pub(crate) use provider_status::ProviderStatusPromotion;
 pub use provider_status::{

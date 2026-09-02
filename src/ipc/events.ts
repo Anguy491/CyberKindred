@@ -268,6 +268,24 @@ function parseEventPayload(
       return "invalid_event";
     }
   }
+  if (eventName === "cyberkindred://v1/library/scan") {
+    if (
+      !hasExactKeys(envelope, [
+        "schemaVersion", "sequence", "occurredAt", "operationId", "state",
+        "scanned", "discovered", "failed", "safeMessage",
+      ])
+      || !isUuid(envelope.operationId)
+      || !isLibraryScanState(envelope.state)
+      || !isNonNegativeSafeInteger(envelope.scanned)
+      || !isNonNegativeSafeInteger(envelope.discovered)
+      || !isNonNegativeSafeInteger(envelope.failed)
+      || envelope.discovered > envelope.scanned
+      || envelope.failed > envelope.scanned
+      || (envelope.safeMessage !== null && !isBoundedEventText(envelope.safeMessage, 300))
+    ) {
+      return "invalid_event";
+    }
+  }
   return envelope;
 }
 
@@ -351,6 +369,19 @@ function isCancelledOperationKind(
     || value === "voice_preview"
     || value === "library_scan"
     || value === "data_export";
+}
+
+function isLibraryScanState(value: unknown): value is "running" | "completed" | "cancelled" | "failed" {
+  return value === "running" || value === "completed" || value === "cancelled" || value === "failed";
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isBoundedEventText(value: unknown, maxCodePoints: number): value is string {
+  return typeof value === "string" && Array.from(value).length >= 1
+    && Array.from(value).length <= maxCodePoints && !/\p{Cc}/u.test(value);
 }
 
 function hasExactKeys(

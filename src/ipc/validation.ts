@@ -5,6 +5,7 @@ import {
   type AppCapabilities,
   type Ack,
   type DeleteSecretResponse,
+  type CancelLibraryScanResponse,
   type ErrorId,
   type IntegrationStatus,
   type LibraryRoot,
@@ -15,6 +16,9 @@ import {
   type OperationAccepted,
   type OriginSecretStatus,
   type PickLibraryRootResponse,
+  type TrackTagView,
+  type TrackView,
+  type TracksPage,
   type SettingsView,
   type TestProviderResponse,
   type ValidateSecretResponse,
@@ -196,6 +200,26 @@ export function parsePickLibraryRootResponse(value: unknown): PickLibraryRootRes
   return value as unknown as PickLibraryRootResponse;
 }
 
+export function parseCancelLibraryScanResponse(value: unknown): CancelLibraryScanResponse {
+  if (!isRecord(value) || !hasExactKeys(value, ["requestId", "operationId", "state"])
+    || !isUuid(value.requestId) || !isUuid(value.operationId)
+    || (value.state !== "cancelled" && value.state !== "already_terminal")) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as CancelLibraryScanResponse;
+}
+
+export function parseTracksPage(value: unknown): TracksPage {
+  if (!isRecord(value) || !hasExactKeys(value, ["items", "nextCursor"])
+    || !Array.isArray(value.items) || value.items.length > 200
+    || !value.items.every(isTrackView)
+    || new Set(value.items.map((item) => (item as TrackView).trackId)).size !== value.items.length
+    || (value.nextCursor !== null && !isOpaqueCursor(value.nextCursor))) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as TracksPage;
+}
+
 export function parseVoicesResponse(value: unknown): VoicesResponse {
   if (!isRecord(value) || !hasExactKeys(value, ["voices"])
     || !Array.isArray(value.voices) || !value.voices.every(isVoiceView)
@@ -361,6 +385,43 @@ function isLibraryRoot(value: unknown): value is LibraryRoot {
   return isRecord(value) && hasExactKeys(value, ["rootId", "displayName", "available"])
     && isUuid(value.rootId) && isSafeDisplay(value.displayName, 200)
     && typeof value.available === "boolean";
+}
+
+function isTrackView(value: unknown): value is TrackView {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "trackId", "availability", "durationMs", "artworkAvailable", "original", "enriched", "matchStatus",
+  ])) return false;
+  const validAvailability = value.availability === "playable" || value.availability === "missing"
+    || value.availability === "corrupt" || value.availability === "unsupported";
+  const validMatch = value.matchStatus === "matched" || value.matchStatus === "unmatched"
+    || value.matchStatus === "review";
+  const enriched = value.enriched;
+  const validEnriched = enriched === null || (isRecord(enriched)
+    && hasExactKeys(enriched, ["title", "artist", "album", "provider", "confidence", "fetchedAt"])
+    && hasValidTrackTagFields(enriched)
+    && enriched.provider === "musicbrainz"
+    && typeof enriched.confidence === "number" && Number.isFinite(enriched.confidence)
+    && enriched.confidence >= 0 && enriched.confidence <= 1
+    && isTimestamp(enriched.fetchedAt));
+  return isUuid(value.trackId) && validAvailability
+    && isNonNegativeInteger(value.durationMs)
+    && typeof value.artworkAvailable === "boolean"
+    && isTrackTags(value.original) && validEnriched && validMatch
+    && ((value.matchStatus === "unmatched") === (value.enriched === null));
+}
+
+function isTrackTags(value: unknown): value is TrackTagView {
+  return isRecord(value) && hasExactKeys(value, ["title", "artist", "album"])
+    && hasValidTrackTagFields(value);
+}
+
+function hasValidTrackTagFields(value: Record<string, unknown>): boolean {
+  return [value.title, value.artist, value.album]
+    .every((field) => field === null || isContractText(field, 1, 1_000));
+}
+
+function isOpaqueCursor(value: unknown): value is string {
+  return typeof value === "string" && value.length >= 1 && value.length <= 512 && !/\p{Cc}/u.test(value);
 }
 
 function isVoiceView(value: unknown): value is VoiceView {

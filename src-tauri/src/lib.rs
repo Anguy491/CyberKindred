@@ -4,7 +4,10 @@ pub mod contracts;
 pub mod diagnostics;
 pub mod ipc;
 pub mod library;
+pub mod metadata;
 mod onboarding;
+pub mod playback;
+mod playback_repository;
 pub mod providers;
 pub mod scanner;
 pub mod storage;
@@ -16,15 +19,25 @@ use ipc::{
     parse_command_request,
 };
 use library::{
-    LibraryRootService, SystemLibraryRootClock, TauriLibraryRootPicker,
+    LibraryRootService, SystemLibraryRootClock, TauriLibraryRootPicker, TrackCatalogService,
     commands::{
-        api_v1_list_library_roots, api_v1_pick_and_add_library_root, api_v1_remove_library_root,
+        api_v1_list_library_roots, api_v1_list_tracks, api_v1_pick_and_add_library_root,
+        api_v1_remove_library_root,
     },
 };
 use onboarding::{
     OnboardingService,
     commands::{api_v1_get_onboarding_state, api_v1_save_onboarding_step},
 };
+use playback::{
+    PlaybackEventSink, PlaybackService, RodioAudioEngine, SystemPlaybackClock,
+    TauriPlaybackEventSink,
+    commands::{
+        api_v1_get_playback_state, api_v1_list_music_sources, api_v1_next, api_v1_pause,
+        api_v1_play, api_v1_previous, api_v1_seek, api_v1_select_music_source,
+    },
+};
+use playback_repository::RepositoryTrackResolver;
 use providers::{
     CandidateSecretValidator, ProviderHealthProbe, ProviderRuntime, ProviderService, SystemClock,
     VoicePreviewEventSink, VoicePreviewer,
@@ -124,6 +137,7 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
         Arc::new(TauriLibraryRootPicker::new(app.handle().clone())),
         Arc::new(SystemLibraryRootClock),
     );
+    let track_catalog_service = TrackCatalogService::new(Arc::new(repository.clone()));
     let scanner_service = ScannerService::new(
         repository.clone(),
         Arc::new(TauriScanEventSink::new(app.handle().clone())),
@@ -132,6 +146,18 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     );
     tauri::async_runtime::block_on(scanner_service.recover_and_replay())
         .map_err(|_| io::Error::other("scanner recovery unavailable"))?;
+    let track_resolver = Arc::new(RepositoryTrackResolver::new(repository.clone()));
+    let playback_events: Arc<dyn PlaybackEventSink> =
+        Arc::new(TauriPlaybackEventSink::new(app.handle().clone()));
+    let playback_service = PlaybackService::new(
+        track_resolver.clone(),
+        Box::new(RodioAudioEngine::new()),
+        playback_events,
+        Arc::new(SystemPlaybackClock),
+        process_sequence.clone(),
+        PlaybackService::local_capabilities(),
+    )
+    .map_err(|_| io::Error::other("playback runtime unavailable"))?;
     let startup_preview_recovery =
         StartupVoicePreviewOutboxRecovery::new(repository, preview_events, clock);
     app.manage(Mutex::new(diagnostic_log));
@@ -140,7 +166,10 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     app.manage(provider_service);
     app.manage(onboarding_service);
     app.manage(library_root_service);
+    app.manage(track_catalog_service);
     app.manage(scanner_service);
+    app.manage(track_resolver);
+    app.manage(playback_service);
     app.manage(startup_preview_recovery);
     Ok(())
 }
@@ -165,8 +194,17 @@ pub fn run() -> tauri::Result<()> {
             api_v1_list_library_roots,
             api_v1_pick_and_add_library_root,
             api_v1_remove_library_root,
+            api_v1_list_tracks,
             api_v1_start_library_scan,
             api_v1_cancel_library_scan,
+            api_v1_list_music_sources,
+            api_v1_select_music_source,
+            api_v1_get_playback_state,
+            api_v1_play,
+            api_v1_pause,
+            api_v1_seek,
+            api_v1_next,
+            api_v1_previous,
             api_v1_validate_and_set_secret,
             api_v1_delete_secret,
             api_v1_test_provider,

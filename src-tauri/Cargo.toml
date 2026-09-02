@@ -21,6 +21,7 @@ infer.workspace = true
 jsonschema.workspace = true
 lofty.workspace = true
 reqwest.workspace = true
+rodio.workspace = true
 secrecy.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

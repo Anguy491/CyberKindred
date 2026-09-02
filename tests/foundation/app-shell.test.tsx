@@ -29,7 +29,7 @@ describe("[TASK-009] application shell", () => {
     ] as const;
     for (const [navigationName, heading] of expected) {
       fireEvent.click(screen.getByRole("button", { name: navigationName }));
-      expect(screen.getByRole("heading", { name: heading })).not.toBeNull();
+      expect(await screen.findByRole("heading", { name: heading })).not.toBeNull();
     }
     expect(screen.getByRole("button", { name: "开始节目" }).getAttribute("aria-disabled")).toBe("true");
   });

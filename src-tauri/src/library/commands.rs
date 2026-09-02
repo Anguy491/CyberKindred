@@ -3,8 +3,9 @@
 use tauri::State;
 
 use super::{
-    LibraryRootAck, LibraryRootService, LibraryRootsResponse, PickAndAddLibraryRootRequest,
-    PickAndAddLibraryRootResponse, RemoveLibraryRootRequest,
+    LibraryRootAck, LibraryRootService, LibraryRootsResponse, ListTracksRequest,
+    PickAndAddLibraryRootRequest, PickAndAddLibraryRootResponse, RemoveLibraryRootRequest,
+    TrackCatalogService, TracksPage,
 };
 use crate::ipc::{ApiError, EmptyRequest, parse_command_request};
 
@@ -54,5 +55,21 @@ pub async fn api_v1_remove_library_root(
 ) -> Result<LibraryRootAck, ApiError> {
     library_root_service
         .remove_library_root(parse_command_request::<RemoveLibraryRootRequest>(&request)?)
+        .await
+}
+
+/// API-015: returns one bounded, path-free page of local-library tracks.
+///
+/// # Errors
+///
+/// Returns a stable, redacted validation or storage error.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+pub async fn api_v1_list_tracks(
+    request: tauri::ipc::Request<'_>,
+    track_catalog_service: State<'_, TrackCatalogService>,
+) -> Result<TracksPage, ApiError> {
+    track_catalog_service
+        .list_tracks(parse_command_request::<ListTracksRequest>(&request)?)
         .await
 }

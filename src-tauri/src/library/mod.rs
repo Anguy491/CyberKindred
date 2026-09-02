@@ -7,13 +7,18 @@ mod picker;
 mod service;
 
 pub use dto::{
-    LibraryRoot, LibraryRootAck, LibraryRootsResponse, PickAndAddLibraryRootRequest,
-    PickAndAddLibraryRootResponse, RemoveLibraryRootRequest,
+    EnrichedTrackTagView, LibraryRoot, LibraryRootAck, LibraryRootsResponse, ListTracksRequest,
+    MAX_TRACK_PAGE_SIZE, PickAndAddLibraryRootRequest, PickAndAddLibraryRootResponse,
+    RemoveLibraryRootRequest, TrackAvailability, TrackAvailabilityFilter, TrackFilters,
+    TrackMatchStatus, TrackMetadataProvider, TrackSort, TrackTagView, TrackView, TracksPage,
 };
 pub use picker::{
     LibraryRootPicker, LibraryRootPickerError, LibraryRootPickerFuture, TauriLibraryRootPicker,
 };
-pub use service::{LibraryRootClock, LibraryRootService, SystemLibraryRootClock};
+pub use service::{
+    LibraryRootClock, LibraryRootService, SystemLibraryRootClock, TrackCatalog, TrackCatalogFuture,
+    TrackCatalogQuery, TrackCatalogService,
+};
 
 #[cfg(test)]
 mod tests;

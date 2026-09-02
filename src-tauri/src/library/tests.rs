@@ -13,8 +13,78 @@ use uuid::Uuid;
 use super::*;
 use crate::{
     ipc::ErrorId,
-    storage::{AppPaths, Storage},
+    storage::{
+        AppPaths, ScanCounters, ScanTrackAvailability, ScanTrackRecord, Storage, StorageError,
+        StorageReason,
+    },
 };
+
+struct FakeTrackCatalog {
+    queries: Mutex<Vec<TrackCatalogQuery>>,
+    results: Mutex<VecDeque<Result<TracksPage, StorageError>>>,
+}
+
+impl FakeTrackCatalog {
+    fn new(results: impl IntoIterator<Item = Result<TracksPage, StorageError>>) -> Self {
+        Self {
+            queries: Mutex::new(Vec::new()),
+            results: Mutex::new(results.into_iter().collect()),
+        }
+    }
+
+    fn queries(&self) -> Vec<TrackCatalogQuery> {
+        self.queries.lock().expect("catalog query lock").clone()
+    }
+}
+
+impl TrackCatalog for FakeTrackCatalog {
+    fn list_tracks(&self, query: TrackCatalogQuery) -> TrackCatalogFuture<'_> {
+        self.queries.lock().expect("catalog query lock").push(query);
+        let result = self
+            .results
+            .lock()
+            .expect("catalog result lock")
+            .pop_front()
+            .unwrap_or_else(|| Err(StorageError::new(StorageReason::StorageReadFailed)));
+        Box::pin(async move { result })
+    }
+}
+
+fn list_tracks_request() -> ListTracksRequest {
+    ListTracksRequest {
+        cursor: None,
+        limit: 50,
+        query: Some(" 夜曲 ".to_owned()),
+        sort: TrackSort::Artist,
+        filters: TrackFilters {
+            availability: Some(TrackAvailabilityFilter::Playable),
+            match_status: Some(TrackMatchStatus::Matched),
+        },
+    }
+}
+
+fn track_view(track_id: Uuid) -> TrackView {
+    TrackView {
+        track_id,
+        availability: TrackAvailability::Playable,
+        duration_ms: 180_000,
+        artwork_available: true,
+        original: TrackTagView {
+            title: Some("原始曲名".to_owned()),
+            artist: Some("本地艺术家".to_owned()),
+            album: None,
+        },
+        enriched: Some(EnrichedTrackTagView {
+            title: Some("补全曲名".to_owned()),
+            artist: Some("补全艺术家".to_owned()),
+            album: Some("补全专辑".to_owned()),
+            provider: TrackMetadataProvider::Musicbrainz,
+            confidence: 0.97,
+            fetched_at: "2026-09-03T01:02:03.000Z".to_owned(),
+        }),
+        match_status: TrackMatchStatus::Matched,
+    }
+}
 
 struct FakePicker {
     outcomes: Mutex<VecDeque<Result<Option<PathBuf>, LibraryRootPickerError>>>,
@@ -293,4 +363,209 @@ fn library_root_requests_are_strict_and_have_no_path_field() {
         }))
         .is_err()
     );
+}
+
+#[tokio::test]
+async fn list_tracks_forwards_a_bounded_normalized_query_and_returns_exact_dto() {
+    let page = TracksPage {
+        items: vec![track_view(Uuid::now_v7())],
+        next_cursor: Some("v1:50".to_owned()),
+    };
+    let catalog = Arc::new(FakeTrackCatalog::new([Ok(page.clone())]));
+    let service = TrackCatalogService::new(catalog.clone());
+    let response = service
+        .list_tracks(list_tracks_request())
+        .await
+        .expect("valid track page");
+    assert_eq!(response, page);
+    assert_eq!(
+        catalog.queries(),
+        vec![TrackCatalogQuery {
+            cursor: None,
+            limit: 50,
+            query: Some("夜曲".to_owned()),
+            sort: TrackSort::Artist,
+            availability: Some(TrackAvailabilityFilter::Playable),
+            match_status: Some(TrackMatchStatus::Matched),
+        }]
+    );
+    let encoded = serde_json::to_string(&response).expect("track page serialization");
+    assert!(encoded.contains("\"provider\":\"musicbrainz\""));
+    assert!(encoded.contains("\"fetchedAt\":\"2026-09-03T01:02:03.000Z\""));
+    assert!(!encoded.to_lowercase().contains("path"));
+}
+
+#[tokio::test]
+async fn list_tracks_rejects_invalid_bounds_before_calling_catalog() {
+    let catalog = Arc::new(FakeTrackCatalog::new([]));
+    let service = TrackCatalogService::new(catalog.clone());
+    for request in [
+        ListTracksRequest {
+            limit: 0,
+            ..list_tracks_request()
+        },
+        ListTracksRequest {
+            limit: MAX_TRACK_PAGE_SIZE + 1,
+            ..list_tracks_request()
+        },
+        ListTracksRequest {
+            cursor: Some(String::new()),
+            ..list_tracks_request()
+        },
+        ListTracksRequest {
+            cursor: Some("not-an-opaque-cursor".to_owned()),
+            ..list_tracks_request()
+        },
+        ListTracksRequest {
+            query: Some("private\nquery".to_owned()),
+            ..list_tracks_request()
+        },
+    ] {
+        let error = service
+            .list_tracks(request)
+            .await
+            .expect_err("invalid list request");
+        assert_eq!(error.error_id, ErrorId::RequestInvalid);
+    }
+    assert!(catalog.queries().is_empty());
+}
+
+#[tokio::test]
+async fn list_tracks_fails_closed_on_duplicate_or_inconsistent_adapter_rows() {
+    let track_id = Uuid::now_v7();
+    let duplicate = track_view(track_id);
+    let mut inconsistent = track_view(Uuid::now_v7());
+    inconsistent.match_status = TrackMatchStatus::Unmatched;
+    let catalog = Arc::new(FakeTrackCatalog::new([
+        Ok(TracksPage {
+            items: vec![duplicate.clone(), duplicate],
+            next_cursor: None,
+        }),
+        Ok(TracksPage {
+            items: vec![inconsistent],
+            next_cursor: None,
+        }),
+    ]));
+    let service = TrackCatalogService::new(catalog);
+    let mut request = list_tracks_request();
+    request.limit = 2;
+    for _ in 0..2 {
+        let error = service
+            .list_tracks(request.clone())
+            .await
+            .expect_err("invalid catalog output");
+        assert_eq!(error.error_id, ErrorId::StorageFailed);
+        assert!(!error.safe_message.contains("原始曲名"));
+    }
+}
+
+#[test]
+fn list_tracks_request_is_strict_and_has_no_path_field() {
+    let valid = json!({
+        "cursor": null,
+        "limit": 50,
+        "query": "night",
+        "sort": "recent",
+        "filters": { "availability": "playable", "matchStatus": null }
+    });
+    assert!(serde_json::from_value::<ListTracksRequest>(valid.clone()).is_ok());
+    let mut unknown = valid;
+    unknown
+        .as_object_mut()
+        .expect("request object")
+        .insert("path".to_owned(), json!("C:\\private-canary"));
+    assert!(serde_json::from_value::<ListTracksRequest>(unknown).is_err());
+}
+
+#[tokio::test]
+async fn list_tracks_repository_adapter_maps_an_opaque_bounded_cursor_without_paths() {
+    let picker = Arc::new(FakePicker::new([]));
+    let (temp, _paths, storage, _service) = fixture(picker).await;
+    let private_root = temp.path().join("private-path-canary");
+    std::fs::create_dir_all(&private_root).expect("library root");
+    let repository = storage.repository();
+    let root_id = repository
+        .add_library_root(&private_root, 100)
+        .await
+        .expect("authorize root")
+        .root
+        .root_id;
+    let operation = repository
+        .accept_scan_operation(Uuid::now_v7(), &[root_id], 200, "0.3.0")
+        .await
+        .expect("accept scan");
+    repository
+        .mark_scan_operation_running(operation.operation_id(), 201)
+        .await
+        .expect("start scan");
+    let job_id = operation.roots()[0].job_id();
+    let records = ["Alpha", "Beta"].map(|title| ScanTrackRecord {
+        relative_path: PathBuf::from(format!("{title}.mp3")),
+        file_identity: Some(format!("identity-{title}")),
+        availability: ScanTrackAvailability::Available,
+        format: "mp3".to_owned(),
+        file_size_bytes: 10,
+        modified_at_ms: 1,
+        duration_ms: 60_000,
+        title: Some(title.to_owned()),
+        artist: None,
+        album: None,
+        album_artist: None,
+        track_number: None,
+        disc_number: None,
+        year: None,
+        genres: Vec::new(),
+        metadata_confidence: 1.0,
+        embedded_cover_hash: None,
+    });
+    repository
+        .upsert_scan_batch(
+            operation.operation_id(),
+            job_id,
+            &records,
+            ScanCounters {
+                files_seen: 2,
+                tracks_indexed: 2,
+                errors_count: 0,
+            },
+            300,
+        )
+        .await
+        .expect("seed tracks");
+    let service = TrackCatalogService::new(Arc::new(repository.clone()));
+    let first = service
+        .list_tracks(ListTracksRequest {
+            cursor: None,
+            limit: 1,
+            query: None,
+            sort: TrackSort::Title,
+            filters: TrackFilters {
+                availability: None,
+                match_status: None,
+            },
+        })
+        .await
+        .expect("first page");
+    assert_eq!(first.items[0].original.title.as_deref(), Some("Alpha"));
+    assert_eq!(first.next_cursor.as_deref(), Some("v1:1"));
+    let second = service
+        .list_tracks(ListTracksRequest {
+            cursor: first.next_cursor,
+            limit: 1,
+            query: None,
+            sort: TrackSort::Title,
+            filters: TrackFilters {
+                availability: None,
+                match_status: None,
+            },
+        })
+        .await
+        .expect("second page");
+    assert_eq!(second.items[0].original.title.as_deref(), Some("Beta"));
+    assert_eq!(second.next_cursor, None);
+    let encoded = serde_json::to_string(&second).expect("path-free response");
+    assert!(!encoded.contains("private-path-canary"));
+    drop(service);
+    drop(repository);
+    storage.close().await;
 }

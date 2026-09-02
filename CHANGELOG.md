@@ -33,6 +33,7 @@
 
 ### Added
 
+- `TASK-012`–`TASK-014` 交付 path-free 分页曲库与扫描 UI、严格 MusicBrainz/CAA 最小披露/限流/缓存 provider，以及 API-016–API-023/EVT-001 本地播放 actor；生产解码保持 direct Symphonia 0.6 → rodio output 边界，队列预置与启动恢复默认静音，只有明确用户动作才打开设备并播放。
 - `TASK-011` 交付授权目录内的六格式本地扫描、坏文件隔离、增量/移动识别、碰撞容忍的文件身份匹配、可取消进度、事务提交与可重放 terminal outbox；扫描不复制音频，事件与错误不携带本地路径。
 - `TASK-010` 交付 API-002/API-003 七步可恢复 onboarding、API-010–API-012 原生目录授权边界、路径与 revision 完整性校验、静音/本地文字降级、双隐私确认 gate，以及 Windows 桌面首次启动到 RADIO 的自动化路径；Key、目录 picker 与声音预览都只在用户显式点击后触发。
 - `TASK-008` 交付 Rust-only provider registry/config、严格 API-004..009/API-043 边界、Windows Credential Manager 内部 unsafe 隔离、显式 Responses capability probe、候选 usage 与设置事务原子绑定、唯一权威 accepted→terminal outbox、at-least-once transport/frontend dedupe、启动恢复、24 小时/7 天 outbox retention 和脱敏诊断；默认测试不联网、不出声、不触碰真实凭据。

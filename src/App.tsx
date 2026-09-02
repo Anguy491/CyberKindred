@@ -15,6 +15,11 @@ import {
   type FoundationState,
   type RouteId,
 } from "./design/foundation";
+import {
+  BROWSER_LIBRARY_IPC,
+  createLibraryIpc,
+  type LibraryIpc,
+} from "./features/library";
 import type { AppCapabilities } from "./ipc";
 import { OnboardingFlow } from "./onboarding/OnboardingFlow";
 import {
@@ -37,6 +42,7 @@ export interface AppProps {
   readonly initialRoute?: RouteId;
   readonly onboardingClient?: OnboardingClient;
   readonly onboardingLoader?: OnboardingLoader;
+  readonly libraryIpc?: LibraryIpc;
   /** Deterministic visual scenario injection for hermetic UI tests. */
   readonly scenario?: FoundationState;
 }
@@ -47,6 +53,7 @@ export function App({
   initialRoute = "radio",
   onboardingClient,
   onboardingLoader = loadOnboardingState,
+  libraryIpc,
   scenario,
 }: AppProps) {
   const browserBypass = scenario !== undefined
@@ -62,11 +69,11 @@ export function App({
   const [fontStatus, setFontStatus] = useState<FontStatus>("checking");
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [radioDraft, setRadioDraft] = useState("");
-  const [libraryQuery, setLibraryQuery] = useState("");
   const radioInputRef = useRef<HTMLTextAreaElement>(null);
   const librarySearchRef = useRef<HTMLInputElement>(null);
   const radioStartRef = useRef<HTMLButtonElement>(null);
   const onboardingIpc = useMemoOnboardingClient(onboardingClient);
+  const libraryClient = useMemoLibraryIpc(libraryIpc);
 
   useEffect(() => {
     if (scenario !== undefined || browserBypass) return;
@@ -203,10 +210,14 @@ export function App({
             </div>
             <div hidden={activeRoute !== "library"}>
               <LibraryPage
-                permissionDenied={shellState === "permission-denied"}
-                query={libraryQuery}
+                {...(shellState === "permission-denied"
+                  ? { disabledReason: "上次选择的位置不可读取。请通过原生目录选择器重新授权。" }
+                  : {})}
+                ipc={libraryClient}
+                metadataState={shellState === "offline"
+                  ? "offline"
+                  : capabilities.providers.includes("metadata") ? "online" : "disabled"}
                 searchRef={librarySearchRef}
-                onQueryChange={setLibraryQuery}
               />
             </div>
             <div hidden={activeRoute !== "you"}>
@@ -229,6 +240,15 @@ export function App({
 function useMemoOnboardingClient(client: OnboardingClient | undefined): OnboardingClient {
   const ref = useRef<OnboardingClient | null>(null);
   if (ref.current === null) ref.current = client ?? createOnboardingClient();
+  return ref.current;
+}
+
+function useMemoLibraryIpc(ipc: LibraryIpc | undefined): LibraryIpc {
+  const ref = useRef<LibraryIpc | null>(null);
+  if (ref.current === null) {
+    const desktop = typeof window !== "undefined" && Reflect.has(window, "__TAURI_INTERNALS__");
+    ref.current = ipc ?? (desktop ? createLibraryIpc() : BROWSER_LIBRARY_IPC);
+  }
   return ref.current;
 }
 

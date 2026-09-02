@@ -20,6 +20,8 @@ M2 的最终实现证据与 2026-09-02 历史 hard-gate 失败由 [`M2 checkpoin
 
 M3 `TASK-011` 已集成六格式授权根扫描、坏文件隔离、碰撞容忍的增量身份匹配、事务批处理、取消以及唯一权威 terminal/outbox 重放。代表性许可 fixture 的 TEST-LIB-001/002 自动化路径通过；10,000 首性能矩阵仍保留到 M3 checkpoint 作为可明确标注的 `Not Run`/M7 known gap，不影响后续 M3 切片推进。
 
+M3 `TASK-012`–`TASK-014` 已集成 path-free API-015/曲库 UI、严格 MusicBrainz/CAA 最小披露与限流缓存边界，以及 API-016–API-023/EVT-001 串行本地播放 actor。Library 的 focused Rust/TypeScript/axe 路径、metadata hermetic provider/低置信保留原标签、本地六格式解码与未授权零设备打开均通过；真实听感、双设备切换、联网 metadata artifact 持久化与 desktop library E2E 保留到 M3 checkpoint 如实标注。
+
 ## 2. Functional requirements
 
 ### 2.1 Onboarding

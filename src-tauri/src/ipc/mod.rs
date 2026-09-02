@@ -16,6 +16,7 @@ pub use capabilities::{
     SourceCapabilities, SourceKind, SourceSummary,
 };
 pub use command::parse_command_request;
+pub(crate) use error::IPC_SCHEMA_VERSION;
 pub use error::{
     ApiError, ApiErrorDetails, CapabilityName, ErrorId, InternalReason, PublicField,
     RedactedDiagnostic,

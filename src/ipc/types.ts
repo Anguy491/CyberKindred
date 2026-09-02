@@ -261,6 +261,76 @@ export interface PickLibraryRootResponse {
   readonly revision: number;
 }
 
+export interface StartLibraryScanRequest {
+  readonly clientRequestId: string;
+  readonly rootIds: ReadonlyArray<string>;
+}
+
+export interface CancelLibraryScanRequest {
+  readonly clientRequestId: string;
+  readonly operationId: string;
+}
+
+export interface CancelLibraryScanResponse {
+  readonly requestId: string;
+  readonly operationId: string;
+  readonly state: "cancelled" | "already_terminal";
+}
+
+export type TrackSort = "title" | "artist" | "album" | "recent";
+export type TrackAvailabilityFilter = "playable" | "missing";
+export type TrackMatchStatus = "matched" | "unmatched" | "review";
+
+export interface TrackFilters {
+  readonly availability: TrackAvailabilityFilter | null;
+  readonly matchStatus: TrackMatchStatus | null;
+}
+
+export interface ListTracksRequest {
+  readonly cursor: string | null;
+  readonly limit: number;
+  readonly query: string | null;
+  readonly sort: TrackSort;
+  readonly filters: TrackFilters;
+}
+
+export interface TrackTagView {
+  readonly title: string | null;
+  readonly artist: string | null;
+  readonly album: string | null;
+}
+
+export interface EnrichedTrackTagView extends TrackTagView {
+  readonly provider: "musicbrainz";
+  readonly confidence: number;
+  readonly fetchedAt: string;
+}
+
+export interface TrackView {
+  readonly trackId: string;
+  readonly availability: "playable" | "missing" | "corrupt" | "unsupported";
+  readonly durationMs: number;
+  readonly artworkAvailable: boolean;
+  readonly original: TrackTagView;
+  readonly enriched: EnrichedTrackTagView | null;
+  readonly matchStatus: TrackMatchStatus;
+}
+
+export interface TracksPage {
+  readonly items: ReadonlyArray<TrackView>;
+  readonly nextCursor: string | null;
+}
+
+export interface LibraryScanEvent extends EventEnvelope {
+  readonly schemaVersion: typeof IPC_SCHEMA_VERSION;
+  readonly operationId: string;
+  readonly state: "running" | "completed" | "cancelled" | "failed";
+  readonly scanned: number;
+  readonly discovered: number;
+  readonly failed: number;
+  readonly safeMessage: string | null;
+}
+
 export interface VoiceView {
   readonly voiceId: string;
   readonly displayName: string;

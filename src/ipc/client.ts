@@ -3,16 +3,21 @@ import { tauriIpcTransport, type IpcTransport, type IpcUnlisten } from "./transp
 import type { ApiError, AppCapabilities } from "./types";
 import type {
   Ack,
+  CancelLibraryScanRequest,
+  CancelLibraryScanResponse,
   DeleteSecretRequest,
   DeleteSecretResponse,
   LibraryRootsResponse,
+  ListTracksRequest,
   OnboardingState,
   OperationAccepted,
   PickLibraryRootResponse,
   SaveOnboardingStepRequest,
   SettingsView,
+  StartLibraryScanRequest,
   TestProviderRequest,
   TestProviderResponse,
+  TracksPage,
   UpdateSettingsRequest,
   ValidateSecretRequest,
   ValidateSecretResponse,
@@ -22,8 +27,10 @@ import {
   normalizeApiError,
   parseAck,
   parseAppCapabilities,
+  parseCancelLibraryScanResponse,
   parseDeleteSecretResponse,
   parseLibraryRootsResponse,
+  parseTracksPage,
   parseOnboardingState,
   parseOperationAccepted,
   parsePickLibraryRootResponse,
@@ -152,6 +159,28 @@ export class CyberKindredIpcClient {
     return this.#invokeValidated(
       "api_v1_remove_library_root", { request: { clientRequestId, rootId, expectedRevision } },
       STANDARD_TIMEOUT_MS, parseAck,
+    );
+  }
+
+  /** API-013: accepts a scan over only persisted authorized roots. */
+  async startLibraryScan(request: StartLibraryScanRequest): Promise<OperationAccepted> {
+    return this.#invokeValidated(
+      "api_v1_start_library_scan", { request }, OPERATION_ACCEPT_TIMEOUT_MS, parseOperationAccepted,
+    );
+  }
+
+  /** API-014: idempotently cancels one accepted scan operation. */
+  async cancelLibraryScan(request: CancelLibraryScanRequest): Promise<CancelLibraryScanResponse> {
+    return this.#invokeValidated(
+      "api_v1_cancel_library_scan", { request }, OPERATION_ACCEPT_TIMEOUT_MS,
+      parseCancelLibraryScanResponse,
+    );
+  }
+
+  /** API-015: reads one strict, path-free local track page. */
+  async listTracks(request: ListTracksRequest): Promise<TracksPage> {
+    return this.#invokeValidated(
+      "api_v1_list_tracks", { request }, STANDARD_TIMEOUT_MS, parseTracksPage,
     );
   }
 
