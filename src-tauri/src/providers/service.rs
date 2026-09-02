@@ -1347,6 +1347,7 @@ fn map_storage_error(error: &StorageError) -> ApiError {
         StorageReason::DatabaseVersionUnsupported => InternalReason::DatabaseVersionUnsupported,
         StorageReason::EntityNotFound => InternalReason::EntityNotFound,
         StorageReason::RevisionConflict => InternalReason::RevisionConflict,
+        StorageReason::ResourceBusy => InternalReason::ResourceBusy,
     };
     ApiError::from_reason(reason)
 }

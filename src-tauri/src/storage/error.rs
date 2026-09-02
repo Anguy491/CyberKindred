@@ -17,6 +17,7 @@ pub enum StorageReason {
     InvalidSetting,
     EntityNotFound,
     RevisionConflict,
+    ResourceBusy,
 }
 
 impl StorageReason {
@@ -34,6 +35,7 @@ impl StorageReason {
             Self::DatabaseVersionUnsupported => "database_version_unsupported",
             Self::EntityNotFound => "entity_not_found",
             Self::RevisionConflict => "revision_conflict",
+            Self::ResourceBusy => "resource_busy",
         }
     }
 }

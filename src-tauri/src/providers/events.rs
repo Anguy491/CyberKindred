@@ -279,6 +279,7 @@ fn map_outbox_storage_error(error: &StorageError) -> ApiError {
         StorageReason::MigrationFailed => InternalReason::MigrationFailed,
         StorageReason::DatabaseVersionUnsupported => InternalReason::DatabaseVersionUnsupported,
         StorageReason::StorageWriteFailed => InternalReason::StorageWriteFailed,
+        StorageReason::ResourceBusy => InternalReason::ResourceBusy,
     };
     ApiError::from_reason(reason)
 }

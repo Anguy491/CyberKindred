@@ -18,6 +18,8 @@ M1 已由 [`M1 checkpoint`](checkpoints/M1.md) 与其 [`evidence manifest`](../.
 
 M2 的最终实现证据与 2026-09-02 历史 hard-gate 失败由 [`M2 checkpoint`](checkpoints/M2.md) 及其 [`evidence manifest`](../../artifacts/test-evidence/milestones/M2/manifest.json) 聚合记录。`TASK-004`–`TASK-010` 已集成；Node/W3C desktop smoke 实际完成首次七步本地降级 onboarding、静音 RADIO 与 Settings 导航。Product Owner 已解决 credential 生命周期、model probe 流程和 terminal delivery 语义，`RISK-016`–`RISK-018` 已关闭；最终 hard gates 全部通过，M2 以 `Passed with known gaps` 关闭并激活 M3 `TASK-011`。未运行的完整性能、跨版本、真实 TTS 与后续专用 API 场景仍按 checkpoint 目标保留，不改写为通过。
 
+M3 `TASK-011` 已集成六格式授权根扫描、坏文件隔离、碰撞容忍的增量身份匹配、事务批处理、取消以及唯一权威 terminal/outbox 重放。代表性许可 fixture 的 TEST-LIB-001/002 自动化路径通过；10,000 首性能矩阵仍保留到 M3 checkpoint 作为可明确标注的 `Not Run`/M7 known gap，不影响后续 M3 切片推进。
+
 ## 2. Functional requirements
 
 ### 2.1 Onboarding

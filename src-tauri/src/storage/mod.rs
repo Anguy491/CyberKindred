@@ -13,6 +13,7 @@ mod provider_settings;
 mod provider_status;
 mod repository;
 mod retention;
+mod scanner;
 mod secret;
 
 pub use database::{APPLICATION_ID, LATEST_SCHEMA_VERSION, Storage};
@@ -31,6 +32,11 @@ pub use provider_status::{
     ProviderUsageProvider,
 };
 pub use repository::{ChatRole, NewChatMessage, Repository, RetentionResult};
+pub(crate) use scanner::{
+    AuthorizedScanOperation, AuthorizedScanRoot, ScanCancelOutcome, ScanCounters,
+    ScanOperationState, ScanProgress, ScanTerminalRecord, ScanTerminalState, ScanTrackAvailability,
+    ScanTrackRecord,
+};
 pub use secret::{
     CanonicalOrigin, CredentialTarget, SecretError, SecretValue, SecretVault,
     WindowsCredentialVault,

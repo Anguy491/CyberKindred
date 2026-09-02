@@ -17,13 +17,16 @@ tauri-build = { workspace = true, features = [] }
 chrono.workspace = true
 cyberkindred-windows-credential.workspace = true
 hex.workspace = true
+infer.workspace = true
 jsonschema.workspace = true
+lofty.workspace = true
 reqwest.workspace = true
 secrecy.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sha2.workspace = true
 sqlx = { workspace = true, features = ["runtime-tokio", "sqlite-bundled", "migrate", "macros"] }
+symphonia = { workspace = true, features = ["aac", "isomp4", "mp3"] }
 tauri = { workspace = true, features = [] }
 tauri-plugin-dialog.workspace = true
 thiserror.workspace = true

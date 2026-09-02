@@ -8,9 +8,32 @@ use sqlx::{
 use std::{path::Path, time::Duration};
 
 pub const APPLICATION_ID: i64 = 1_129_008_708;
-pub const LATEST_SCHEMA_VERSION: i64 = 1;
+pub const LATEST_SCHEMA_VERSION: i64 = 2;
 const INITIAL_MIGRATION_NAME: &str = "initial_schema";
 const INITIAL_MIGRATION_SQL: &str = include_str!("../../migrations/V0001__initial_schema.sql");
+const SCAN_OPERATIONS_MIGRATION_NAME: &str = "scan_operations";
+const SCAN_OPERATIONS_MIGRATION_SQL: &str =
+    include_str!("../../migrations/V0002__scan_operations.sql");
+
+#[derive(Clone, Copy)]
+struct Migration {
+    version: i64,
+    name: &'static str,
+    sql: &'static str,
+}
+
+const MIGRATIONS: [Migration; 2] = [
+    Migration {
+        version: 1,
+        name: INITIAL_MIGRATION_NAME,
+        sql: INITIAL_MIGRATION_SQL,
+    },
+    Migration {
+        version: 2,
+        name: SCAN_OPERATIONS_MIGRATION_NAME,
+        sql: SCAN_OPERATIONS_MIGRATION_SQL,
+    },
+];
 
 /// Open, verified storage. A value is returned only after every migration and
 /// post-migration integrity check succeeds.
@@ -33,12 +56,12 @@ impl Storage {
         let database_path = paths.database_path();
         if database_path.exists() {
             let validation = connect_validation_pool(&database_path).await?;
-            let result = preflight_existing(&validation, INITIAL_MIGRATION_SQL).await;
+            let result = preflight_existing(&validation).await;
             validation.close().await;
             result?;
         }
         let writer = connect_pool(&database_path, 1, true).await?;
-        if let Err(error) = initialize(&writer, paths, app_version, INITIAL_MIGRATION_SQL).await {
+        if let Err(error) = initialize(&writer, paths, app_version).await {
             writer.close().await;
             return Err(error);
         }
@@ -142,7 +165,6 @@ async fn initialize(
     pool: &SqlitePool,
     paths: &AppPaths,
     app_version: &str,
-    migration_sql: &'static str,
 ) -> Result<(), StorageError> {
     verify_integrity(pool).await?;
     let application_id = pragma_i64(pool, "PRAGMA application_id").await?;
@@ -165,19 +187,25 @@ async fn initialize(
         if table_count != 0 {
             return Err(StorageError::new(StorageReason::ForeignDatabase));
         }
-        create_verified_backup(pool, paths, user_version).await?;
-        apply_initial_migration(pool, app_version, migration_sql).await?;
+    }
+    if user_version > 0 {
+        verify_schema_at_version(pool, user_version).await?;
     }
 
-    verify_current_schema(pool, migration_sql).await
+    let mut current_version = user_version;
+    while current_version < LATEST_SCHEMA_VERSION {
+        let migration = migration_for_version(current_version + 1)?;
+        create_verified_backup(pool, paths, current_version).await?;
+        apply_migration(pool, app_version, migration).await?;
+        current_version = migration.version;
+        verify_schema_at_version(pool, current_version).await?;
+    }
+    verify_current_schema(pool).await
 }
 
 /// Verifies an existing file through a read-only connection before any writer
 /// or WAL configuration is opened against it.
-async fn preflight_existing(
-    pool: &SqlitePool,
-    migration_sql: &'static str,
-) -> Result<(), StorageError> {
+async fn preflight_existing(pool: &SqlitePool) -> Result<(), StorageError> {
     verify_integrity(pool).await?;
     let application_id = pragma_i64(pool, "PRAGMA application_id").await?;
     let user_version = pragma_i64(pool, "PRAGMA user_version").await?;
@@ -200,19 +228,19 @@ async fn preflight_existing(
             Err(StorageError::new(StorageReason::ForeignDatabase))
         };
     }
-    verify_current_schema(pool, migration_sql).await
+    verify_schema_at_version(pool, user_version).await
 }
 
-async fn apply_initial_migration(
+async fn apply_migration(
     pool: &SqlitePool,
     app_version: &str,
-    migration_sql: &'static str,
+    migration: Migration,
 ) -> Result<(), StorageError> {
     let mut transaction = pool
         .begin()
         .await
         .map_err(|_| StorageError::new(StorageReason::MigrationFailed))?;
-    if sqlx::raw_sql(migration_sql)
+    if sqlx::raw_sql(migration.sql)
         .execute(&mut *transaction)
         .await
         .is_err()
@@ -220,13 +248,13 @@ async fn apply_initial_migration(
         let _ = transaction.rollback().await;
         return Err(StorageError::new(StorageReason::MigrationFailed));
     }
-    let checksum = migration_checksum(migration_sql);
+    let checksum = migration_checksum(migration.sql);
     let now_ms = Utc::now().timestamp_millis();
     if sqlx::query(
         "INSERT INTO schema_migrations(version, name, checksum_sha256, applied_at_ms, app_version) VALUES(?, ?, ?, ?, ?)",
     )
-    .bind(LATEST_SCHEMA_VERSION)
-    .bind(INITIAL_MIGRATION_NAME)
+    .bind(migration.version)
+    .bind(migration.name)
     .bind(checksum)
     .bind(now_ms)
     .bind(app_version)
@@ -237,10 +265,7 @@ async fn apply_initial_migration(
             .execute(&mut *transaction)
             .await
             .is_err()
-        || sqlx::query("PRAGMA user_version = 1")
-            .execute(&mut *transaction)
-            .await
-            .is_err()
+        || set_user_version(&mut transaction, migration.version).await.is_err()
     {
         let _ = transaction.rollback().await;
         return Err(StorageError::new(StorageReason::MigrationFailed));
@@ -251,10 +276,31 @@ async fn apply_initial_migration(
         .map_err(|_| StorageError::new(StorageReason::MigrationFailed))
 }
 
-async fn verify_current_schema(
-    pool: &SqlitePool,
-    migration_sql: &'static str,
+async fn set_user_version(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    version: i64,
 ) -> Result<(), StorageError> {
+    let statement = match version {
+        1 => "PRAGMA user_version = 1",
+        2 => "PRAGMA user_version = 2",
+        _ => return Err(StorageError::new(StorageReason::MigrationFailed)),
+    };
+    sqlx::query(statement)
+        .execute(&mut **transaction)
+        .await
+        .map(|_| ())
+        .map_err(|_| StorageError::new(StorageReason::MigrationFailed))
+}
+
+fn migration_for_version(version: i64) -> Result<Migration, StorageError> {
+    MIGRATIONS
+        .iter()
+        .find(|migration| migration.version == version)
+        .copied()
+        .ok_or_else(|| StorageError::new(StorageReason::MigrationFailed))
+}
+
+async fn verify_current_schema(pool: &SqlitePool) -> Result<(), StorageError> {
     verify_integrity(pool).await?;
     let application_id = pragma_i64(pool, "PRAGMA application_id").await?;
     let user_version = pragma_i64(pool, "PRAGMA user_version").await?;
@@ -265,14 +311,38 @@ async fn verify_current_schema(
         return Err(StorageError::new(StorageReason::DatabaseVersionUnsupported));
     }
 
-    let row: (String, String) =
-        sqlx::query_as("SELECT name, checksum_sha256 FROM schema_migrations WHERE version = ?")
-            .bind(LATEST_SCHEMA_VERSION)
-            .fetch_one(pool)
-            .await
-            .map_err(|_| StorageError::new(StorageReason::MigrationFailed))?;
-    if row.0 != INITIAL_MIGRATION_NAME || row.1 != migration_checksum(migration_sql) {
+    verify_schema_at_version(pool, user_version).await
+}
+
+async fn verify_schema_at_version(
+    pool: &SqlitePool,
+    user_version: i64,
+) -> Result<(), StorageError> {
+    if !(1..=LATEST_SCHEMA_VERSION).contains(&user_version) {
+        return Err(StorageError::new(StorageReason::DatabaseVersionUnsupported));
+    }
+    let application_id = pragma_i64(pool, "PRAGMA application_id").await?;
+    if application_id != APPLICATION_ID {
+        return Err(StorageError::new(StorageReason::ForeignDatabase));
+    }
+    let rows: Vec<(i64, String, String)> = sqlx::query_as(
+        "SELECT version, name, checksum_sha256 FROM schema_migrations ORDER BY version",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|_| StorageError::new(StorageReason::MigrationFailed))?;
+    let expected_len = usize::try_from(user_version)
+        .map_err(|_| StorageError::new(StorageReason::MigrationFailed))?;
+    if rows.len() != expected_len {
         return Err(StorageError::new(StorageReason::MigrationFailed));
+    }
+    for (row, migration) in rows.iter().zip(MIGRATIONS.iter()) {
+        if row.0 != migration.version
+            || row.1 != migration.name
+            || row.2 != migration_checksum(migration.sql)
+        {
+            return Err(StorageError::new(StorageReason::MigrationFailed));
+        }
     }
     Ok(())
 }
@@ -412,6 +482,8 @@ mod tests {
             "program_segments",
             "provider_usage",
             "scan_jobs",
+            "scan_operation_roots",
+            "scan_operations",
             "schedule_occurrences",
             "schedule_rules",
             "schema_migrations",
@@ -457,11 +529,17 @@ mod tests {
         let pool = connect_pool(&paths.database_path(), 1, true)
             .await
             .expect("fixture pool");
-        let failure = initialize(
+        create_verified_backup(&pool, &paths, 0)
+            .await
+            .expect("verified empty backup");
+        let failure = apply_migration(
             &pool,
-            &paths,
             "0.1.0",
-            "CREATE TABLE partial(id INTEGER); THIS IS NOT VALID SQL;",
+            Migration {
+                version: 1,
+                name: INITIAL_MIGRATION_NAME,
+                sql: "CREATE TABLE partial(id INTEGER); THIS IS NOT VALID SQL;",
+            },
         )
         .await
         .expect_err("invalid migration must fail");
@@ -480,6 +558,135 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .expect("backup entries");
         assert_eq!(backups.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn repository_v0002_upgrade_preserves_v0001_data_and_verified_backup() {
+        let (_temp, paths) = temporary_paths();
+        let pool = connect_pool(&paths.database_path(), 1, true)
+            .await
+            .expect("fixture pool");
+        apply_migration(&pool, "0.1.0", MIGRATIONS[0])
+            .await
+            .expect("V0001 fixture");
+        sqlx::query(
+            "INSERT INTO library_roots(id, canonical_path, path_key, display_name, enabled, created_at_ms) VALUES('root-preserved', 'fixture-path-never-exposed', 'fixture-key', 'Fixture', 1, 1)",
+        )
+        .execute(&pool)
+        .await
+        .expect("preserved root");
+        sqlx::query(
+            "INSERT INTO tracks(id, root_id, relative_path, relative_path_key, availability, format, file_size_bytes, modified_at_ms, duration_ms, genre_json, metadata_confidence, created_at_ms, updated_at_ms) VALUES('track-preserved', 'root-preserved', 'song.mp3', 'song.mp3', 'available', 'mp3', 1, 1, 1, '[]', 1.0, 1, 1)",
+        )
+        .execute(&pool)
+        .await
+        .expect("preserved track");
+        pool.close().await;
+
+        let storage = Storage::open(&paths, "0.2.0").await.expect("V0002 upgrade");
+        assert_eq!(
+            pragma_i64(&storage.reader, "PRAGMA user_version")
+                .await
+                .expect("V0002 user version"),
+            2
+        );
+        let preserved: (i64, i64) = sqlx::query_as(
+            "SELECT (SELECT count(*) FROM library_roots), (SELECT count(*) FROM tracks)",
+        )
+        .fetch_one(&storage.reader)
+        .await
+        .expect("preserved V0001 data");
+        assert_eq!(preserved, (1, 1));
+        let migrations: Vec<i64> =
+            sqlx::query_scalar("SELECT version FROM schema_migrations ORDER BY version")
+                .fetch_all(&storage.reader)
+                .await
+                .expect("migration history");
+        assert_eq!(migrations, vec![1, 2]);
+        storage.close().await;
+
+        let backups = std::fs::read_dir(paths.backups_dir())
+            .expect("backup directory")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("backup entries");
+        assert_eq!(backups.len(), 1);
+        let backup = connect_validation_pool(&backups[0].path())
+            .await
+            .expect("backup pool");
+        assert_eq!(
+            pragma_i64(&backup, "PRAGMA user_version")
+                .await
+                .expect("backup version"),
+            1
+        );
+        let backup_tracks: i64 = sqlx::query_scalar("SELECT count(*) FROM tracks")
+            .fetch_one(&backup)
+            .await
+            .expect("backup tracks");
+        assert_eq!(backup_tracks, 1);
+        backup.close().await;
+    }
+
+    #[tokio::test]
+    async fn repository_v0002_failure_rolls_back_without_touching_v0001_data() {
+        let (_temp, paths) = temporary_paths();
+        let pool = connect_pool(&paths.database_path(), 1, true)
+            .await
+            .expect("fixture pool");
+        apply_migration(&pool, "0.1.0", MIGRATIONS[0])
+            .await
+            .expect("V0001 fixture");
+        sqlx::query(
+            "INSERT INTO library_roots(id, canonical_path, path_key, display_name, enabled, created_at_ms) VALUES('root-preserved', 'fixture-path-never-exposed', 'fixture-key', 'Fixture', 1, 1)",
+        )
+        .execute(&pool)
+        .await
+        .expect("preserved root");
+        create_verified_backup(&pool, &paths, 1)
+            .await
+            .expect("verified V0001 backup");
+        let failure = apply_migration(
+            &pool,
+            "0.2.0",
+            Migration {
+                version: 2,
+                name: SCAN_OPERATIONS_MIGRATION_NAME,
+                sql: "CREATE TABLE partial_v2(id INTEGER); THIS IS NOT VALID SQL;",
+            },
+        )
+        .await
+        .expect_err("invalid V0002 must fail");
+        assert_eq!(failure.reason(), StorageReason::MigrationFailed);
+        assert_eq!(
+            pragma_i64(&pool, "PRAGMA user_version")
+                .await
+                .expect("still V0001"),
+            1
+        );
+        let preserved: i64 = sqlx::query_scalar("SELECT count(*) FROM library_roots")
+            .fetch_one(&pool)
+            .await
+            .expect("preserved root");
+        assert_eq!(preserved, 1);
+        let partial: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'partial_v2'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("partial table check");
+        assert_eq!(partial, 0);
+        let migration_count: i64 = sqlx::query_scalar("SELECT count(*) FROM schema_migrations")
+            .fetch_one(&pool)
+            .await
+            .expect("migration history");
+        assert_eq!(migration_count, 1);
+        pool.close().await;
+        assert_eq!(
+            std::fs::read_dir(paths.backups_dir())
+                .expect("backup directory")
+                .count(),
+            1
+        );
     }
 
     #[tokio::test]
@@ -522,7 +729,7 @@ mod tests {
             .execute(&pool)
             .await
             .expect("application id fixture");
-        sqlx::query("PRAGMA user_version = 2")
+        sqlx::query("PRAGMA user_version = 3")
             .execute(&pool)
             .await
             .expect("future version fixture");

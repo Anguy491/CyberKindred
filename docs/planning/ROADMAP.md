@@ -50,7 +50,7 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M3 — Local radio vertical slice
 
-**Status:** Active implementation — `TASK-011` claimed on 2026-09-03 after the M2 checkpoint passed.
+**Status:** Active implementation — `TASK-011` complete; `TASK-012`, `TASK-013`, and `TASK-014` ready on 2026-09-03.
 
 **Goal:** 从导入曲库到生成并连续播放一次完整本地节目。
 
