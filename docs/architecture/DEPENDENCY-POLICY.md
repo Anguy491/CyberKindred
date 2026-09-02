@@ -44,7 +44,7 @@ UI 字体 `Space Grotesk`、`Space Mono`、`Doto` 作为本地静态资产按 SI
 | `serde`, `serde_json` | DTO/受控 JSON | secret 类型禁止 Serialize；未知公共契约字段按 schema 策略拒绝。 |
 | `thiserror` | 内部 typed error | 对外先映射稳定 `ERR-*`，不透传 cause/body。 |
 | `tracing`, `tracing-subscriber` | 结构化日志 | 使用 redact layer；禁止 body/header/path 字段。 |
-| `sqlx` (`sqlite`, `runtime-tokio-rustls`, `migrate`) | SQLite repository/migration | 禁用 default features；查询在 repository；单 writer 配置。 |
+| `sqlx` (`sqlite-bundled`, `runtime-tokio`, `migrate`, `macros`) | SQLite repository/migration | 禁用 default features；0.9 的 SQLite-only 路径不启用 TLS/MySQL/PostgreSQL/load-extension；查询在 repository；单 writer 配置。 |
 | `reqwest` (`rustls-tls`, `json`, `stream`) | provider HTTPS | 禁用 default/native-tls；统一 timeout、限流、redaction middleware；不允许 UI 提供任意 URL。 |
 | `url` | HTTPS/base URL 与 provider URL 验证 | 生产拒绝非 HTTPS、credential-in-URL 和非官方/非用户明确确认的当前 configured origin。 |
 | `rodio` | 本地 output/sink | 只在 playback actor 中持有。 |
