@@ -14,6 +14,8 @@
 
 ### Changed
 
+- M1 technical checkpoint 记录为 `Passed with known gaps` 并自动激活 M2；真实听感/双设备、通知/托盘/登录、NSIS 和完整跨版本矩阵保持 `Not Run`，未改写为通过。
+- 补齐 M2 脚手架所需的 `tauri-build`、React/Node types、coverage、lint 与 Cargo CI tool exact pins；避免 TypeScript 7 与不兼容的 typescript-eslint peer range。
 - Documentation Baseline v1 于 2026-09-02 获用户批准，项目进入 M1 技术探针阶段。
 - 开发治理改为逐 milestone 验收：M1–M6 使用轻量 technical/prototype checkpoint，任务仅作为可并行的内部交付切片；覆盖率、完整兼容/无障碍/性能/长稳矩阵可记录后递延到 M7，secret、权限、日志、用户确认、付费调用、数据完整性、公共契约和 Critical/High 安全问题仍是即时硬门槛。
 - `TASK-003` 仅依赖已批准的文档基线且与 `TASK-002` 写入范围不重叠，按新的 milestone 并行规则从 `Blocked` 调整为 `Ready`。
@@ -23,6 +25,7 @@
 
 ### Added
 
+- `TASK-003` Windows 标准用户探针完成：Windows Password Vault canary 写/读/删、显式 HKCU 自启动启停、静音通知 action 模型、精确 reset、WebView2/toolchain preflight 与去标识 evidence 均通过自动/本机 smoke；真实 toast、tray、登录周期、NSIS 与 Windows 10 VM 留作已记录 known gaps。
 - `ADR-0007` 记录 milestone-based prototype delivery、单 milestone 多任务受控并行、checkpoint evidence 与 known-gap 规则。
 - `TASK-002` 本地音频探针实现已标记 `Done`：含六类 CC0 生成 fixture 与 SHA-256 清单、Symphonia 0.6.1 全量解码报告、lofty 标签/封面报告、rodio 交互播放/暂停/seek、默认设备重建后保持暂停、损坏文件隔离、脱敏事件与 CPU/内存采样手册。人工证据在 M1 checkpoint 与其他探针结果一并审阅。
 - `TASK-001` 只读 GSMTC 技术探针已由用户验收完成：可枚举 Windows 媒体会话、元数据字段存在性、时间线与实时 capability；watch 输出自动移除媒体正文并过滤 timeline 心跳。Apple Music 空闲、播放、App 关闭、Web-only 隔离与会话消失场景通过，M1 输入到探针收敛矩阵 50/50 在 2 秒内；产品 UI 延迟验收仍由 M6 `TASK-025` 承担。

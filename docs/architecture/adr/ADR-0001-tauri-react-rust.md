@@ -30,3 +30,7 @@ CyberKindred v1 只面向 Windows，需要现代 UI、系统托盘/通知/自启
 - WebView2 是 Windows runtime 前提；构建/发行必须检查其可用性与安装策略。
 - Rust/JS 双生态带来两个 lockfile 与供应链扫描面，按 Dependency Policy 管理。
 - 任何将通用 fs/http/shell/credential capability 暴露给 WebView 的提议都与本 ADR 冲突，需要新的批准 ADR。
+
+## M1 validation note
+
+2026-09-02 的 `TASK-003` 在 Windows 11 x64 标准用户账户验证了 WinRT Password Vault canary 写入/匹配/删除、精确 HKCU Run 启停以及 namespaced reset，不需要管理员权限；WebView2 Runtime 也可从系统注册信息检测。默认 preflight、通知 action simulation 与自启动命令均保持静音且没有 provider/网络能力。真实 Tauri window、toast activation、tray、login cycle 与 per-user NSIS 尚未运行，明确递延至 M2/M5/M6/M7，因此本观察支持但不扩大本 ADR 的权限或部署边界。

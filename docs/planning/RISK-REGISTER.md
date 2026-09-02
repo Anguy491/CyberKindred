@@ -26,3 +26,10 @@
 | RISK-012 | 第三方字体、音频库或服务许可证不适合分发/商业化 | M | H | 许可证扫描或条款审查不通过 | Dependency Policy、NOTICE/SBOM、非商业内测限定；商业化前法律复核 | Legal | Open |
 | RISK-013 | 文档与实现漂移导致自主开发错误 | M | H | contract/traceability 检查失败、双向映射不对称或行为无 FR | docs-first change coupling、schema tests、ID/link lint、Requirement↔Test/Task 双向检查、每任务文档联动门槛 | Lead | Open |
 | RISK-014 | Windows/WebView2 版本差异导致 UI 或 IPC 行为不同 | M | M | 支持矩阵设备出现启动/渲染失败 | 固定最低 Windows、bootstrapper 检测 WebView2、至少 Win10/Win11 两环境验收 | Release/QA | Open |
+
+## M1 observations
+
+- `RISK-001` remains `Open`: the recorded Apple Music Windows App probe established truthful GSMTC discovery/capability convergence on one Windows 11 environment, but packaged/unpackaged and multi-version coverage remains for M6/M7.
+- `RISK-003` remains `Open`: six fixed-format decode fixtures and corrupt-file isolation passed, while real audible controls, dual-device switching and product recovery remain `Not Run` for M3/M7.
+- `RISK-006` remains `Open`: a standard-user Password Vault canary write/read/delete cycle passed with zero secret output fields and exact cleanup; canonical origin isolation plus SQLite/log/export scans remain M2/M6 work.
+- `RISK-014` remains `Open`: WebView2 was detected on the M1 Windows 11 host, but Windows 10, packaged Tauri and NSIS installation matrices remain `Not Run` for M2/M7.

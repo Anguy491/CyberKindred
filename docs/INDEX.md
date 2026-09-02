@@ -62,7 +62,7 @@ Documentation Baseline v1 已于 2026-09-02 获用户批准，基线文档状态
 | Contracts | `contracts/API-CONTRACT.md`, `PROVIDER-CONTRACTS.md`, `contracts/schemas/`, `contracts/examples/` |
 | Integrations | `integrations/EXTERNAL-INTEGRATIONS.md` |
 | Security | `security/THREAT-MODEL.md`, `PRIVACY-DATA-LIFECYCLE.md`, `LEGAL-AND-LICENSING.md` |
-| Quality | `testing/TEST-STRATEGY.md`, `ACCEPTANCE-TESTS.md`, `TRACEABILITY.md` |
+| Quality | `testing/TEST-STRATEGY.md`, `ACCEPTANCE-TESTS.md`, `TRACEABILITY.md`, `testing/checkpoints/` |
 | Planning | `planning/ROADMAP.md`, `BACKLOG.md`, `RISK-REGISTER.md` |
 | Operations | `operations/DEVELOPMENT-GUIDE.md`, `BUILD-RELEASE.md`, `RUNBOOK.md` |
 

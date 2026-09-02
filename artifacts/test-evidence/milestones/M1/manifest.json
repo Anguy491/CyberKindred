@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "1.0.0",
+  "milestone": "M1",
+  "candidateCommit": "7668a4e3da64982a79fff414fdff2385adf7c331",
+  "capturedAt": "2026-09-02",
+  "environment": {
+    "cohort": "windows-11-x64-standard-user",
+    "osVersionBuild": "10.0.26200",
+    "rust": "1.98.0",
+    "node": "24.19.0",
+    "pnpm": "11.16.0",
+    "containsUserIdentifiers": false
+  },
+  "milestoneSmokes": [
+    {
+      "id": "TASK-001-gsmtc",
+      "status": "passed",
+      "evidence": "spikes/gsmtc/evidence/TASK-001-MATRIX.md"
+    },
+    {
+      "id": "TASK-002-audio-fixture-matrix",
+      "status": "passed",
+      "summary": "6/6 fixed generated formats decoded; all fixture hashes matched; corrupt input isolated",
+      "evidence": "spikes/audio/DEPENDENCY-FINDINGS.md"
+    },
+    {
+      "id": "TASK-003-windows-platform",
+      "status": "passed_with_known_gaps",
+      "evidence": "spikes/windows/evidence/TASK-003-MATRIX.md"
+    }
+  ],
+  "acceptanceInventory": [
+    { "id": "TEST-APL-001-m1-environment", "status": "passed" },
+    { "id": "TEST-APL-002-product-ui", "status": "not_run" },
+    { "id": "Manual-TASK-002", "status": "not_run" },
+    { "id": "TEST-ONB-002-product", "status": "not_run" },
+    { "id": "TEST-SCH-002-product", "status": "not_run" },
+    { "id": "TEST-SET-003-product", "status": "not_run" },
+    { "id": "TEST-DAT-004-product", "status": "not_run" },
+    { "id": "TEST-COMPAT-001", "status": "not_run" }
+  ],
+  "hardGates": [
+    { "id": "secret-boundary", "status": "passed" },
+    { "id": "file-network-permission-scope", "status": "passed" },
+    { "id": "logging-redaction", "status": "passed" },
+    { "id": "explicit-sound-paid-action", "status": "passed" },
+    { "id": "public-contract-validity", "status": "passed" },
+    { "id": "data-integrity", "status": "passed" },
+    { "id": "critical-high-security-findings", "status": "passed" }
+  ],
+  "actualFailures": [],
+  "knownGaps": [
+    { "id": "audio-manual-device-matrix", "status": "not_run", "targetMilestone": "M3/M7" },
+    { "id": "full-format-fixture-matrix", "status": "not_run", "targetMilestone": "M3/M7" },
+    { "id": "product-playback-latency-soak", "status": "not_run", "targetMilestone": "M3/M7" },
+    { "id": "gsmtc-product-ui-multiversion", "status": "not_run", "targetMilestone": "M6/M7" },
+    { "id": "notification-tray-login-cycle", "status": "not_run", "targetMilestone": "M5/M6/M7" },
+    { "id": "nsis-windows10-clean-vm", "status": "not_run", "targetMilestone": "M7" }
+  ],
+  "checkpointConclusion": "passed_with_known_gaps",
+  "targetMilestone": "M2"
+}

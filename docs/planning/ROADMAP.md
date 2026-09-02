@@ -32,7 +32,7 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M1 — Feasibility and platform probes
 
-**Status:** In Progress — `TASK-001` and `TASK-002` complete; `TASK-003` pending.
+**Status:** Complete — `Passed with known gaps` on 2026-09-02; see [`M1 checkpoint`](../testing/checkpoints/M1.md).
 
 **Goal:** 用最小可丢弃探针消除 Windows 媒体与音频的高风险未知数，不形成产品 UI。
 
@@ -41,6 +41,8 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 **Checkpoint criteria:** 在一次 M1 聚合记录中保存每个探针的环境、结果、失败回退与 ADR/风险更新；Apple Music 不支持的 capability 不进入承诺。记录为 `Passed` 或 `Passed with known gaps` 后立即进入 M2，不等待用户签字。
 
 ## M2 — Application foundation
+
+**Status:** In Progress — activated automatically after the M1 checkpoint on 2026-09-02.
 
 **Goal:** 建立可测试的 Tauri/React/Rust 外壳与契约边界。
 

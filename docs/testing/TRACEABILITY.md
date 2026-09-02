@@ -14,6 +14,8 @@
 
 任务状态仍以 [`BACKLOG.md`](../planning/BACKLOG.md) 为准，milestone 状态、checkpoint 结论与自动转场以 [`ROADMAP.md`](../planning/ROADMAP.md) 为准。`TASK-001` 的 M1 `TEST-APL-001/002` 证据归档于 [`TASK-001-MATRIX.md`](../../spikes/gsmtc/evidence/TASK-001-MATRIX.md)；M6 产品 UI 验收仍由 `TASK-025` 承担。`TASK-002` 的 [`Manual-TASK-002`](../../spikes/audio/MANUAL-TEST.md) 与其他探针证据在 M1 checkpoint 集中审阅；它不替代本矩阵为 FR-LIB-001、NFR-PERF-003、NFR-REL-004、NFR-COMPAT-002 映射的后续产品 `TEST-*`。
 
+M1 已由 [`M1 checkpoint`](checkpoints/M1.md) 与其 [`evidence manifest`](../../artifacts/test-evidence/milestones/M1/manifest.json) 聚合记录。`TASK-002` 的 hermetic matrix 与 `TASK-003` 的标准用户 Credential Manager/HKCU/reset smoke 已完成；未执行的真实听感、双设备、通知/托盘/登录、NSIS 与完整产品 `TEST-*` 均保留为 `Not Run`/known gap，不因探针完成而改写本矩阵的后续验收范围。
+
 ## 2. Functional requirements
 
 ### 2.1 Onboarding
