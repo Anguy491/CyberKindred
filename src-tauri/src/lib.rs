@@ -1,14 +1,17 @@
 #![forbid(unsafe_code)]
 
 pub mod contracts;
+pub mod diagnostics;
 pub mod ipc;
 pub mod storage;
 
 use chrono::Utc;
+use diagnostics::{DiagnosticEvent, DiagnosticLog, ValidatedLogDirectory};
 use ipc::{AppCapabilities, CapabilitiesService, EmptyRequest};
-use std::io;
+use std::{io, sync::Mutex};
 use storage::{AppPaths, Storage};
 use tauri::Manager;
+use uuid::Uuid;
 
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)] // Tauri extracts managed State by value.
@@ -28,19 +31,29 @@ pub fn run() -> tauri::Result<()> {
     tauri::Builder::default()
         .manage(capabilities)
         .setup(|app| {
+            let now_ms = Utc::now().timestamp_millis();
             let paths = AppPaths::create(
                 app.path().app_data_dir()?,
                 app.path().app_cache_dir()?,
                 app.path().app_log_dir()?,
             )?;
+            let log_directory =
+                ValidatedLogDirectory::new(paths.log_directory().to_path_buf())?;
+            let (mut diagnostic_log, _maintenance) =
+                DiagnosticLog::open(log_directory, now_ms)?;
+            diagnostic_log.write(DiagnosticEvent::ApplicationStarted {
+                correlation_id: Uuid::now_v7(),
+                occurred_at_ms: now_ms,
+            })?;
             let storage = tauri::async_runtime::block_on(async {
                 let storage = Storage::open(&paths, env!("CARGO_PKG_VERSION")).await?;
                 storage
                     .repository()
-                    .run_retention_batch(Utc::now().timestamp_millis(), 500)
+                    .run_retention_batch(now_ms, 500)
                     .await?;
                 Ok::<Storage, storage::StorageError>(storage)
             })?;
+            app.manage(Mutex::new(diagnostic_log));
             app.manage(storage);
             Ok(())
         })
