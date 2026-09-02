@@ -2,15 +2,15 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Quality Engineering |
 | Last Verified | 2026-09-02 |
-| Source of Truth For | `TASK-002` 本地音频解码、播放、seek 与默认设备切换的唯一任务级人工验收步骤 |
+| Source of Truth For | `TASK-002` 本地音频解码、播放、seek 与默认设备切换的人工证据步骤 |
 | Related Documents | `README.md`, `DEPENDENCY-FINDINGS.md`, `fixtures/LICENSE.md`, `../../docs/testing/TEST-STRATEGY.md` |
 
 ## 1. 结论规则
 
-测试人员必须在真实 Windows 输出设备上逐项执行本手册并保存去标识证据。全部勾选后才能把 `TASK-002` 从 `Review` 改为 `Done`；任一失败都记录环境、步骤、预期、实际和脱敏日志，任务退回 `In Progress`。静态构建结果不能替代听感和设备切换结果。
+测试人员在真实 Windows 输出设备上执行本手册时必须逐项保存去标识证据；静态构建结果不能替代听感和设备切换结果。按 ADR-0007，任务实现与直接自动自检完成后可以标记 `Done`，人工项目在 M1 checkpoint 聚合判定：未执行的非硬门槛项目记为 `Not Run` 与 known gap，已执行失败如实记录并按影响判定，任何 hard-gate 失败不得递延。
 
 本手册只判定 M1 技术可行性。它不声称完成 UI P95、200 次控制、20 次系统变化、每格式五个 fixture 或产品 playback actor 验收；这些仍由后续 `TEST-RAD-002`、`TEST-APL-004`、`TEST-LIB-001` 和相关任务承担。
 

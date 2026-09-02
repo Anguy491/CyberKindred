@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Playback Architecture |
 | Last Verified | 2026-09-02 |
 | Source of Truth For | M1 本地音频探针观察到的 rodio、Symphonia、lofty 职责与版本边界 |

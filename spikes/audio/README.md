@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Playback Architecture |
 | Last Verified | 2026-09-02 |
 | Source of Truth For | `TASK-002` 探针用途、边界、命令和证据入口 |
@@ -55,6 +55,6 @@ cargo build --locked --release --manifest-path .\spikes\audio\Cargo.toml
 
 ## Evidence and status
 
-任务级验收只按 [Manual-TASK-002](MANUAL-TEST.md) 人工执行。`cargo fmt`、`cargo clippy` 和 `cargo build` 只证明实现可格式化、可 lint、可编译，不替代真实扬声器、听感、暂停/seek 或设备切换证据。人工证据未回填前，`TASK-002` 保持 `Review`，不得标记 `Done`。
+[Manual-TASK-002](MANUAL-TEST.md) 定义真实扬声器、听感、暂停/seek 与设备切换证据；`cargo fmt`、`cargo clippy` 和 `cargo build` 不能替代这些人工结果。按 ADR-0007 的 milestone checkpoint 规则，任务实现与直接自动自检完成后可标记 `Done`；尚未执行的非硬门槛人工项目必须在 M1 checkpoint 如实记录为 `Not Run` 与 known gap，不能写成 `Pass`。任何已执行失败或涉及未经确认出声、安全、隐私、权限、契约或数据完整性的失败仍会阻止放行。
 
 原始运行记录写到已忽略的 `spikes/audio/evidence-local/`，不得提交含机器名、用户名、绝对路径或个人音频信息的证据。fixture 内容来源与许可见 [fixtures/LICENSE.md](fixtures/LICENSE.md)。

@@ -38,3 +38,5 @@
 ## M1 validation note
 
 2026-09-02 的 `TASK-001` 只读探针在 Windows 11 Home build 26200、Apple Music package `1.1540.23042.0` 上验证了 `RequestAsync → GetSessions → SourceAppUserModelId/GetPlaybackInfo/GetTimelineProperties/TryGetMediaPropertiesAsync` 路径可用。App 未播放时观察到精确 AUMID `AppleInc.AppleMusicWin_nzyj5cx40ttqa!App`、`opened` 状态、空媒体正文与受限 capability；辅助播放测试又观察到媒体字段、timeline、播放/暂停、切歌和 capability 的语义变化，50 次机器计时控制均在 712 ms 内被探针观察，支持“字段不推断、capability-driven、会话身份绑定”的原决策。该观察不证明所有版本 AUMID 恒定，也不替代产品 UI 的 `NFR-PERF-004` 验收，因此不改变本 ADR 的产品边界。
+
+同日的 `TASK-002` hermetic matrix 在固定 SHA-256 的原创许可 fixture 上验证 direct `symphonia 0.6.1` 可完整解码 MP3、FLAC、M4A/MP4、AAC、WAV、OGG，`lofty 0.25.1` 可只读取得预期属性/标签/封面，且损坏 MP3 被隔离而不影响六个正常样本。依赖图同时确认 `rodio 0.22.2` 内部解析 `symphonia 0.5.5`；产品路径仍必须让 direct 0.6.1 负责有界流式 decode、rodio 只负责 output/player，不得把探针的 `rodio::Decoder` 路径冒充为 ARCH-005 的最终实现。真实听感、六格式控制、双设备切换与资源采样尚未执行，作为 M1 known gap 递延到 M3 `TASK-014`，不改变本 ADR 的技术选择。

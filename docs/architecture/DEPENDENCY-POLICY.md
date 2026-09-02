@@ -62,7 +62,7 @@ UI 字体 `Space Grotesk`、`Space Mono`、`Doto` 作为本地静态资产按 SI
 
 ### 2.3 Documentation Baseline v1 exact pins
 
-下列版本在 2026-09-01 通过 [npm registry](https://www.npmjs.com/) 与 [crates.io](https://crates.io/) 核对，是 M2 必须写入 manifest 的直接依赖版本。`Cargo.lock`/`pnpm-lock.yaml` 解析出的传递版本才是构建事实；若 M1 探针证明任一 pin 不兼容，只能通过单独依赖变更更新本节、风险与验证证据，不得在脚手架命令中静默选择其他版本。
+下列版本在 2026-09-02 通过 [npm registry](https://www.npmjs.com/) 与 [crates.io](https://crates.io/) 核对，是 M2 必须写入 manifest 的直接依赖版本。`Cargo.lock`/`pnpm-lock.yaml` 解析出的传递版本才是构建事实；若 M1 探针证明任一 pin 不兼容，只能通过单独依赖变更更新本节、风险与验证证据，不得在脚手架命令中静默选择其他版本。
 
 | npm package | Exact version | Role |
 |---|---:|---|
@@ -76,23 +76,27 @@ UI 字体 `Space Grotesk`、`Space Mono`、`Doto` 作为本地静态资产按 SI
 | `@tauri-apps/plugin-dialog` | `2.7.3` | dialog JS bindings |
 | `@tauri-apps/plugin-notification` | `2.4.0` | notification JS bindings |
 | `@tauri-apps/plugin-autostart` | `2.5.1` | autostart JS bindings |
+| `@types/react`, `@types/react-dom` | `19.2.18`, `19.2.5` | React/DOM compile-time types |
+| `@types/node` | `24.13.3` | Node/Vite configuration compile-time types |
+| `oxlint` | `1.81.0` | TypeScript/React static lint；只作为开发依赖，不启用 optional type-aware plugin |
 
 | Rust crate | Exact version | Rust crate | Exact version |
 |---|---:|---|---:|
-| `tauri` | `2.11.5` | `tokio` | `1.53.1` |
-| `tauri-plugin-dialog` | `2.7.3` | `tauri-plugin-notification` | `2.4.0` |
-| `tauri-plugin-autostart` | `2.5.1` | `tauri-plugin-single-instance` | `2.4.4` |
-| `serde` | `1.0.229` | `serde_json` | `1.0.151` |
-| `thiserror` | `2.0.20` | `tracing` | `0.1.44` |
-| `tracing-subscriber` | `0.3.23` | `sqlx` | `0.9.0` |
-| `reqwest` | `0.13.4` | `url` | `2.5.8` |
-| `rodio` | `0.22.2` | `symphonia` | `0.6.1` |
-| `lofty` | `0.25.1` | `windows` | `0.62.2` |
-| `uuid` | `1.26.0` | `chrono` | `0.4.45` |
-| `chrono-tz` | `0.10.4` | `sha2` | `0.11.0` |
-| `hex` | `0.4.3` | `secrecy` | `0.10.3` |
-| `zeroize` | `1.9.0` | `jsonschema` | `0.52.1` |
-| `mime` | `0.3.17` | `infer` | `0.22.0` |
+| `tauri` | `2.11.5` | `tauri-build` | `2.6.3` |
+| `tokio` | `1.53.1` | `tauri-plugin-dialog` | `2.7.3` |
+| `tauri-plugin-notification` | `2.4.0` | `tauri-plugin-autostart` | `2.5.1` |
+| `tauri-plugin-single-instance` | `2.4.4` | `serde` | `1.0.229` |
+| `serde_json` | `1.0.151` | `thiserror` | `2.0.20` |
+| `tracing` | `0.1.44` | `tracing-subscriber` | `0.3.23` |
+| `sqlx` | `0.9.0` | `reqwest` | `0.13.4` |
+| `url` | `2.5.8` | `rodio` | `0.22.2` |
+| `symphonia` | `0.6.1` | `lofty` | `0.25.1` |
+| `windows` | `0.62.2` | `uuid` | `1.26.0` |
+| `chrono` | `0.4.45` | `chrono-tz` | `0.10.4` |
+| `sha2` | `0.11.0` | `hex` | `0.4.3` |
+| `secrecy` | `0.10.3` | `zeroize` | `1.9.0` |
+| `jsonschema` | `0.52.1` | `mime` | `0.3.17` |
+| `infer` | `0.22.0` |  |  |
 
 `TASK-002` 的依赖图确认 `rodio 0.22.2` 内部仍解析到 `symphonia 0.5.5`，与项目 direct pin `symphonia 0.6.1` 并存且不能类型级合并。M1 探针只在可丢弃交互播放中使用 `rodio::Decoder`；产品路径必须保持 `rodio` 负责 output/player、direct `symphonia 0.6.1` 负责流式 decode、`lofty 0.25.1` 负责只读标签/封面的 ARCH-005 边界。`TASK-014` 若不能以有界内存、可 seek 的 `Source`/mixer adapter 落实该边界，须在实现前按依赖变更流程对齐版本或提交 ADR，不得静默复制探针的双 decoder 路径。
 
@@ -111,7 +115,7 @@ UI 字体 `Space Grotesk`、`Space Mono`、`Doto` 作为本地静态资产按 SI
 | `cargo-deny`, `cargo-audit`, `pnpm audit` | license/advisory/duplicate 检查 | CI 和 release 必跑；例外必须有到期日与风险记录。 |
 | `cargo-nextest` | Rust test runner | 可选执行工具，不改变测试语义。 |
 
-测试包同样固定：`vitest 4.1.11`、`@testing-library/react 16.3.3`、`@testing-library/user-event 14.6.6`、`@testing-library/jest-dom 7.0.1`、`jsdom 30.0.1`、`playwright 1.62.1`、`webdriverio/@wdio/cli/@wdio/local-runner/@wdio/mocha-framework 9.31.5`、`axe-core/@axe-core/playwright 4.13.0`；Rust dev-dependencies 固定 `proptest 1.11.0`、`wiremock 0.6.5`、`tempfile 3.27.0`、`insta 1.48.0`。`tauri-driver 2.0.6`、`cargo-deny`、`cargo-audit` 与 `cargo-nextest` 作为 CI toolchain binary 在 M2 记录精确安装版本与 SHA-256；它们不进入应用依赖图。
+测试包同样固定：`vitest 4.1.11`、`@vitest/coverage-v8 4.1.11`、`@testing-library/dom 10.4.1`、`@testing-library/react 16.3.3`、`@testing-library/user-event 14.6.6`、`@testing-library/jest-dom 7.0.1`、`jsdom 30.0.1`、`playwright 1.62.1`、`webdriverio/@wdio/cli/@wdio/local-runner/@wdio/mocha-framework 9.31.5`、`axe-core/@axe-core/playwright 4.13.0`；Rust dev-dependencies 固定 `proptest 1.11.0`、`wiremock 0.6.5`、`tempfile 3.27.0`、`insta 1.48.0`。CI toolchain binary 固定为 `tauri-driver 2.0.6`、`cargo-nextest 0.9.143`、`cargo-deny 0.20.2`、`cargo-audit 0.22.2` 与 `cargo-llvm-cov 0.9.0`；M2 在工具清单记录 registry source、安装版本与本机 executable SHA-256，它们不进入应用依赖图。
 
 ## 4. Conditional 依赖
 

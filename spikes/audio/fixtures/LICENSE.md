@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft |
+| Status | Approved |
 | Owner | Playback Architecture |
 | Last Verified | 2026-09-02 |
 | Source of Truth For | `spikes/audio/fixtures/` 中音频内容的来源、许可与生成边界 |
