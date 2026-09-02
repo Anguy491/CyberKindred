@@ -42,13 +42,15 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M2 — Application foundation
 
-**Status:** Active implementation — M2 hard gates did not pass on 2026-09-02; see [`M2 checkpoint`](../testing/checkpoints/M2.md). Product Owner resolved the three blocking semantics on 2026-09-03, and `TASK-008` implementation/review closed `RISK-016`–`RISK-018`; M2 remains the only active milestone while `TASK-010` and final hard-gate revalidation complete.
+**Status:** Complete — `Passed with known gaps` on 2026-09-03; see [`M2 checkpoint`](../testing/checkpoints/M2.md). The 2026-09-02 blocked result remains preserved in that checkpoint's historical section; the authorized semantics, `TASK-008`, `TASK-010` and final hard-gate revalidation are now complete.
 
 **Goal:** 建立可测试的 Tauri/React/Rust 外壳与契约边界。
 
 **Checkpoint criteria:** candidate 可启动并展示空壳导航；固定依赖、IPC 错误封装、SQLite 迁移、secret store、日志脱敏与 schema contract tests 的最小链路可运行。CI 完整矩阵和覆盖率阈值可登记后递延，但构建、secret/日志与契约硬门槛必须通过。
 
 ## M3 — Local radio vertical slice
+
+**Status:** Active implementation — `TASK-011` claimed on 2026-09-03 after the M2 checkpoint passed.
 
 **Goal:** 从导入曲库到生成并连续播放一次完整本地节目。
 

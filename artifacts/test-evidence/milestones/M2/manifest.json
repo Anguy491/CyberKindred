@@ -1,30 +1,51 @@
 {
   "schemaVersion": "1.0.0",
   "milestone": "M2",
-  "lastCommittedFoundation": "2ae920e24a204fdcc18497c58299473802027a35",
-  "candidateState": "blocked_uncommitted_provider_worktree",
-  "capturedAt": "2026-09-02",
+  "candidateCommit": "acbd08390687eb0f238251b19c236be3806d9de2",
+  "capturedAt": "2026-09-03",
   "environment": {
     "cohort": "windows-11-x64",
     "osVersionBuild": "10.0.26200",
     "rust": "1.98.0",
     "node": "24.19.0",
     "pnpm": "11.16.0",
+    "tauriDriver": "2.0.6",
+    "edgeDriver": "152.0.4191.53",
     "containsUserIdentifiers": false
   },
   "milestoneSmokes": [
-    { "id": "frontend-check", "status": "passed", "summary": "45 tests; build/type/lint/docs pass" },
-    { "id": "rust-workspace", "status": "passed", "summary": "100 passed; 2 explicit live canaries ignored; 0 failed" },
-    { "id": "dependency-policy", "status": "passed", "summary": "Cargo gates pass; full npm tree reports no known vulnerability after WebdriverIO removal" },
-    { "id": "desktop-shell-e2e", "status": "passed", "summary": "Isolated Windows Tauri boot and Settings navigation passed; dedicated data and processes cleaned" },
-    { "id": "provider-contract-review", "status": "failed", "summary": "No Critical; strict terminal delivery exactly-once remains unproven" }
+    {
+      "id": "frontend-check",
+      "status": "passed",
+      "summary": "66 tests; statements 78.79%, branches 64.37%, functions 76.78%, lines 79.96%; contracts/lint/type/build/docs pass"
+    },
+    {
+      "id": "rust-workspace",
+      "status": "passed",
+      "summary": "112 library tests plus 17 integration and 3 credential tests passed; 2 explicit live canaries ignored; strict clippy/fmt pass"
+    },
+    {
+      "id": "desktop-onboarding-navigation",
+      "status": "passed",
+      "summary": "Fresh isolated Windows desktop completed seven-step Apple/local-only/text-only/not-now onboarding, reached silent RADIO and navigated to Settings; filtered navigation also passed independently"
+    },
+    {
+      "id": "dependency-policy",
+      "status": "passed",
+      "summary": "cargo audit, cargo deny and pnpm production audit report no unallowed vulnerability; allowed transitive warnings remain visible"
+    },
+    {
+      "id": "independent-review",
+      "status": "passed_after_remediation",
+      "summary": "Library-root integrity, ancestor redirection, Key reveal/retention and TTS opt-out findings fixed; zero open Critical/High/Medium"
+    }
   ],
   "acceptanceInventory": [
-    { "id": "TEST-ONB-002", "status": "not_run" },
-    { "id": "TEST-ONB-003", "status": "not_run" },
-    { "id": "TEST-SET-001", "status": "not_run" },
-    { "id": "TEST-ONB-001", "status": "not_run" },
-    { "id": "TEST-ONB-004", "status": "not_run" },
+    { "id": "TEST-ONB-001-m2-subset", "status": "passed_with_known_gaps" },
+    { "id": "TEST-ONB-002", "status": "passed" },
+    { "id": "TEST-ONB-003-m2-subset", "status": "passed_with_known_gaps" },
+    { "id": "TEST-ONB-004-m2-subset", "status": "passed_with_known_gaps" },
+    { "id": "TEST-SET-001-backend-subset", "status": "passed_with_known_gaps" },
     { "id": "TEST-COMPAT-001", "status": "not_run" }
   ],
   "hardGates": [
@@ -32,20 +53,63 @@
     { "id": "file-network-permission-scope", "status": "passed" },
     { "id": "logging-redaction", "status": "passed" },
     { "id": "explicit-sound-paid-action", "status": "passed" },
-    { "id": "public-contract-validity", "status": "failed" },
+    { "id": "public-contract-validity", "status": "passed" },
     { "id": "data-integrity", "status": "passed" },
-    { "id": "critical-high-security-findings", "status": "failed" }
+    { "id": "critical-high-security-findings", "status": "passed" }
   ],
-  "actualFailures": [
-    { "id": "RISK-016", "status": "failed" },
-    { "id": "RISK-017", "status": "failed" },
-    { "id": "RISK-018", "status": "failed" }
-  ],
+  "actualFailures": [],
   "knownGaps": [
-    { "id": "windows-live-credential-canaries", "status": "not_run", "targetMilestone": "M2/M7" },
-    { "id": "windows-desktop-e2e-full-flows", "status": "not_run", "targetMilestone": "M2/M7" },
-    { "id": "windows10-clean-vm", "status": "not_run", "targetMilestone": "M7" }
+    {
+      "id": "full-onboarding-desktop-matrix",
+      "status": "not_run",
+      "mitigation": "fake-picker plus exact-prefix/reopen tests and Apple fallback desktop path passed",
+      "targetMilestone": "M5/M7"
+    },
+    {
+      "id": "audible-tts-preview-cancel",
+      "status": "not_run",
+      "mitigation": "M2 reports preview unavailable, disables the action and retains text-only fallback",
+      "targetMilestone": "M3/TASK-017"
+    },
+    {
+      "id": "startup-loopback-full-axe-matrix",
+      "status": "not_run",
+      "mitigation": "silent-by-construction desktop route and representative axe states passed",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "settings-ui-live-provider",
+      "status": "not_run",
+      "mitigation": "hermetic provider/credential/atomicity suites passed; live flags remain explicit",
+      "targetMilestone": "M6/M7"
+    },
+    {
+      "id": "windows10-nsis-clean-vm",
+      "status": "not_run",
+      "mitigation": "development candidate only; no publication or elevation fallback",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "host-local-edgedriver-tool-copy",
+      "status": "cleanup_blocked_by_host_policy",
+      "mitigation": "outside repository and PATH, contains no product/user data, referenced only by explicit test command",
+      "targetMilestone": "manual host cleanup/M7 provisioning"
+    }
   ],
-  "checkpointConclusion": "blocked",
-  "targetMilestone": "M2"
+  "historicalBlockedCheckpoint": {
+    "capturedAt": "2026-09-02",
+    "conclusion": "blocked",
+    "failedHardGates": [
+      "public-contract-validity",
+      "critical-high-security-findings"
+    ],
+    "failedRisks": [
+      "RISK-016",
+      "RISK-017",
+      "RISK-018"
+    ],
+    "resolution": "Product Owner decisions, implementation, regression suites and independent review completed on 2026-09-03"
+  },
+  "checkpointConclusion": "passed_with_known_gaps",
+  "targetMilestone": "M3"
 }
