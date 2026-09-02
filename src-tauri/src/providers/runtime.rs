@@ -1054,6 +1054,7 @@ mod tests {
         let result = runtime
             .preview(
                 VoicePreviewInput {
+                    operation_id: uuid::Uuid::now_v7(),
                     origin: &origin,
                     secret: &secret,
                     model_id: "gpt-4o-mini-tts",

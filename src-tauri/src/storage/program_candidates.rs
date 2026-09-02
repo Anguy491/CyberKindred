@@ -1,6 +1,8 @@
 //! Path-free repository projection for deterministic local program planning.
 
+use serde_json::Value;
 use sqlx::Row;
+use uuid::Uuid;
 
 use crate::program::{
     CandidateLoadRequest, CandidateTrack, MAX_CANDIDATE_SOURCE_ROWS, ProgramError, ProgramFuture,
@@ -8,6 +10,10 @@ use crate::program::{
 };
 
 use super::Repository;
+
+const MAX_PROFILE_TAGS: usize = 20;
+const MAX_PROFILE_TAG_CHARS: usize = 100;
+const MAX_RECENT_TRACKS: i64 = 20;
 
 impl ProgramRepository for Repository {
     fn load_candidate_tracks(
@@ -42,6 +48,94 @@ impl ProgramRepository for Repository {
             rows.iter().map(decode_candidate).collect()
         })
     }
+}
+
+impl Repository {
+    /// Loads the bounded, path-free local facts required by radio planning.
+    ///
+    /// Both projections come from one SQLite read transaction. The tuple is
+    /// `(profile_tags, recently_played_track_ids)` and intentionally contains
+    /// neither profile prose nor any filesystem field.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable read error when SQLite is unavailable, or an integrity
+    /// error when an authoritative profile/track row violates its contract.
+    pub(crate) async fn load_program_planning_facts(
+        &self,
+    ) -> Result<(Vec<String>, Vec<String>), super::StorageError> {
+        let mut transaction = self.writer.begin().await.map_err(|_| read_error())?;
+        let preferences_json: Option<String> = sqlx::query_scalar(
+            "SELECT program_preferences_json FROM user_profile WHERE id = 'current'",
+        )
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(|_| read_error())?;
+        let profile_tags = match preferences_json.as_deref() {
+            Some(encoded) => decode_profile_tags(encoded)?,
+            None => Vec::new(),
+        };
+
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT t.id, t.last_played_at_ms \
+             FROM tracks t \
+             JOIN library_roots r ON r.id = t.root_id \
+             WHERE r.enabled = 1 \
+               AND t.availability = 'available' \
+               AND t.last_played_at_ms IS NOT NULL \
+             ORDER BY t.last_played_at_ms DESC, t.id ASC \
+             LIMIT ?",
+        )
+        .bind(MAX_RECENT_TRACKS)
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(|_| read_error())?;
+        let recent_track_ids = rows
+            .into_iter()
+            .map(|(track_id, last_played_at_ms)| {
+                if last_played_at_ms < 0 || !is_canonical_uuid_v7(&track_id) {
+                    return Err(integrity_error());
+                }
+                Ok(track_id)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        transaction.commit().await.map_err(|_| read_error())?;
+        Ok((profile_tags, recent_track_ids))
+    }
+}
+
+fn decode_profile_tags(encoded: &str) -> Result<Vec<String>, super::StorageError> {
+    let document: Value = serde_json::from_str(encoded).map_err(|_| integrity_error())?;
+    let object = document.as_object().ok_or_else(integrity_error)?;
+    let Some(value) = object.get("initialPreferences") else {
+        return Ok(Vec::new());
+    };
+    let values = value.as_array().ok_or_else(integrity_error)?;
+    if values.len() > MAX_PROFILE_TAGS {
+        return Err(integrity_error());
+    }
+    values
+        .iter()
+        .map(|value| {
+            let tag = value.as_str().ok_or_else(integrity_error)?;
+            if tag.is_empty() || tag.chars().count() > MAX_PROFILE_TAG_CHARS {
+                return Err(integrity_error());
+            }
+            Ok(tag.to_owned())
+        })
+        .collect()
+}
+
+fn is_canonical_uuid_v7(value: &str) -> bool {
+    Uuid::parse_str(value).is_ok_and(|id| id.get_version_num() == 7 && id.to_string() == value)
+}
+
+const fn read_error() -> super::StorageError {
+    super::StorageError::new(super::StorageReason::StorageReadFailed)
+}
+
+const fn integrity_error() -> super::StorageError {
+    super::StorageError::new(super::StorageReason::StorageIntegrityFailed)
 }
 
 fn decode_candidate(row: &sqlx::sqlite::SqliteRow) -> Result<CandidateTrack, ProgramError> {
@@ -99,8 +193,7 @@ fn decode_candidate(row: &sqlx::sqlite::SqliteRow) -> Result<CandidateTrack, Pro
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{AppPaths, Storage};
-    use uuid::Uuid;
+    use crate::storage::{AppPaths, Storage, StorageReason};
 
     async fn fixture() -> (tempfile::TempDir, Storage, Repository, Uuid, Uuid) {
         let temp = tempfile::tempdir().expect("temporary root");
@@ -192,6 +285,78 @@ mod tests {
             .await
             .expect_err("unbounded request must fail");
         assert_eq!(error, ProgramError::InvalidSelectionRequest);
+        storage.close().await;
+    }
+
+    #[tokio::test]
+    async fn program_context_repository_bounds_recent_order_and_never_projects_paths() {
+        let (temp, storage, repository, _adopted_id, _original_id) = fixture().await;
+        let root_id: String = sqlx::query_scalar("SELECT id FROM library_roots LIMIT 1")
+            .fetch_one(&repository.writer)
+            .await
+            .expect("root id");
+        let tags = (0..MAX_PROFILE_TAGS)
+            .map(|index| format!("preference-{index}"))
+            .collect::<Vec<_>>();
+        let preferences = serde_json::json!({
+            "initialPreferences": tags,
+            "narrationDensity": "balanced",
+        });
+        sqlx::query("INSERT INTO user_profile(id, timezone, routine_json, program_preferences_json, profile_revision, created_at_ms, updated_at_ms) VALUES('current', 'UTC', '{}', ?, 1, 1, 1)")
+            .bind(preferences.to_string())
+            .execute(&repository.writer)
+            .await
+            .expect("profile");
+
+        let mut played = Vec::new();
+        for index in 0..25_i64 {
+            let track_id = Uuid::now_v7();
+            let relative_path = format!("private-{index}.wav");
+            sqlx::query("INSERT INTO tracks(id, root_id, relative_path, relative_path_key, availability, format, file_size_bytes, modified_at_ms, duration_ms, genre_json, metadata_confidence, created_at_ms, updated_at_ms, last_played_at_ms) VALUES(?, ?, ?, ?, 'available', 'wav', 1, 1, 60000, '[]', 1.0, 1, 1, ?)")
+                .bind(track_id.to_string())
+                .bind(&root_id)
+                .bind(&relative_path)
+                .bind(&relative_path)
+                .bind(1_000 + index)
+                .execute(&repository.writer)
+                .await
+                .expect("recent track");
+            played.push(track_id.to_string());
+        }
+
+        let (profile_tags, recent_track_ids) = repository
+            .load_program_planning_facts()
+            .await
+            .expect("planning facts");
+        assert_eq!(profile_tags.len(), MAX_PROFILE_TAGS);
+        assert_eq!(profile_tags[0], "preference-0");
+        assert_eq!(recent_track_ids.len(), MAX_RECENT_TRACKS as usize);
+        assert_eq!(
+            recent_track_ids,
+            played.into_iter().rev().take(20).collect::<Vec<_>>()
+        );
+        let projected = format!("{profile_tags:?}{recent_track_ids:?}");
+        assert!(!projected.contains("private-"));
+        assert!(!projected.contains(temp.path().to_string_lossy().as_ref()));
+        storage.close().await;
+    }
+
+    #[tokio::test]
+    async fn program_context_repository_rejects_corrupt_profile_bounds() {
+        let (_temp, storage, repository, _adopted_id, _original_id) = fixture().await;
+        let tags = (0..=MAX_PROFILE_TAGS)
+            .map(|index| format!("preference-{index}"))
+            .collect::<Vec<_>>();
+        sqlx::query("INSERT INTO user_profile(id, timezone, routine_json, program_preferences_json, profile_revision, created_at_ms, updated_at_ms) VALUES('current', 'UTC', '{}', ?, 1, 1, 1)")
+            .bind(serde_json::json!({ "initialPreferences": tags }).to_string())
+            .execute(&repository.writer)
+            .await
+            .expect("corrupt profile fixture");
+        let error = repository
+            .load_program_planning_facts()
+            .await
+            .expect_err("over-bound profile must fail closed");
+        assert_eq!(error.reason(), StorageReason::StorageIntegrityFailed);
         storage.close().await;
     }
 }

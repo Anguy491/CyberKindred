@@ -15,6 +15,7 @@ use crate::{
 
 pub const OPERATION_COMPLETED_EVENT: &str = "cyberkindred://v1/operation/completed";
 pub const OPERATION_FAILED_EVENT: &str = "cyberkindred://v1/operation/failed";
+pub const OPERATION_CANCELLED_EVENT: &str = "cyberkindred://v1/operation/cancelled";
 const STARTUP_RECOVERY_BATCH: u32 = 100;
 const MAX_STARTUP_RECOVERY_OPERATIONS: u64 = 1_000;
 
@@ -45,9 +46,26 @@ struct OperationFailedPayload {
     error: ApiError,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum CancelledOperationKind {
+    VoicePreview,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct OperationCancelledPayload {
+    schema_version: String,
+    sequence: u64,
+    occurred_at: String,
+    operation_id: Uuid,
+    kind: CancelledOperationKind,
+}
+
 enum PreviewTerminalEvent {
     Completed(OperationCompletedPayload),
     Failed(OperationFailedPayload),
+    Cancelled(OperationCancelledPayload),
 }
 
 fn map_terminal_event(
@@ -58,8 +76,18 @@ fn map_terminal_event(
     envelope.occurred_at = terminal.occurred_at;
     envelope.validate()?;
 
-    Ok(match terminal.error {
-        None => PreviewTerminalEvent::Completed(OperationCompletedPayload {
+    if terminal.cancelled && terminal.error.is_some() {
+        return Err(ApiError::unexpected());
+    }
+    Ok(match (terminal.cancelled, terminal.error) {
+        (true, None) => PreviewTerminalEvent::Cancelled(OperationCancelledPayload {
+            schema_version: envelope.schema_version,
+            sequence: envelope.sequence,
+            occurred_at: envelope.occurred_at,
+            operation_id: terminal.operation_id,
+            kind: CancelledOperationKind::VoicePreview,
+        }),
+        (false, None) => PreviewTerminalEvent::Completed(OperationCompletedPayload {
             schema_version: envelope.schema_version,
             sequence: envelope.sequence,
             occurred_at: envelope.occurred_at,
@@ -67,13 +95,14 @@ fn map_terminal_event(
             kind: CompletedOperationKind::VoicePreview,
             output_label: None,
         }),
-        Some(error) => PreviewTerminalEvent::Failed(OperationFailedPayload {
+        (false, Some(error)) => PreviewTerminalEvent::Failed(OperationFailedPayload {
             schema_version: envelope.schema_version,
             sequence: envelope.sequence,
             occurred_at: envelope.occurred_at,
             operation_id: terminal.operation_id,
             error,
         }),
+        (true, Some(_)) => return Err(ApiError::unexpected()),
     })
 }
 
@@ -108,6 +137,10 @@ impl<R: Runtime> VoicePreviewEventSink for TauriVoicePreviewEventSink<R> {
             PreviewTerminalEvent::Failed(payload) => self
                 .app_handle
                 .emit(OPERATION_FAILED_EVENT, payload)
+                .map_err(|_| ApiError::unexpected()),
+            PreviewTerminalEvent::Cancelled(payload) => self
+                .app_handle
+                .emit(OPERATION_CANCELLED_EVENT, payload)
                 .map_err(|_| ApiError::unexpected()),
         }
     }
@@ -261,6 +294,7 @@ fn record_to_terminal(record: &OperationTerminalRecord) -> VoicePreviewTerminal 
         operation_id: record.operation_id,
         occurred_at: record.occurred_at.clone(),
         error: record.error.clone(),
+        cancelled: record.is_cancelled(),
     }
 }
 
@@ -320,6 +354,7 @@ mod tests {
                 operation_id,
                 occurred_at: OCCURRED_AT.to_owned(),
                 error: None,
+                cancelled: false,
             },
         )
         .expect("fixed terminal must map");
@@ -352,6 +387,7 @@ mod tests {
                 operation_id,
                 occurred_at: OCCURRED_AT.to_owned(),
                 error: Some(error),
+                cancelled: false,
             },
         )
         .expect("fixed terminal must map");
@@ -386,6 +422,7 @@ mod tests {
                 operation_id: Uuid::now_v7(),
                 occurred_at: OCCURRED_AT.to_owned(),
                 error: None,
+                cancelled: false,
             },
         )
         .expect("first event must map");
@@ -395,6 +432,7 @@ mod tests {
                 operation_id: Uuid::now_v7(),
                 occurred_at: OCCURRED_AT.to_owned(),
                 error: Some(ApiError::unexpected()),
+                cancelled: false,
             },
         )
         .expect("second event must map");
@@ -404,6 +442,7 @@ mod tests {
                 operation_id: Uuid::now_v7(),
                 occurred_at: "not-a-time".to_owned(),
                 error: None,
+                cancelled: false,
             },
         );
 
@@ -416,6 +455,35 @@ mod tests {
         assert_eq!(first.sequence, 1);
         assert_eq!(second.sequence, 2);
         assert!(invalid.is_err());
+    }
+
+    #[test]
+    fn voice_preview_cancelled_payload_is_exact_evt_011() {
+        let operation_id = Uuid::parse_str("018f1f64-4ca0-7a2a-8e91-e89c389b3a33")
+            .expect("fixed UUID must be valid");
+        let event = map_terminal_event(
+            &ProcessSequence::default(),
+            VoicePreviewTerminal {
+                operation_id,
+                occurred_at: OCCURRED_AT.to_owned(),
+                error: None,
+                cancelled: true,
+            },
+        )
+        .expect("fixed terminal must map");
+        let PreviewTerminalEvent::Cancelled(payload) = event else {
+            panic!("cancelled preview must map to EVT-011");
+        };
+        assert_eq!(
+            serde_json::to_value(payload).expect("payload must serialize"),
+            json!({
+                "schemaVersion": "1.0.0",
+                "sequence": 1,
+                "occurredAt": OCCURRED_AT,
+                "operationId": operation_id,
+                "kind": "voice_preview"
+            })
+        );
     }
 
     #[test]
@@ -537,6 +605,36 @@ mod tests {
         assert_eq!(first.recovered_accepted, 0);
         assert_eq!(first.delivered, 1);
         assert_eq!(sink.events.lock().expect("events").len(), 1);
+        storage.close().await;
+    }
+
+    #[tokio::test]
+    async fn startup_recovery_replays_cancelled_terminal_as_evt_011_once() {
+        let (_temp, storage, repository) = outbox_fixture().await;
+        let operation_id = Uuid::now_v7();
+        accept(&repository, operation_id).await;
+        let (won, _) = repository
+            .cancel_voice_preview(operation_id, OCCURRED_AT.to_owned())
+            .await
+            .expect("cancel terminal");
+        assert!(won);
+        let sink = Arc::new(RecordingSink::default());
+        let recovery = StartupVoicePreviewOutboxRecovery::new(
+            repository,
+            sink.clone() as Arc<dyn VoicePreviewEventSink>,
+            Arc::new(FixedClock),
+        );
+        let first = recovery.ensure_recovered().await.expect("first recovery");
+        let second = recovery.ensure_recovered().await.expect("cached recovery");
+        assert_eq!(first, second);
+        assert_eq!(first.delivered, 1);
+        {
+            let events = sink.events.lock().expect("events");
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0].operation_id, operation_id);
+            assert!(events[0].cancelled);
+            assert!(events[0].error.is_none());
+        }
         storage.close().await;
     }
 

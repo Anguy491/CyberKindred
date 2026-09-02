@@ -2,6 +2,7 @@ use super::*;
 use crate::{
     providers::{
         CancellationFlag, Clock, ProviderCallContext, ProviderFailure, ProviderFailureCategory,
+        VoicePreviewInput, VoicePreviewer, VoiceView,
     },
     storage::{CanonicalOrigin, SecretValue},
 };
@@ -80,6 +81,24 @@ struct FakeTransport {
     calls: AtomicUsize,
 }
 
+struct FakeTransportFactory {
+    transport: Arc<FakeTransport>,
+    origins: Mutex<Vec<String>>,
+}
+
+impl SpeechTransportFactory for FakeTransportFactory {
+    fn for_origin(
+        &self,
+        origin: &CanonicalOrigin,
+    ) -> Result<Arc<dyn SpeechTransport>, ProviderFailure> {
+        self.origins
+            .lock()
+            .map_err(|_| ProviderFailure::new(ProviderFailureCategory::Unavailable))?
+            .push(origin.as_str().to_owned());
+        Ok(Arc::clone(&self.transport) as Arc<dyn SpeechTransport>)
+    }
+}
+
 impl FakeTransport {
     fn new(responses: Vec<FakeResponse>) -> Self {
         Self {
@@ -136,6 +155,8 @@ impl SpeechTransport for FakeTransport {
 struct FakePlayback {
     plays: AtomicUsize,
     stops: AtomicUsize,
+    played_operations: Mutex<Vec<Uuid>>,
+    stopped_operations: Mutex<Vec<Uuid>>,
     blocked: bool,
     release: Arc<tokio::sync::Notify>,
 }
@@ -145,6 +166,8 @@ impl FakePlayback {
         Self {
             plays: AtomicUsize::new(0),
             stops: AtomicUsize::new(0),
+            played_operations: Mutex::new(Vec::new()),
+            stopped_operations: Mutex::new(Vec::new()),
             blocked,
             release: Arc::new(tokio::sync::Notify::new()),
         }
@@ -154,8 +177,9 @@ impl FakePlayback {
 impl SpeechPlayback for FakePlayback {
     fn play(
         &self,
-        _operation_id: Uuid,
+        operation_id: Uuid,
         _bytes: Arc<[u8]>,
+        _authorization: SpeechAuthorization,
         operation_cancellation: CancellationFlag,
         caller_cancellation: CancellationFlag,
     ) -> provider::SpeechFuture<'_, Result<(), ProviderFailure>> {
@@ -165,6 +189,10 @@ impl SpeechPlayback for FakePlayback {
             });
         }
         self.plays.fetch_add(1, Ordering::SeqCst);
+        self.played_operations
+            .lock()
+            .expect("played operations")
+            .push(operation_id);
         let blocked = self.blocked;
         let release = Arc::clone(&self.release);
         Box::pin(async move {
@@ -179,8 +207,12 @@ impl SpeechPlayback for FakePlayback {
         })
     }
 
-    fn stop(&self, _operation_id: Uuid) {
+    fn stop(&self, operation_id: Uuid) {
         self.stops.fetch_add(1, Ordering::SeqCst);
+        self.stopped_operations
+            .lock()
+            .expect("stopped operations")
+            .push(operation_id);
         self.release.notify_waiters();
     }
 }
@@ -569,6 +601,14 @@ async fn tts_actor_second_click_cancel_stops_exact_playback_once() {
         }
     ));
     assert_eq!(playback.stops.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        playback
+            .stopped_operations
+            .lock()
+            .expect("stopped operations")
+            .as_slice(),
+        &[operation_id]
+    );
 }
 
 #[test]
@@ -620,6 +660,130 @@ fn tts_cache_lru_never_evicts_an_active_lease() {
     clock.advance(SPEECH_CACHE_TTL_MS);
     cache.prune(clock.now_ms());
     assert!(cache.snapshot_metadata().is_empty());
+}
+
+#[tokio::test]
+async fn speech_voice_previewer_uses_call_scoped_secret_fixed_text_and_current_origin() {
+    let clock = FakeClock::new(1_000);
+    let transport = Arc::new(FakeTransport::new(vec![FakeResponse::Immediate(Ok(mp3()))]));
+    let factory = Arc::new(FakeTransportFactory {
+        transport: Arc::clone(&transport),
+        origins: Mutex::new(Vec::new()),
+    });
+    let playback = Arc::new(FakePlayback::new(false));
+    let dormant_transport = Arc::new(FakeTransport::new(Vec::new()));
+    let credentials = Arc::new(FakeCredentials::new());
+    let actor = Arc::new(actor(
+        dormant_transport,
+        Arc::clone(&credentials),
+        Arc::clone(&playback),
+        &clock,
+    ));
+    let previewer = SpeechVoicePreviewer::new(
+        actor,
+        Arc::clone(&factory) as Arc<dyn SpeechTransportFactory>,
+        vec![VoiceView {
+            voice_id: "alloy".to_owned(),
+            display_name: "Alloy".to_owned(),
+            preview_available: true,
+        }],
+    )
+    .expect("valid previewer");
+    assert_eq!(transport.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(playback.plays.load(Ordering::SeqCst), 0);
+
+    let operation_id = Uuid::now_v7();
+    let origin = CanonicalOrigin::parse("https://api.openai.com").expect("origin");
+    let secret = SecretValue::new("task-017-call-scoped-secret".to_owned()).expect("secret");
+    previewer
+        .preview(
+            VoicePreviewInput {
+                operation_id,
+                origin: &origin,
+                secret: &secret,
+                model_id: "gpt-4o-mini-tts",
+                voice_id: "alloy",
+                text: VOICE_PREVIEW_TEXT_V1,
+            },
+            &ProviderCallContext::new(Duration::from_secs(45)),
+        )
+        .await
+        .expect("preview succeeds");
+
+    assert_eq!(transport.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(credentials.loads.load(Ordering::SeqCst), 0);
+    assert_eq!(playback.plays.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        factory.origins.lock().expect("origins").as_slice(),
+        &["https://api.openai.com"]
+    );
+    let captured = transport.captured.lock().expect("captured");
+    assert_eq!(captured.len(), 1);
+    assert_eq!(captured[0].text, VOICE_PREVIEW_TEXT_V1);
+    assert_eq!(captured[0].provenance, SpeechProvenance::VoicePreview);
+    let request = provider::serialized_request_for_test(
+        &SpeechInput::voice_preview(
+            "alloy".to_owned(),
+            "gpt-4o-mini-tts".to_owned(),
+            1.0,
+            "zh-CN".to_owned(),
+        )
+        .expect("preview input"),
+    );
+    assert!(!String::from_utf8_lossy(&request).contains("task-017-call-scoped-secret"));
+}
+
+#[tokio::test]
+async fn speech_voice_previewer_cancel_stops_exact_owned_playback() {
+    let clock = FakeClock::new(1_000);
+    let transport = Arc::new(FakeTransport::new(vec![FakeResponse::Immediate(Ok(mp3()))]));
+    let factory = Arc::new(FakeTransportFactory {
+        transport,
+        origins: Mutex::new(Vec::new()),
+    });
+    let playback = Arc::new(FakePlayback::new(true));
+    let actor = Arc::new(actor(
+        Arc::new(FakeTransport::new(Vec::new())),
+        Arc::new(FakeCredentials::new()),
+        Arc::clone(&playback),
+        &clock,
+    ));
+    let previewer = Arc::new(SpeechVoicePreviewer::openai_default(
+        actor,
+        factory as Arc<dyn SpeechTransportFactory>,
+    ));
+    let operation_id = Uuid::now_v7();
+    let task_previewer = Arc::clone(&previewer);
+    let task = tokio::spawn(async move {
+        let origin = CanonicalOrigin::parse("https://api.openai.com").expect("origin");
+        let secret = SecretValue::new("task-017-cancel-secret".to_owned()).expect("secret");
+        task_previewer
+            .preview(
+                VoicePreviewInput {
+                    operation_id,
+                    origin: &origin,
+                    secret: &secret,
+                    model_id: "gpt-4o-mini-tts",
+                    voice_id: "alloy",
+                    text: VOICE_PREVIEW_TEXT_V1,
+                },
+                &ProviderCallContext::new(Duration::from_secs(45)),
+            )
+            .await
+    });
+    while playback.plays.load(Ordering::SeqCst) == 0 {
+        tokio::task::yield_now().await;
+    }
+    previewer.cancel(operation_id);
+    assert!(task.await.expect("join").is_err());
+    assert_eq!(
+        playback
+            .stopped_operations
+            .lock()
+            .expect("stopped operations")
+            .as_slice(),
+        &[operation_id]
+    );
 }
 
 #[test]

@@ -14,8 +14,9 @@ mod service;
 mod traits;
 
 pub use dto::{
-    Ack, AudioOutputBehavior, DeleteSecretRequest, DeleteSecretResponse, Integration,
-    IntegrationState, IntegrationStatus, ListVoicesRequest, NarrationDensity, OperationAccepted,
+    Ack, AudioOutputBehavior, CancelOperationRequest, CancelOperationResponse,
+    CancelOperationState, DeleteSecretRequest, DeleteSecretResponse, Integration, IntegrationState,
+    IntegrationStatus, ListVoicesRequest, NarrationDensity, OperationAccepted, OperationKind,
     OriginSecretStatus, PreviewVoiceRequest, ProviderTestKind, SecretKind, SecretStatus,
     SettingsPatch, SettingsView, TestProviderRequest, TestProviderResponse, UpdateSettingsRequest,
     ValidateSecretRequest, ValidateSecretResponse, VoiceProvider, VoiceView, VoicesResponse,
@@ -25,7 +26,8 @@ pub use error::{ProviderFailure, ProviderFailureCategory};
 pub use runtime::ProviderRuntime;
 pub use service::{PREVIEW_PHRASE_V1, ProviderService};
 pub use traits::{
-    CancellationFlag, CandidateSecretValidator, Clock, ProviderCallContext, ProviderHealthProbe,
-    ProviderTestInput, SecretValidationInput, SystemClock, VoicePreviewEventSink,
-    VoicePreviewInput, VoicePreviewTerminal, VoicePreviewer,
+    CancellationFlag, CandidateSecretValidator, Clock, ProviderCallContext, ProviderFuture,
+    ProviderHealthProbe, ProviderTestInput, SecretValidationInput, SystemClock,
+    VoicePreviewCancelDisposition, VoicePreviewEventSink, VoicePreviewInput, VoicePreviewTerminal,
+    VoicePreviewer,
 };

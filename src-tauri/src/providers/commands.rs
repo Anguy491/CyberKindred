@@ -4,8 +4,9 @@ use tauri::State;
 
 use super::events::StartupVoicePreviewOutboxRecovery;
 use super::{
-    Ack, DeleteSecretRequest, DeleteSecretResponse, ListVoicesRequest, OperationAccepted,
-    PreviewVoiceRequest, ProviderService, SettingsView, TestProviderRequest, TestProviderResponse,
+    Ack, CancelOperationRequest, CancelOperationResponse, DeleteSecretRequest,
+    DeleteSecretResponse, ListVoicesRequest, OperationAccepted, PreviewVoiceRequest,
+    ProviderService, SettingsView, TestProviderRequest, TestProviderResponse,
     UpdateSettingsRequest, ValidateSecretRequest, ValidateSecretResponse, VoicesResponse,
 };
 use crate::ipc::{ApiError, EmptyRequest, parse_command_request};
@@ -104,6 +105,23 @@ pub async fn api_v1_preview_voice(
     let request = parse_command_request::<PreviewVoiceRequest>(&request)?;
     startup_recovery.ensure_recovered().await?;
     provider_service.preview_voice(request).await
+}
+
+/// API-038: idempotently cancels an accepted operation of the asserted kind.
+///
+/// # Errors
+///
+/// Returns a stable validation, capability, not-found, or storage error.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+pub async fn api_v1_cancel_operation(
+    request: tauri::ipc::Request<'_>,
+    provider_service: State<'_, ProviderService>,
+    startup_recovery: State<'_, StartupVoicePreviewOutboxRecovery>,
+) -> Result<CancelOperationResponse, ApiError> {
+    let request = parse_command_request::<CancelOperationRequest>(&request)?;
+    startup_recovery.ensure_recovered().await?;
+    provider_service.cancel_operation(request).await
 }
 
 /// API-043: returns the validated TTS voice catalog.

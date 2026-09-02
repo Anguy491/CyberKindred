@@ -82,11 +82,19 @@ pub trait ProviderHealthProbe: Send + Sync {
 }
 
 pub struct VoicePreviewInput<'a> {
+    pub operation_id: Uuid,
     pub origin: &'a CanonicalOrigin,
     pub secret: &'a SecretValue,
     pub model_id: &'a str,
     pub voice_id: &'a str,
     pub text: &'static str,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum VoicePreviewCancelDisposition {
+    Cancelled,
+    AlreadyTerminal,
+    NotFound,
 }
 
 pub trait VoicePreviewer: Send + Sync {
@@ -97,6 +105,15 @@ pub trait VoicePreviewer: Send + Sync {
         input: VoicePreviewInput<'a>,
         context: &'a ProviderCallContext,
     ) -> ProviderFuture<'a, Result<(), ProviderFailure>>;
+
+    /// Idempotently cancels and stops output owned by this exact operation.
+    fn cancel(&self, _operation_id: Uuid) -> VoicePreviewCancelDisposition {
+        VoicePreviewCancelDisposition::NotFound
+    }
+
+    fn is_cancelled(&self, _operation_id: Uuid) -> bool {
+        false
+    }
 }
 
 /// Terminal result of an accepted voice preview operation. The command layer
@@ -106,6 +123,7 @@ pub struct VoicePreviewTerminal {
     pub operation_id: Uuid,
     pub occurred_at: String,
     pub error: Option<ApiError>,
+    pub cancelled: bool,
 }
 
 /// Required observer for one authoritative terminal outcome per accepted preview.

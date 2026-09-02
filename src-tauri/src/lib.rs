@@ -12,6 +12,9 @@ pub mod playback;
 mod playback_repository;
 pub mod program;
 pub mod providers;
+pub mod radio;
+mod radio_repository;
+mod radio_speech_repository;
 pub mod scanner;
 pub mod speech;
 pub mod storage;
@@ -29,6 +32,8 @@ use library::{
         api_v1_remove_library_root,
     },
 };
+use llm::{EmptyProgramContextSource, OpenAiProgramPlanProvider, SystemProgramCallContextFactory};
+use llm_repository::RepositoryProgramCredentialSource;
 use onboarding::{
     OnboardingService,
     commands::{api_v1_get_onboarding_state, api_v1_save_onboarding_step},
@@ -42,19 +47,34 @@ use playback::{
     },
 };
 use playback_repository::RepositoryTrackResolver;
+use program::{
+    ProgramPlanProvider, ProgramPlanner, ProgramRepository, SystemProgramClock,
+    SystemProgramIdFactory,
+};
 use providers::{
     CandidateSecretValidator, ProviderHealthProbe, ProviderRuntime, ProviderService, SystemClock,
     VoicePreviewEventSink, VoicePreviewer,
     commands::{
-        api_v1_delete_secret, api_v1_get_settings, api_v1_list_voices, api_v1_preview_voice,
-        api_v1_test_provider, api_v1_update_settings, api_v1_validate_and_set_secret,
+        api_v1_cancel_operation, api_v1_delete_secret, api_v1_get_settings, api_v1_list_voices,
+        api_v1_preview_voice, api_v1_test_provider, api_v1_update_settings,
+        api_v1_validate_and_set_secret,
     },
     events::{StartupVoicePreviewOutboxRecovery, TauriVoicePreviewEventSink},
 };
+use radio::{
+    DomainProgramPlanner, LocalProgramPlayback, ManualProgramStartAuthorizer, PlaybackEventHub,
+    ProgramPlannerContextSource, ProgramRadioPlanner, ProgramSpeech, RadioProgramStore,
+    RadioService, RadioServiceDependencies, SystemRadioClock, SystemRadioIdFactory,
+    TauriRadioEventSink,
+    commands::{api_v1_start_program, api_v1_stop_program},
+};
+use radio_repository::RepositoryProgramContextSource;
+use radio_speech_repository::RepositoryProgramSpeech;
 use scanner::{
     ScannerService, SystemScanClock, TauriScanEventSink,
     commands::{api_v1_cancel_library_scan, api_v1_start_library_scan},
 };
+use speech::SpeechVoicePreviewer;
 use std::{
     error::Error,
     io,
@@ -120,7 +140,7 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     );
     let validator: Arc<dyn CandidateSecretValidator> = provider_runtime.clone();
     let health_probe: Arc<dyn ProviderHealthProbe> = provider_runtime.clone();
-    let voice_previewer: Arc<dyn VoicePreviewer> = provider_runtime;
+    let voice_previewer: Arc<dyn VoicePreviewer> = Arc::new(SpeechVoicePreviewer::production());
     let process_sequence = Arc::new(ProcessSequence::default());
     let preview_events: Arc<dyn VoicePreviewEventSink> = Arc::new(TauriVoicePreviewEventSink::new(
         app.handle().clone(),
@@ -151,18 +171,65 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     );
     tauri::async_runtime::block_on(scanner_service.recover_and_replay())
         .map_err(|_| io::Error::other("scanner recovery unavailable"))?;
-    let track_resolver = Arc::new(RepositoryTrackResolver::new(repository.clone()));
+    tauri::async_runtime::block_on(repository.recover_interrupted_programs(now_ms))
+        .map_err(|_| io::Error::other("program recovery unavailable"))?;
+    let repository_track_resolver = RepositoryTrackResolver::new(repository.clone());
+    let track_resolver = Arc::new(repository_track_resolver.clone());
     let playback_events: Arc<dyn PlaybackEventSink> =
         Arc::new(TauriPlaybackEventSink::new(app.handle().clone()));
+    let playback_event_hub = PlaybackEventHub::new(playback_events, 256);
     let playback_service = PlaybackService::new(
         track_resolver.clone(),
         Box::new(RodioAudioEngine::new()),
-        playback_events,
+        Arc::new(playback_event_hub.clone()),
         Arc::new(SystemPlaybackClock),
         process_sequence.clone(),
         PlaybackService::local_capabilities(),
     )
     .map_err(|_| io::Error::other("playback runtime unavailable"))?;
+    let program_credentials = Arc::new(RepositoryProgramCredentialSource::new(
+        repository.clone(),
+        Box::new(WindowsCredentialVault::new()?),
+    ));
+    let program_provider = OpenAiProgramPlanProvider::new(
+        program_credentials,
+        Arc::new(EmptyProgramContextSource),
+        Arc::new(SystemProgramCallContextFactory),
+    )
+    .ok()
+    .map(|provider| Arc::new(provider) as Arc<dyn ProgramPlanProvider>);
+    let program_repository: Arc<dyn ProgramRepository> = Arc::new(repository.clone());
+    let program_planner = Arc::new(ProgramPlanner::new(
+        program_repository,
+        program_provider,
+        Arc::new(SystemProgramClock),
+        Arc::new(SystemProgramIdFactory),
+    ));
+    let program_context: Arc<dyn ProgramPlannerContextSource> =
+        Arc::new(RepositoryProgramContextSource::new(repository.clone()));
+    let radio_planner: Arc<dyn ProgramRadioPlanner> =
+        Arc::new(DomainProgramPlanner::new(program_planner, program_context));
+    let radio_playback = Arc::new(LocalProgramPlayback::new(
+        playback_service.clone(),
+        repository_track_resolver,
+        playback_event_hub,
+    ));
+    let radio_speech: Arc<dyn ProgramSpeech> = Arc::new(RepositoryProgramSpeech::production(
+        repository.clone(),
+        Box::new(WindowsCredentialVault::new()?),
+    ));
+    let radio_store: Arc<dyn RadioProgramStore> = Arc::new(repository.clone());
+    let radio_service = RadioService::new(RadioServiceDependencies {
+        planner: radio_planner,
+        authorizer: Arc::new(ManualProgramStartAuthorizer),
+        store: radio_store,
+        playback: radio_playback,
+        speech: radio_speech,
+        event_sink: Arc::new(TauriRadioEventSink::new(app.handle().clone())),
+        clock: Arc::new(SystemRadioClock),
+        sequence: process_sequence.clone(),
+        id_factory: Arc::new(SystemRadioIdFactory),
+    });
     let startup_preview_recovery =
         StartupVoicePreviewOutboxRecovery::new(repository, preview_events, clock);
     app.manage(Mutex::new(diagnostic_log));
@@ -175,6 +242,7 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     app.manage(scanner_service);
     app.manage(track_resolver);
     app.manage(playback_service);
+    app.manage(radio_service);
     app.manage(startup_preview_recovery);
     Ok(())
 }
@@ -216,7 +284,10 @@ pub fn run() -> tauri::Result<()> {
             api_v1_get_settings,
             api_v1_update_settings,
             api_v1_preview_voice,
+            api_v1_cancel_operation,
             api_v1_list_voices,
+            api_v1_start_program,
+            api_v1_stop_program,
         ])
         .run(tauri::generate_context!())
 }

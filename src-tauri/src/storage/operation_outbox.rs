@@ -13,6 +13,7 @@ const TERMINAL_REVISION: i64 = 1;
 const ACCEPTED_EVENT: &str = "cyberkindred://internal/v1/operation/accepted";
 const COMPLETED_EVENT: &str = "cyberkindred://v1/operation/completed";
 const FAILED_EVENT: &str = "cyberkindred://v1/operation/failed";
+const CANCELLED_EVENT: &str = "cyberkindred://v1/operation/cancelled";
 pub const MAX_VOICE_PREVIEW_OUTBOX_BATCH: u32 = 100;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -56,6 +57,15 @@ struct StoredFailedPayload {
     error: ApiError,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StoredCancelledPayload {
+    schema_version: String,
+    occurred_at: String,
+    operation_id: Uuid,
+    kind: StoredOperationKind,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct OperationAcceptedRecord {
     outbox_id: Uuid,
@@ -63,13 +73,28 @@ struct OperationAcceptedRecord {
     accepted_at: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OperationTerminalKind {
+    Completed,
+    Failed,
+    Cancelled,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OperationTerminalRecord {
     pub outbox_id: Uuid,
     pub operation_id: Uuid,
     pub occurred_at: String,
+    kind: OperationTerminalKind,
     pub error: Option<ApiError>,
     pub delivered_at_ms: Option<i64>,
+}
+
+impl OperationTerminalRecord {
+    #[must_use]
+    pub fn is_cancelled(&self) -> bool {
+        self.kind == OperationTerminalKind::Cancelled
+    }
 }
 
 enum OperationOutboxState {
@@ -153,9 +178,14 @@ impl Repository {
         } else {
             COMPLETED_EVENT
         };
+        let terminal_kind = if error.is_some() {
+            OperationTerminalKind::Failed
+        } else {
+            OperationTerminalKind::Completed
+        };
         let payload = encode_terminal_payload(operation_id, &occurred_at, error.as_ref())?;
         let updated = sqlx::query(
-            "UPDATE outbox_events SET aggregate_revision = ?, event_type = ?, payload_json = ?, created_at_ms = ?, delivered_at_ms = NULL WHERE aggregate_type = ? AND aggregate_id = ? AND event_type = ? AND aggregate_revision = ? AND delivered_at_ms IS NULL AND NOT EXISTS (SELECT 1 FROM outbox_events AS terminal WHERE terminal.aggregate_type = ? AND terminal.aggregate_id = ? AND terminal.event_type IN (?, ?))",
+            "UPDATE outbox_events SET aggregate_revision = ?, event_type = ?, payload_json = ?, created_at_ms = ?, delivered_at_ms = NULL WHERE aggregate_type = ? AND aggregate_id = ? AND event_type = ? AND aggregate_revision = ? AND delivered_at_ms IS NULL AND NOT EXISTS (SELECT 1 FROM outbox_events AS terminal WHERE terminal.aggregate_type = ? AND terminal.aggregate_id = ? AND terminal.event_type IN (?, ?, ?))",
         )
         .bind(TERMINAL_REVISION)
         .bind(event_type)
@@ -169,6 +199,7 @@ impl Repository {
         .bind(operation_id.to_string())
         .bind(COMPLETED_EVENT)
         .bind(FAILED_EVENT)
+        .bind(CANCELLED_EVENT)
         .execute(&self.writer)
         .await
         .map_err(|_| write_error())?;
@@ -183,12 +214,73 @@ impl Repository {
 
         match self.load_voice_preview_state(operation_id).await? {
             Some(OperationOutboxState::Terminal(existing))
-                if existing.occurred_at == occurred_at && existing.error == error =>
+                if existing.kind == terminal_kind
+                    && existing.occurred_at == occurred_at
+                    && existing.error == error =>
             {
                 Ok(existing)
             }
             Some(_) => Err(StorageError::new(StorageReason::RevisionConflict)),
             None => Err(StorageError::new(StorageReason::EntityNotFound)),
+        }
+    }
+
+    /// Atomically changes an accepted preview to the EVT-011 terminal.
+    ///
+    /// A new cancellation wins only while the accepted row is authoritative.
+    /// Any existing terminal is returned as `AlreadyTerminal`, including a
+    /// prior cancellation issued with a different API-038 request ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns not-found when the operation was never accepted, or a stable
+    /// validation, integrity, or storage failure.
+    pub async fn cancel_voice_preview(
+        &self,
+        operation_id: Uuid,
+        occurred_at: String,
+    ) -> Result<(bool, OperationTerminalRecord), StorageError> {
+        validate_operation_id(operation_id).map_err(|_| write_error())?;
+        let created_at_ms = parse_timestamp(&occurred_at).map_err(|_| write_error())?;
+        let payload = serde_json::to_string(&StoredCancelledPayload {
+            schema_version: "1.0.0".to_owned(),
+            occurred_at,
+            operation_id,
+            kind: StoredOperationKind::VoicePreview,
+        })
+        .map_err(|_| write_error())?;
+        let updated = sqlx::query(
+            "UPDATE outbox_events SET aggregate_revision = ?, event_type = ?, payload_json = ?, created_at_ms = ?, delivered_at_ms = NULL WHERE aggregate_type = ? AND aggregate_id = ? AND event_type = ? AND aggregate_revision = ? AND delivered_at_ms IS NULL AND NOT EXISTS (SELECT 1 FROM outbox_events AS terminal WHERE terminal.aggregate_type = ? AND terminal.aggregate_id = ? AND terminal.event_type IN (?, ?, ?))",
+        )
+        .bind(TERMINAL_REVISION)
+        .bind(CANCELLED_EVENT)
+        .bind(payload)
+        .bind(created_at_ms)
+        .bind(OPERATION_AGGREGATE)
+        .bind(operation_id.to_string())
+        .bind(ACCEPTED_EVENT)
+        .bind(ACCEPTED_REVISION)
+        .bind(OPERATION_AGGREGATE)
+        .bind(operation_id.to_string())
+        .bind(COMPLETED_EVENT)
+        .bind(FAILED_EVENT)
+        .bind(CANCELLED_EVENT)
+        .execute(&self.writer)
+        .await
+        .map_err(|_| write_error())?;
+        let Some(OperationOutboxState::Terminal(record)) =
+            self.load_voice_preview_state(operation_id).await?
+        else {
+            return if updated.rows_affected() == 0 {
+                Err(StorageError::new(StorageReason::EntityNotFound))
+            } else {
+                Err(integrity_error())
+            };
+        };
+        if updated.rows_affected() == 1 {
+            Ok((true, record))
+        } else {
+            Ok((false, record))
         }
     }
 
@@ -242,11 +334,12 @@ impl Repository {
     ) -> Result<Vec<OperationTerminalRecord>, StorageError> {
         validate_batch_limit(limit)?;
         let rows: Vec<OutboxRow> = sqlx::query_as(
-            "SELECT id, aggregate_id, aggregate_revision, event_type, payload_json, created_at_ms, delivered_at_ms FROM outbox_events WHERE aggregate_type = ? AND delivered_at_ms IS NULL AND event_type IN (?, ?) ORDER BY created_at_ms ASC, id ASC LIMIT ?",
+            "SELECT id, aggregate_id, aggregate_revision, event_type, payload_json, created_at_ms, delivered_at_ms FROM outbox_events WHERE aggregate_type = ? AND delivered_at_ms IS NULL AND event_type IN (?, ?, ?) ORDER BY created_at_ms ASC, id ASC LIMIT ?",
         )
         .bind(OPERATION_AGGREGATE)
         .bind(COMPLETED_EVENT)
         .bind(FAILED_EVENT)
+        .bind(CANCELLED_EVENT)
         .bind(i64::from(limit))
         .fetch_all(&self.writer)
         .await
@@ -293,7 +386,7 @@ impl Repository {
             return Err(write_error());
         }
         let updated = sqlx::query(
-            "UPDATE outbox_events SET delivered_at_ms = ? WHERE id = ? AND aggregate_type = ? AND aggregate_id = ? AND event_type IN (?, ?) AND delivered_at_ms IS NULL AND created_at_ms <= ?",
+            "UPDATE outbox_events SET delivered_at_ms = ? WHERE id = ? AND aggregate_type = ? AND aggregate_id = ? AND event_type IN (?, ?, ?) AND delivered_at_ms IS NULL AND created_at_ms <= ?",
         )
         .bind(delivered_at_ms)
         .bind(outbox_id.to_string())
@@ -301,6 +394,7 @@ impl Repository {
         .bind(operation_id.to_string())
         .bind(COMPLETED_EVENT)
         .bind(FAILED_EVENT)
+        .bind(CANCELLED_EVENT)
         .bind(delivered_at_ms)
         .execute(&self.writer)
         .await
@@ -411,6 +505,7 @@ fn decode_row(row: OutboxRow) -> Result<OperationOutboxState, StorageError> {
                 outbox_id,
                 operation_id: aggregate_id,
                 occurred_at: decoded.occurred_at,
+                kind: OperationTerminalKind::Completed,
                 error: None,
                 delivered_at_ms: delivered_at,
             }))
@@ -430,7 +525,28 @@ fn decode_row(row: OutboxRow) -> Result<OperationOutboxState, StorageError> {
                 outbox_id,
                 operation_id: aggregate_id,
                 occurred_at: decoded.occurred_at,
+                kind: OperationTerminalKind::Failed,
                 error: Some(decoded.error),
+                delivered_at_ms: delivered_at,
+            }))
+        }
+        CANCELLED_EVENT => {
+            let decoded: StoredCancelledPayload =
+                serde_json::from_str(&payload).map_err(|_| integrity_error())?;
+            if revision != TERMINAL_REVISION
+                || decoded.schema_version != "1.0.0"
+                || decoded.kind != StoredOperationKind::VoicePreview
+                || decoded.operation_id != aggregate_id
+                || parse_timestamp(&decoded.occurred_at)? != created_at
+            {
+                return Err(integrity_error());
+            }
+            Ok(OperationOutboxState::Terminal(OperationTerminalRecord {
+                outbox_id,
+                operation_id: aggregate_id,
+                occurred_at: decoded.occurred_at,
+                kind: OperationTerminalKind::Cancelled,
+                error: None,
                 delivered_at_ms: delivered_at,
             }))
         }
@@ -609,6 +725,58 @@ mod tests {
         .await
         .expect("one authority");
         assert_eq!(count, 1);
+        storage.close().await;
+    }
+
+    #[tokio::test]
+    async fn cancellation_is_one_atomic_terminal_and_later_cancel_is_already_terminal() {
+        let (_temp, storage, repository) = fixture().await;
+        let operation_id = Uuid::now_v7();
+        accept(&repository, operation_id).await;
+        let (won, cancelled) = repository
+            .cancel_voice_preview(operation_id, TERMINAL_AT.to_owned())
+            .await
+            .expect("first cancellation");
+        assert!(won);
+        assert!(cancelled.is_cancelled());
+        assert!(cancelled.error.is_none());
+        let (won_again, same) = repository
+            .cancel_voice_preview(operation_id, TERMINAL_AT.to_owned())
+            .await
+            .expect("second cancellation observes terminal");
+        assert!(!won_again);
+        assert_eq!(same, cancelled);
+        let pending = repository
+            .load_pending_voice_preview_terminals(10)
+            .await
+            .expect("cancelled terminal is replayable");
+        assert_eq!(pending, vec![cancelled]);
+        storage.close().await;
+    }
+
+    #[tokio::test]
+    async fn cancellation_and_completion_race_has_exactly_one_authority() {
+        let (_temp, storage, repository) = fixture().await;
+        let operation_id = Uuid::now_v7();
+        accept(&repository, operation_id).await;
+        let completion_repository = repository.clone();
+        let cancellation_repository = repository.clone();
+        let (completion, cancellation) = tokio::join!(
+            completion_repository.persist_voice_preview_terminal(
+                operation_id,
+                TERMINAL_AT.to_owned(),
+                None,
+            ),
+            cancellation_repository.cancel_voice_preview(operation_id, TERMINAL_AT.to_owned(),),
+        );
+        let cancellation_won = cancellation.as_ref().map(|(won, _)| *won).unwrap_or(false);
+        assert_eq!(completion.is_ok(), !cancellation_won);
+        let pending = repository
+            .load_pending_voice_preview_terminals(10)
+            .await
+            .expect("one replayable terminal");
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].is_cancelled(), cancellation_won);
         storage.close().await;
     }
 

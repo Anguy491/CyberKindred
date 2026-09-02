@@ -5,6 +5,8 @@
 
 mod actor;
 mod cache;
+mod playback;
+mod preview;
 mod provider;
 
 pub use actor::{
@@ -12,8 +14,12 @@ pub use actor::{
     SpeechOperationState, SpeechPlayback, SpeechRunOutcome,
 };
 pub use cache::{SpeechCache, SpeechCacheMetadata, SpeechLease, SpeechOwner};
+pub use playback::RodioSpeechPlayback;
+pub use preview::SpeechVoicePreviewer;
+pub(crate) use provider::CallScopedOpenAiTtsProvider;
 pub use provider::{
-    OpenAiTtsProvider, ReqwestSpeechTransport, SpeechCredentialSource, SpeechSink, SpeechTransport,
+    OpenAiTtsProvider, ReqwestSpeechTransport, ReqwestSpeechTransportFactory,
+    SpeechCredentialSource, SpeechSink, SpeechTransport, SpeechTransportFactory,
     SpeechTransportRequest, SpeechTransportResponse, TtsProvider,
 };
 

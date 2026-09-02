@@ -324,3 +324,35 @@ pub struct OperationAccepted {
     pub operation_id: Uuid,
     pub accepted_at: String,
 }
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperationKind {
+    Chat,
+    VoicePreview,
+    LibraryScan,
+    DataExport,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CancelOperationRequest {
+    pub client_request_id: Uuid,
+    pub operation_id: Uuid,
+    pub expected_kind: OperationKind,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CancelOperationState {
+    Cancelled,
+    AlreadyTerminal,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CancelOperationResponse {
+    pub request_id: Uuid,
+    pub operation_id: Uuid,
+    pub state: CancelOperationState,
+}

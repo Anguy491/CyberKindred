@@ -14,11 +14,9 @@ pub(crate) enum StoredProgramStatus {
     VoicePreparing,
     Voice,
     Paused,
-    Degraded,
     Completing,
     Stopping,
     Completed,
-    Interrupted,
     Failed,
 }
 
@@ -31,11 +29,9 @@ impl StoredProgramStatus {
             Self::VoicePreparing => "voice_preparing",
             Self::Voice => "voice",
             Self::Paused => "paused",
-            Self::Degraded => "degraded",
             Self::Completing => "completing",
             Self::Stopping => "stopping",
             Self::Completed => "completed",
-            Self::Interrupted => "interrupted",
             Self::Failed => "failed",
         }
     }
@@ -156,16 +152,13 @@ impl Repository {
         }
         let terminal = matches!(
             next,
-            StoredProgramStatus::Completed
-                | StoredProgramStatus::Interrupted
-                | StoredProgramStatus::Failed
+            StoredProgramStatus::Completed | StoredProgramStatus::Failed
         );
         let started = matches!(
             next,
             StoredProgramStatus::Music
                 | StoredProgramStatus::VoicePreparing
                 | StoredProgramStatus::Voice
-                | StoredProgramStatus::Degraded
         );
         let update = sqlx::query("UPDATE program_runs SET status = ?, started_at_ms = CASE WHEN ? AND started_at_ms IS NULL THEN ? ELSE started_at_ms END, ended_at_ms = CASE WHEN ? THEN ? ELSE ended_at_ms END, failure_code = ?, revision = revision + 1 WHERE id = ? AND status = ?")
             .bind(next.as_str())

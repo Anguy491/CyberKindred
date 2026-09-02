@@ -50,6 +50,17 @@ pub trait SpeechTransport: Send + Sync {
     ) -> SpeechFuture<'a, Result<SpeechTransportResponse, ProviderFailure>>;
 }
 
+/// Creates a side-effect-free transport for the currently validated origin.
+pub trait SpeechTransportFactory: Send + Sync {
+    /// # Errors
+    ///
+    /// Returns a redacted failure when the locked-down client cannot be built.
+    fn for_origin(
+        &self,
+        origin: &CanonicalOrigin,
+    ) -> Result<Arc<dyn SpeechTransport>, ProviderFailure>;
+}
+
 /// Loads the current origin-scoped credential only for an authorized synth.
 pub trait SpeechCredentialSource: Send + Sync {
     /// # Errors
@@ -96,33 +107,71 @@ impl OpenAiTtsProvider {
         sink: &mut dyn SpeechSink,
         context: &ProviderCallContext,
     ) -> Result<SpeechArtifact, ProviderFailure> {
-        ensure_context(context)?;
-        let started_at = std::time::Instant::now();
         let secret = self.credentials.load()?;
-        ensure_context(context)?;
-        let caller_remaining = context
-            .deadline
-            .checked_duration_since(std::time::Instant::now())
-            .ok_or_else(timeout)?;
-        let provider_remaining = SPEECH_DEADLINE
-            .checked_sub(started_at.elapsed())
-            .ok_or_else(timeout)?;
-        let request = SpeechTransportRequest {
-            input: input.clone(),
-        };
-        let response = await_context(
-            self.transport
-                .send(&request, &secret, caller_remaining.min(provider_remaining)),
-            context,
-        )
-        .await??;
-        ensure_context(context)?;
-        validate_mp3(&response.bytes, &response.declared_mime)?;
-        let artifact = SpeechArtifact::new(&input, response.bytes.len())?;
-        sink.write_all(&response.bytes)?;
-        ensure_context(context)?;
-        Ok(artifact)
+        synthesize_with_secret(self.transport.as_ref(), &secret, input, sink, context).await
     }
+}
+
+/// Ephemeral adapter binding an already-loaded, call-scoped secret. The secret
+/// is never cloned, serialized, logged, or retained after the preview call.
+pub(crate) struct CallScopedOpenAiTtsProvider<'a> {
+    transport: &'a dyn SpeechTransport,
+    secret: &'a SecretValue,
+}
+
+impl<'a> CallScopedOpenAiTtsProvider<'a> {
+    pub(crate) const fn new(transport: &'a dyn SpeechTransport, secret: &'a SecretValue) -> Self {
+        Self { transport, secret }
+    }
+}
+
+impl TtsProvider for CallScopedOpenAiTtsProvider<'_> {
+    fn synthesize<'a>(
+        &'a self,
+        input: SpeechInput,
+        sink: &'a mut dyn SpeechSink,
+        context: &'a ProviderCallContext,
+    ) -> SpeechFuture<'a, Result<SpeechArtifact, ProviderFailure>> {
+        Box::pin(synthesize_with_secret(
+            self.transport,
+            self.secret,
+            input,
+            sink,
+            context,
+        ))
+    }
+}
+
+async fn synthesize_with_secret(
+    transport: &dyn SpeechTransport,
+    secret: &SecretValue,
+    input: SpeechInput,
+    sink: &mut dyn SpeechSink,
+    context: &ProviderCallContext,
+) -> Result<SpeechArtifact, ProviderFailure> {
+    ensure_context(context)?;
+    let started_at = std::time::Instant::now();
+    let caller_remaining = context
+        .deadline
+        .checked_duration_since(std::time::Instant::now())
+        .ok_or_else(timeout)?;
+    let provider_remaining = SPEECH_DEADLINE
+        .checked_sub(started_at.elapsed())
+        .ok_or_else(timeout)?;
+    let request = SpeechTransportRequest {
+        input: input.clone(),
+    };
+    let response = await_context(
+        transport.send(&request, secret, caller_remaining.min(provider_remaining)),
+        context,
+    )
+    .await??;
+    ensure_context(context)?;
+    validate_mp3(&response.bytes, &response.declared_mime)?;
+    let artifact = SpeechArtifact::new(&input, response.bytes.len())?;
+    sink.write_all(&response.bytes)?;
+    ensure_context(context)?;
+    Ok(artifact)
 }
 
 impl TtsProvider for OpenAiTtsProvider {
@@ -218,6 +267,19 @@ impl SpeechTransport for ReqwestSpeechTransport {
         timeout: Duration,
     ) -> SpeechFuture<'a, Result<SpeechTransportResponse, ProviderFailure>> {
         Box::pin(self.send_inner(request, secret, timeout))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ReqwestSpeechTransportFactory;
+
+impl SpeechTransportFactory for ReqwestSpeechTransportFactory {
+    fn for_origin(
+        &self,
+        origin: &CanonicalOrigin,
+    ) -> Result<Arc<dyn SpeechTransport>, ProviderFailure> {
+        ReqwestSpeechTransport::new(origin)
+            .map(|transport| Arc::new(transport) as Arc<dyn SpeechTransport>)
     }
 }
 

@@ -1,7 +1,8 @@
 use super::{
-    Ack, AudioOutputBehavior, CandidateSecretValidator, Clock, DeleteSecretRequest,
+    Ack, AudioOutputBehavior, CancelOperationRequest, CancelOperationResponse,
+    CancelOperationState, CandidateSecretValidator, Clock, DeleteSecretRequest,
     DeleteSecretResponse, Integration, ListVoicesRequest, NarrationDensity, OperationAccepted,
-    OriginSecretStatus, PreviewVoiceRequest, ProviderCallContext, ProviderFailure,
+    OperationKind, OriginSecretStatus, PreviewVoiceRequest, ProviderCallContext, ProviderFailure,
     ProviderHealthProbe, ProviderTestInput, ProviderTestKind, SecretStatus, SecretValidationInput,
     SettingsPatch, SettingsView, TestProviderRequest, TestProviderResponse, UpdateSettingsRequest,
     ValidateSecretRequest, ValidateSecretResponse, VoicePreviewEventSink, VoicePreviewInput,
@@ -40,6 +41,7 @@ const PROVIDER_TEST_TIMEOUT: std::time::Duration = std::time::Duration::from_sec
 const MODEL_CAPABILITY_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 const PREVIEW_ACCEPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 const PREVIEW_OPERATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
+const CANCEL_OPERATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 const IDEMPOTENCY_WINDOW: std::time::Duration = std::time::Duration::from_mins(10);
 const IDEMPOTENCY_CAPACITY: usize = 256;
 const MAX_SETTING_TEXT_CHARS: usize = 100;
@@ -141,6 +143,7 @@ pub struct ProviderService {
     provider_test_requests: AsyncIdempotency<TestProviderResponse>,
     update_settings_requests: AsyncIdempotency<Ack>,
     preview_voice_requests: AsyncIdempotency<OperationAccepted>,
+    cancel_operation_requests: AsyncIdempotency<CancelOperationResponse>,
     #[cfg(test)]
     fail_next_settings_write_after_secret: AtomicBool,
     #[cfg(test)]
@@ -183,6 +186,7 @@ impl ProviderService {
             provider_test_requests: AsyncIdempotency::new(),
             update_settings_requests: AsyncIdempotency::new(),
             preview_voice_requests: AsyncIdempotency::new(),
+            cancel_operation_requests: AsyncIdempotency::new(),
             #[cfg(test)]
             fail_next_settings_write_after_secret: AtomicBool::new(false),
             #[cfg(test)]
@@ -823,6 +827,75 @@ impl ProviderService {
             .await
     }
 
+    /// Cancels the API-038 voice-preview slice against the durable terminal.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable validation, unsupported-kind, not-found, timeout, or
+    /// storage error. No event or playback stop occurs unless cancellation wins
+    /// the authoritative SQLite transition.
+    pub async fn cancel_operation(
+        &self,
+        request: CancelOperationRequest,
+    ) -> Result<CancelOperationResponse, ApiError> {
+        let request_hash = canonical_request_hash(&request)?;
+        let request_id = request.client_request_id;
+        self.cancel_operation_requests
+            .execute(request_id, request_hash, || async move {
+                tokio::time::timeout(
+                    CANCEL_OPERATION_TIMEOUT,
+                    self.cancel_operation_once(request),
+                )
+                .await
+                .map_err(|_| ApiError::from_reason(InternalReason::ResourceBusy))?
+            })
+            .await
+    }
+
+    async fn cancel_operation_once(
+        &self,
+        request: CancelOperationRequest,
+    ) -> Result<CancelOperationResponse, ApiError> {
+        if request.expected_kind != OperationKind::VoicePreview {
+            return Err(ApiError::from_reason(InternalReason::CapabilityAbsent));
+        }
+        let (cancelled, record) = self
+            .repository
+            .cancel_voice_preview(request.operation_id, self.clock.now_rfc3339())
+            .await
+            .map_err(|error| map_storage_error(&error))?;
+        if cancelled {
+            let _cancel_disposition = self.voice_previewer.cancel(request.operation_id);
+            if record.delivered_at_ms.is_none() {
+                let terminal = VoicePreviewTerminal {
+                    operation_id: record.operation_id,
+                    occurred_at: record.occurred_at.clone(),
+                    error: None,
+                    cancelled: true,
+                };
+                if self.preview_events.publish(terminal).is_ok() {
+                    let _delivery_mark = self
+                        .repository
+                        .mark_voice_preview_terminal_delivered(
+                            record.outbox_id,
+                            record.operation_id,
+                            self.clock.now_ms(),
+                        )
+                        .await;
+                }
+            }
+        }
+        Ok(CancelOperationResponse {
+            request_id: request.client_request_id,
+            operation_id: request.operation_id,
+            state: if cancelled {
+                CancelOperationState::Cancelled
+            } else {
+                CancelOperationState::AlreadyTerminal
+            },
+        })
+    }
+
     #[allow(clippy::too_many_lines)] // The accepted background operation keeps terminal ordering explicit.
     async fn preview_voice_once(
         &self,
@@ -869,10 +942,11 @@ impl ProviderService {
         tokio::spawn(async move {
             let context = ProviderCallContext::new(operation_timeout);
             let started_at = Instant::now();
-            let result = match tokio::time::timeout(
+            let result = if let Ok(result) = tokio::time::timeout(
                 operation_timeout,
                 previewer.preview(
                     VoicePreviewInput {
+                        operation_id,
                         origin: &prepared.origin,
                         secret: &prepared.secret,
                         model_id: &prepared.model_id,
@@ -884,10 +958,18 @@ impl ProviderService {
             )
             .await
             {
-                Ok(result) => result,
-                Err(_) => Err(ProviderFailure::new(
+                if previewer.is_cancelled(operation_id) {
+                    return;
+                }
+                result
+            } else {
+                if previewer.is_cancelled(operation_id) {
+                    return;
+                }
+                let _cancel_disposition = previewer.cancel(operation_id);
+                Err(ProviderFailure::new(
                     super::ProviderFailureCategory::Timeout,
-                )),
+                ))
             };
             let status = outcome_status(&result);
             let persisted = NewProviderOutcome::new(
@@ -936,6 +1018,7 @@ impl ProviderService {
                 operation_id,
                 occurred_at: clock.now_rfc3339(),
                 error: terminal_error,
+                cancelled: false,
             };
             #[cfg(test)]
             let persisted_terminal = if fail_next_terminal_persist.swap(false, Ordering::AcqRel) {

@@ -1,7 +1,10 @@
 use super::*;
 use crate::{
     ipc::ErrorId,
-    providers::{IntegrationState, ProviderFailureCategory, SecretKind, VoiceProvider, VoiceView},
+    providers::{
+        IntegrationState, ProviderFailureCategory, SecretKind, VoicePreviewCancelDisposition,
+        VoiceProvider, VoiceView,
+    },
     storage::{AppPaths, ProviderOutcomeStatus, ProviderUsageProvider, SecretValue, Storage},
 };
 use chrono::{DateTime, Utc};
@@ -231,6 +234,8 @@ impl ProviderHealthProbe for FakeProbe {
 #[derive(Clone)]
 struct FakePreviewer {
     calls: Arc<StdMutex<Vec<(String, String)>>>,
+    operation_ids: Arc<StdMutex<Vec<Uuid>>>,
+    cancellations: Arc<StdMutex<Vec<Uuid>>>,
     result: Arc<StdMutex<Result<(), ProviderFailure>>>,
     delay: Arc<StdMutex<Duration>>,
 }
@@ -265,6 +270,10 @@ impl VoicePreviewer for FakePreviewer {
                 .lock()
                 .map_err(|_| ProviderFailure::new(ProviderFailureCategory::Unavailable))?
                 .push((input.voice_id.to_owned(), input.text.to_owned()));
+            self.operation_ids
+                .lock()
+                .map_err(|_| ProviderFailure::new(ProviderFailureCategory::Unavailable))?
+                .push(input.operation_id);
             if !delay.is_zero() {
                 tokio::time::sleep(delay).await;
             }
@@ -273,6 +282,24 @@ impl VoicePreviewer for FakePreviewer {
                 .map_err(|_| ProviderFailure::new(ProviderFailureCategory::Unavailable))?
                 .clone()
         })
+    }
+
+    fn cancel(&self, operation_id: Uuid) -> VoicePreviewCancelDisposition {
+        if let Ok(mut cancellations) = self.cancellations.lock() {
+            if cancellations.contains(&operation_id) {
+                return VoicePreviewCancelDisposition::AlreadyTerminal;
+            }
+            cancellations.push(operation_id);
+            VoicePreviewCancelDisposition::Cancelled
+        } else {
+            VoicePreviewCancelDisposition::NotFound
+        }
+    }
+
+    fn is_cancelled(&self, operation_id: Uuid) -> bool {
+        self.cancellations
+            .lock()
+            .is_ok_and(|cancellations| cancellations.contains(&operation_id))
     }
 }
 
@@ -319,6 +346,8 @@ struct Fixture {
     probe_result: Arc<StdMutex<Result<u64, ProviderFailure>>>,
     probe_expected_secret: Arc<StdMutex<Option<String>>>,
     preview_calls: Arc<StdMutex<Vec<(String, String)>>>,
+    preview_operation_ids: Arc<StdMutex<Vec<Uuid>>>,
+    preview_cancellations: Arc<StdMutex<Vec<Uuid>>>,
     preview_result: Arc<StdMutex<Result<(), ProviderFailure>>>,
     preview_delay: Arc<StdMutex<Duration>>,
     preview_events: RecordingPreviewEvents,
@@ -343,6 +372,8 @@ impl Fixture {
         let probe_result = Arc::new(StdMutex::new(Ok(7)));
         let probe_expected_secret = Arc::new(StdMutex::new(None));
         let preview_calls = Arc::new(StdMutex::new(Vec::new()));
+        let preview_operation_ids = Arc::new(StdMutex::new(Vec::new()));
+        let preview_cancellations = Arc::new(StdMutex::new(Vec::new()));
         let preview_result = Arc::new(StdMutex::new(Ok(())));
         let preview_delay = Arc::new(StdMutex::new(Duration::ZERO));
         let preview_events = RecordingPreviewEvents::default();
@@ -362,6 +393,8 @@ impl Fixture {
             }),
             Arc::new(FakePreviewer {
                 calls: preview_calls.clone(),
+                operation_ids: preview_operation_ids.clone(),
+                cancellations: preview_cancellations.clone(),
                 result: preview_result.clone(),
                 delay: preview_delay.clone(),
             }),
@@ -380,6 +413,8 @@ impl Fixture {
             probe_result,
             probe_expected_secret,
             preview_calls,
+            preview_operation_ids,
+            preview_cancellations,
             preview_result,
             preview_delay,
             preview_events,
@@ -415,6 +450,8 @@ impl Fixture {
             }),
             Arc::new(FakePreviewer {
                 calls: self.preview_calls.clone(),
+                operation_ids: self.preview_operation_ids.clone(),
+                cancellations: self.preview_cancellations.clone(),
                 result: self.preview_result.clone(),
                 delay: self.preview_delay.clone(),
             }),
@@ -460,6 +497,8 @@ async fn provider_settings_checks_presence_without_materializing_secret() {
         }),
         Arc::new(FakePreviewer {
             calls: Arc::new(StdMutex::new(Vec::new())),
+            operation_ids: Arc::new(StdMutex::new(Vec::new())),
+            cancellations: Arc::new(StdMutex::new(Vec::new())),
             result: Arc::new(StdMutex::new(Ok(()))),
             delay: Arc::new(StdMutex::new(Duration::ZERO)),
         }),
@@ -741,6 +780,8 @@ async fn provider_secret_delete_cannot_interleave_with_a_validated_state_commit(
         }),
         Arc::new(FakePreviewer {
             calls: Arc::new(StdMutex::new(Vec::new())),
+            operation_ids: Arc::new(StdMutex::new(Vec::new())),
+            cancellations: Arc::new(StdMutex::new(Vec::new())),
             result: Arc::new(StdMutex::new(Ok(()))),
             delay: Arc::new(StdMutex::new(Duration::ZERO)),
         }),
@@ -1474,6 +1515,8 @@ async fn provider_registry_restores_integration_status_without_forging_origin_ve
         }),
         Arc::new(FakePreviewer {
             calls: Arc::clone(&fixture.preview_calls),
+            operation_ids: Arc::clone(&fixture.preview_operation_ids),
+            cancellations: Arc::clone(&fixture.preview_cancellations),
             result: Arc::clone(&fixture.preview_result),
             delay: Arc::clone(&fixture.preview_delay),
         }),
@@ -1742,5 +1785,188 @@ async fn provider_preview_terminal_persist_failure_waits_for_authoritative_recov
     assert_eq!(
         recovered[0].error.as_ref().map(|error| error.error_id),
         Some(ErrorId::UnexpectedInternal)
+    );
+}
+
+#[tokio::test]
+async fn voice_preview_cancel_preparing_is_exact_idempotent_and_evt_011_only() {
+    let fixture = Fixture::new().await;
+    fixture
+        .configure("https://api.openai.com", "task-017-cancel-secret-canary")
+        .await;
+    *fixture.preview_delay.lock().expect("preview delay") = Duration::from_millis(200);
+    let accepted = fixture
+        .service
+        .preview_voice(PreviewVoiceRequest {
+            client_request_id: Uuid::now_v7(),
+            voice_id: "alloy".to_owned(),
+        })
+        .await
+        .expect("preview accepted");
+    wait_for_preview_calls(&fixture.preview_calls, 1).await;
+
+    let first_request_id = Uuid::now_v7();
+    let cancelled = fixture
+        .service
+        .cancel_operation(CancelOperationRequest {
+            client_request_id: first_request_id,
+            operation_id: accepted.operation_id,
+            expected_kind: OperationKind::VoicePreview,
+        })
+        .await
+        .expect("cancel wins while preparing");
+    assert_eq!(cancelled.request_id, first_request_id);
+    assert_eq!(cancelled.operation_id, accepted.operation_id);
+    assert_eq!(cancelled.state, CancelOperationState::Cancelled);
+
+    let replay = fixture
+        .service
+        .cancel_operation(CancelOperationRequest {
+            client_request_id: first_request_id,
+            operation_id: accepted.operation_id,
+            expected_kind: OperationKind::VoicePreview,
+        })
+        .await
+        .expect("same API-038 request is idempotent");
+    assert_eq!(replay, cancelled);
+    let second = fixture
+        .service
+        .cancel_operation(CancelOperationRequest {
+            client_request_id: Uuid::now_v7(),
+            operation_id: accepted.operation_id,
+            expected_kind: OperationKind::VoicePreview,
+        })
+        .await
+        .expect("later cancel observes terminal");
+    assert_eq!(second.state, CancelOperationState::AlreadyTerminal);
+
+    tokio::time::sleep(Duration::from_millis(80)).await;
+    assert_eq!(
+        fixture
+            .preview_cancellations
+            .lock()
+            .expect("cancellations")
+            .as_slice(),
+        &[accepted.operation_id]
+    );
+    assert_eq!(
+        fixture
+            .preview_operation_ids
+            .lock()
+            .expect("operation ids")
+            .as_slice(),
+        &[accepted.operation_id]
+    );
+    let events = fixture.preview_events.0.lock().expect("events");
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].operation_id, accepted.operation_id);
+    assert!(events[0].cancelled);
+    assert!(events[0].error.is_none());
+    let serialized = serde_json::to_string(&(
+        events[0].operation_id,
+        events[0].cancelled,
+        &events[0].error,
+    ))
+    .expect("safe event observation serializes");
+    assert!(!serialized.contains("task-017-cancel-secret-canary"));
+    assert!(!serialized.contains("C:\\Users\\"));
+}
+
+#[tokio::test]
+async fn voice_preview_cancel_after_completed_is_already_terminal_without_stop() {
+    let fixture = Fixture::new().await;
+    fixture
+        .configure("https://api.openai.com", "task-017-terminal-canary")
+        .await;
+    let accepted = fixture
+        .service
+        .preview_voice(PreviewVoiceRequest {
+            client_request_id: Uuid::now_v7(),
+            voice_id: "alloy".to_owned(),
+        })
+        .await
+        .expect("preview accepted");
+    wait_for_preview_events(&fixture.preview_events, 1).await;
+    let response = fixture
+        .service
+        .cancel_operation(CancelOperationRequest {
+            client_request_id: Uuid::now_v7(),
+            operation_id: accepted.operation_id,
+            expected_kind: OperationKind::VoicePreview,
+        })
+        .await
+        .expect("completed operation is idempotently terminal");
+    assert_eq!(response.state, CancelOperationState::AlreadyTerminal);
+    assert!(
+        fixture
+            .preview_cancellations
+            .lock()
+            .expect("cancellations")
+            .is_empty()
+    );
+    assert_eq!(fixture.preview_events.0.lock().expect("events").len(), 1);
+}
+
+#[tokio::test]
+async fn api_038_accepts_closed_enum_but_rejects_unimplemented_kind_without_side_effect() {
+    let fixture = Fixture::new().await;
+    let error = fixture
+        .service
+        .cancel_operation(CancelOperationRequest {
+            client_request_id: Uuid::now_v7(),
+            operation_id: Uuid::now_v7(),
+            expected_kind: OperationKind::Chat,
+        })
+        .await
+        .expect_err("M3 slice supports only voice preview");
+    assert_eq!(error.error_id, ErrorId::CapabilityUnsupported);
+    assert_eq!(count(&fixture.preview_calls, Vec::len), 0);
+    assert_eq!(count(&fixture.preview_cancellations, Vec::len), 0);
+    assert_eq!(fixture.preview_events.2.load(Ordering::Acquire), 0);
+}
+
+#[test]
+fn api_038_request_and_response_are_exact_closed_contract_shapes() {
+    let request_id = Uuid::now_v7();
+    let operation_id = Uuid::now_v7();
+    for kind in ["chat", "voice_preview", "library_scan", "data_export"] {
+        let request: CancelOperationRequest = serde_json::from_value(serde_json::json!({
+            "clientRequestId": request_id,
+            "operationId": operation_id,
+            "expectedKind": kind
+        }))
+        .expect("closed operation kind");
+        assert_eq!(request.client_request_id, request_id);
+        assert_eq!(request.operation_id, operation_id);
+    }
+    assert!(
+        serde_json::from_value::<CancelOperationRequest>(serde_json::json!({
+            "clientRequestId": request_id,
+            "operationId": operation_id,
+            "expectedKind": "voice_preview",
+            "secret": "sk-forbidden"
+        }))
+        .is_err()
+    );
+    assert!(
+        serde_json::from_value::<CancelOperationRequest>(serde_json::json!({
+            "clientRequestId": request_id,
+            "operationId": operation_id,
+            "expectedKind": "future_kind"
+        }))
+        .is_err()
+    );
+    let response = CancelOperationResponse {
+        request_id,
+        operation_id,
+        state: CancelOperationState::Cancelled,
+    };
+    assert_eq!(
+        serde_json::to_value(response).expect("response"),
+        serde_json::json!({
+            "requestId": request_id,
+            "operationId": operation_id,
+            "state": "cancelled"
+        })
     );
 }

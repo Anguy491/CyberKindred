@@ -22,6 +22,7 @@ pub trait SpeechPlayback: Send + Sync {
         &self,
         operation_id: Uuid,
         bytes: Arc<[u8]>,
+        authorization: SpeechAuthorization,
         operation_cancellation: CancellationFlag,
         caller_cancellation: CancellationFlag,
     ) -> SpeechFuture<'_, Result<(), ProviderFailure>>;
@@ -143,12 +144,42 @@ impl SpeechActor {
         authorization: Option<SpeechAuthorization>,
         caller_context: &ProviderCallContext,
     ) -> Result<SpeechRunOutcome, ProviderFailure> {
+        let provider = Arc::clone(&self.provider);
+        self.run_with_provider(
+            provider.as_ref(),
+            operation_id,
+            input,
+            owner,
+            tts_enabled,
+            authorization,
+            caller_context,
+        )
+        .await
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        clippy::too_many_lines,
+        reason = "the call-scoped provider plus ordered cancellation/cache/playback transition remain one auditable operation"
+    )]
+    pub(crate) async fn run_with_provider(
+        &self,
+        provider: &dyn TtsProvider,
+        operation_id: Uuid,
+        input: SpeechInput,
+        owner: SpeechOwner,
+        tts_enabled: bool,
+        authorization: Option<SpeechAuthorization>,
+        caller_context: &ProviderCallContext,
+    ) -> Result<SpeechRunOutcome, ProviderFailure> {
         validate_owner(operation_id, input.provenance(), owner)?;
         if tts_enabled {
             validate_authorization(operation_id, input.provenance(), authorization)?;
         }
-        let cancellation = self.begin(operation_id)?;
         let text = input.text().to_owned();
+        let Some(cancellation) = self.begin(operation_id)? else {
+            return Ok(cancelled_outcome(text));
+        };
         if !tts_enabled {
             self.finish(operation_id, SpeechOperationState::TextOnly);
             return Ok(SpeechRunOutcome::TextOnly {
@@ -173,9 +204,7 @@ impl SpeechActor {
             };
             let mut sink = VecSpeechSink::default();
             let result = {
-                let synthesis =
-                    self.provider
-                        .synthesize(input.clone(), &mut sink, &provider_context);
+                let synthesis = provider.synthesize(input.clone(), &mut sink, &provider_context);
                 tokio::pin!(synthesis);
                 tokio::select! {
                     result = &mut synthesis => Some(result),
@@ -231,9 +260,14 @@ impl SpeechActor {
             return Ok(cancelled_outcome(text));
         }
         let artifact = lease.artifact().clone();
+        let Some(authorization) = authorization else {
+            self.finish(operation_id, SpeechOperationState::Failed);
+            return Err(invalid_response());
+        };
         let playback = self.playback.play(
             operation_id,
             lease.bytes(),
+            authorization,
             cancellation.clone(),
             caller_context.cancellation.clone(),
         );
@@ -292,6 +326,26 @@ impl SpeechActor {
         SpeechCancelState::Cancelled
     }
 
+    pub(crate) fn cancel_or_reserve(&self, operation_id: Uuid) -> SpeechCancelState {
+        if !valid_operation_id(operation_id) {
+            return SpeechCancelState::NotFound;
+        }
+        {
+            let mut state = self.lock();
+            if let std::collections::hash_map::Entry::Vacant(entry) =
+                state.operations.entry(operation_id)
+            {
+                entry.insert(OperationEntry {
+                    state: SpeechOperationState::Cancelled,
+                    cancellation: CancellationFlag::default(),
+                });
+                push_terminal(&mut state, operation_id, self.terminal_capacity);
+                return SpeechCancelState::Cancelled;
+            }
+        }
+        self.cancel(operation_id)
+    }
+
     #[must_use]
     pub fn operation_state(&self, operation_id: Uuid) -> Option<SpeechOperationState> {
         self.lock()
@@ -300,13 +354,17 @@ impl SpeechActor {
             .map(|entry| entry.state)
     }
 
-    fn begin(&self, operation_id: Uuid) -> Result<CancellationFlag, ProviderFailure> {
+    fn begin(&self, operation_id: Uuid) -> Result<Option<CancellationFlag>, ProviderFailure> {
         if !valid_operation_id(operation_id) {
             return Err(invalid_response());
         }
         let mut state = self.lock();
-        if state.operations.contains_key(&operation_id) {
-            return Err(invalid_response());
+        if let Some(existing) = state.operations.get(&operation_id) {
+            return if existing.state == SpeechOperationState::Cancelled {
+                Ok(None)
+            } else {
+                Err(invalid_response())
+            };
         }
         let cancellation = CancellationFlag::default();
         state.operations.insert(
@@ -316,7 +374,7 @@ impl SpeechActor {
                 cancellation: cancellation.clone(),
             },
         );
-        Ok(cancellation)
+        Ok(Some(cancellation))
     }
 
     fn transition_to_playing(&self, operation_id: Uuid) -> bool {
