@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Quality Engineering |
-| Last Verified | 2026-09-02 |
+| Last Verified | 2026-09-03 |
 | Source of Truth For | Documentation Baseline v1 的端到端验收场景库存、证据格式和 beta 发布判定 |
 | Related Documents | `docs/product/FRS.md`; `docs/product/NFRS.md`; `docs/testing/TEST-STRATEGY.md`; `docs/testing/TRACEABILITY.md`; `docs/planning/ROADMAP.md` |
 
@@ -22,8 +22,8 @@
 | Test ID | Covers | Mode | Scenario and expected evidence |
 |---|---|---|---|
 | TEST-ONB-001 | FR-ONB-001, FR-ONB-002, FR-ONB-006 | Automated E2E | 首次启动依次走完七步；在每一步重启并返回。断言恢复到首个未完成步骤、已填内容可编辑、音乐来源可选本地/Apple Music/两者；选择本地或两者时必须通过 native picker 授权至少一个目录，取消 picker 不伪造授权；Apple Music 路径不显示或请求 Apple Developer/MusicKit 凭据；非敏感画像可接受默认值。城市步骤必须取得 API-048 搜索结果并以 API-049 的候选选择结果持久化，日程步骤必须取得 API-033 返回的规则/revision；重启后城市和日程结果保持。保存逐步状态与三个专用 API 响应快照。 |
-| TEST-ONB-002 | FR-ONB-003, FR-ONB-004, NFR-SEC-001 | Automated integration | 分别注入有效、无效、429 和断网 Key 验证结果。仅成功项写入 fake Credential Manager；SQLite、WebView 状态、IPC、崩溃报告、日志和导出对 canary 扫描为零命中。 |
-| TEST-ONB-003 | FR-ONB-005, NFR-COST-001 | Automated E2E | 加载声音列表；未点击时 TTS 调用为 0，点击预览只调用固定短句一次，选择结果持久化。失败时显示可重试分类且无自动重播。 |
+| TEST-ONB-002 | FR-ONB-003, FR-ONB-004, NFR-SEC-001 | Automated integration | 分别注入有效、无效、429 和断网 Key 验证结果。仅成功项写入 fake Credential Manager；验证并切换到第二个 canonical origin 后，第一个 origin credential 保留；API-005 只删除指定 origin，full reset 删除全部 origin。SQLite、WebView 状态、IPC、崩溃报告、日志和导出对 canary 扫描为零命中。 |
+| TEST-ONB-003 | FR-ONB-005, NFR-COST-001 | Automated E2E | 加载声音列表；未点击时 TTS 调用为 0，点击预览只调用固定短句一次，选择结果持久化。失败时显示可重试分类且无自动重播。对同一 `operationId` 重放相同 terminal event，前端只应用一次；若同一 operation 出现相冲突 terminal，则停止增量并重取权威状态。 |
 | TEST-ONB-004 | FR-ONB-007, FR-RAD-001, NFR-PERF-001 | Automated E2E | 完成页逐项显示已选来源、各外发服务与数据、原始对话 30 天保留、通知后确认开播和记忆可见/可改/可删；隐私确认前“完成”不可用，确认后进入 `RADIO`。在基线机器分别执行冷启动与热启动各 10 次：从进程创建到可交互的 P95 冷启动≤5 s、热启动≤3 s；全部启动与引导完成时 loopback 保持静音。 |
 
 ## 3. 本地电台与曲库
@@ -71,7 +71,7 @@
 | TEST-SCH-003 | FR-SCH-003 | Automated time-control | 同一次触发先延后 10 分钟再改 30 分钟，仅保留一个延后；到点只通知一次且原重复规则不改变。另验证 60 分钟选项。 |
 | TEST-WEA-001 | FR-WEA-001, NFR-PRIV-004 | Automated E2E | 搜索同名城市并明确选择，保存城市/地区/坐标/时区；Geocoding 请求只含用户输入的搜索文字、语言和结果上限。搜索结果显示可访问的 `Location data by GeoNames via Open-Meteo` 文字归属链接。 |
 | TEST-WEA-002 | FR-WEA-002, NFR-PRIV-004, NFR-OFF-002 | Automated contract | 捕获 Open-Meteo Forecast 请求只含所选坐标和所需天气参数；成功缓存含观测时间。请求失败时使用未过期缓存并显示来源/观测时间；无缓存或缓存过期时省略天气、AI 不猜测且≤2 秒显示独立降级状态。天气值附近显示可访问的 `Weather data by Open-Meteo.com` 文字归属链接。 |
-| TEST-SET-001 | FR-SET-001, FR-SET-004 | Automated E2E | 查看/修改 provider、Base URL、模型和声音，分别测试连接；Key 只可替换/删除。各集成独立显示状态、最近成功时间及无 secret 重试。 |
+| TEST-SET-001 | FR-SET-001, FR-SET-004 | Automated E2E | 查看/修改 provider、Base URL、模型和声音，分别测试连接；Key 只可替换/删除。`llmModelId` 实际变化时，API-008 以合并后的候选 origin/model 在 60 秒路径完成固定 pre-save capability probe：成功才原子保存整个 patch，auth/rate-limit/timeout/invalid-response 失败时所有字段与 revision 不变；相同 model 或不含 model 的 patch 保持 5 秒且 provider 调用为 0。各集成独立显示状态、最近成功时间及无 secret 重试。 |
 | TEST-SET-002 | FR-SET-002 | Automated E2E | 切换默认来源、串场密度和 TTS；TTS 关闭后开场/串场仅显示文字且音乐正常，不产生 speech 请求或 TTS 音频。 |
 | TEST-SET-003 | FR-SET-003 | Manual-Windows | 新安装自启动默认关闭；用户启用后下次登录启动但静音，关闭后任务/注册项移除。托盘启停行为与设置一致且结果可见。 |
 | TEST-DAT-001 | FR-DAT-002 | Automated E2E | 生成对话、记忆、曲库、播放、天气和元数据后打开数据概览；分类型显示数量、保留期、存储类别和外发服务，不显示完整路径或密钥。 |

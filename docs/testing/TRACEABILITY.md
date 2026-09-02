@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Engineering Lead & Quality Engineering |
-| Last Verified | 2026-09-02 |
+| Last Verified | 2026-09-03 |
 | Source of Truth For | 每个 FR/NFR 到 UX、架构、契约、测试、任务和里程碑的逐项追踪关系 |
 | Related Documents | `docs/product/FRS.md`; `docs/product/NFRS.md`; `docs/product/UX-SPEC.md`; `docs/architecture/ARCHITECTURE.md`; `docs/contracts/API-CONTRACT.md`; `docs/testing/ACCEPTANCE-TESTS.md`; `docs/planning/BACKLOG.md` |
 
@@ -16,7 +16,7 @@
 
 M1 已由 [`M1 checkpoint`](checkpoints/M1.md) 与其 [`evidence manifest`](../../artifacts/test-evidence/milestones/M1/manifest.json) 聚合记录。`TASK-002` 的 hermetic matrix 与 `TASK-003` 的标准用户 Credential Manager/HKCU/reset smoke 已完成；未执行的真实听感、双设备、通知/托盘/登录、NSIS 与完整产品 `TEST-*` 均保留为 `Not Run`/known gap，不因探针完成而改写本矩阵的后续验收范围。
 
-M2 的当前实现证据与 hard-gate 失败由 [`M2 checkpoint`](checkpoints/M2.md) 及其 [`evidence manifest`](../../artifacts/test-evidence/milestones/M2/manifest.json) 聚合记录。`TASK-004`–`TASK-007` 与 `TASK-009` 已集成；Node/W3C desktop shell smoke 为 FR-RAD-004、FR-SET-001、NFR-A11Y-001、NFR-COMPAT-003 提供 M2 candidate 证据。`TASK-008` 因 credential 生命周期、model probe 流程和 terminal delivery 语义未决而 `Blocked`，因此 `TASK-010` 与全部 M3 task 仍保持依赖阻塞。表中映射不因 partial implementation 改写为通过。
+M2 的当前实现证据与 hard-gate 失败由 [`M2 checkpoint`](checkpoints/M2.md) 及其 [`evidence manifest`](../../artifacts/test-evidence/milestones/M2/manifest.json) 聚合记录。`TASK-004`–`TASK-007` 与 `TASK-009` 已集成；Node/W3C desktop shell smoke 为 FR-RAD-004、FR-SET-001、NFR-A11Y-001、NFR-COMPAT-003 提供 M2 candidate 证据。Product Owner 已在 2026-09-03 解决 credential 生命周期、model probe 流程和 terminal delivery 语义，`TASK-008` 已恢复为 `In Progress`；`TASK-010` 与全部 M3 task 在其依赖完成前仍保持 `Blocked`。表中映射不因 partial implementation 改写为通过。
 
 ## 2. Functional requirements
 

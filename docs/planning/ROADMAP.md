@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Product Owner / Lead Agent |
-| Last Verified | 2026-09-02 |
+| Last Verified | 2026-09-03 |
 | Source of Truth For | 里程碑顺序、依赖与阶段退出条件 |
 | Related Documents | `../product/PRD.md`, `BACKLOG.md`, `RISK-REGISTER.md`, `../testing/TEST-STRATEGY.md`, `../architecture/adr/ADR-0007-milestone-prototype-delivery.md` |
 
@@ -42,7 +42,7 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M2 — Application foundation
 
-**Status:** Blocked — M2 hard gates did not pass on 2026-09-02; see [`M2 checkpoint`](../testing/checkpoints/M2.md). M2 remains the only active milestone.
+**Status:** Active remediation — M2 hard gates did not pass on 2026-09-02; see [`M2 checkpoint`](../testing/checkpoints/M2.md). Product Owner resolved the three blocking semantics on 2026-09-03; M2 remains the only active milestone until implementation and hard-gate revalidation pass.
 
 **Goal:** 建立可测试的 Tauri/React/Rust 外壳与契约边界。
 

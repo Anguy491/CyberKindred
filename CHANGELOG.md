@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Release Steward |
-| Last Verified | 2026-09-02 |
+| Last Verified | 2026-09-03 |
 | Source of Truth For | 用户可感知变更与破坏性契约变更历史 |
 | Related Documents | `docs/operations/BUILD-RELEASE.md`, `docs/planning/BACKLOG.md` |
 
@@ -14,7 +14,8 @@
 
 ### Changed
 
-- M2 technical checkpoint 仍如实记录为 `Blocked`：WebdriverIO High advisory 已通过移除依赖链并完成隔离 desktop smoke 关闭；credential 生命周期、EVT-008/009 delivery 及 model pre-save probe 公共语义仍未满足 hard gate，因此未激活 M3。
+- Product Owner 已解决 M2 三项公共语义：切换 provider origin 保留各 origin credential 直到 API-005/full reset；operation 权威 terminal 唯一但 transport 至少一次，前端按 `operationId` 幂等；API-008 在 model ID 实际变化时以 60 秒 pre-save capability probe 门控整份 patch 的原子保存。
+- M2 technical checkpoint 仍如实记录为 `Blocked`：WebdriverIO High advisory 已关闭，三项语义已解冻进入 remediation，但在实现与 hard-gate 复验完成前不追溯改写失败结果，也不激活 M3。
 - 对齐 SQLx 0.9 的实际 feature 名称：SQLite 基础只启用 bundled SQLite、Tokio runtime、migration/macro，不启用默认的多数据库、JSON 或 load-extension 能力。
 - 补全 `playback-state` 与 `program-plan` 条件分支中的局部 `object`/`array` 类型声明，使不改变实例语义的 v1 schema 可由 AJV strict 模式编译。
 - 为 `TASK-005` 固定 Node-only `ajv 8.20.0` 与 `ajv-formats 3.0.1`，以执行 Draft 2020-12/UUID/date-time 契约校验；两者禁止进入 WebView runtime bundle。

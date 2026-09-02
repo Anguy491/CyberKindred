@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Architecture Owner |
-| Last Verified | 2026-09-02 |
+| Last Verified | 2026-09-03 |
 | Source of Truth For | MVP 的 Tauri IPC command、event、版本、错误、超时与幂等语义 |
 | Related Documents | `docs/contracts/PROVIDER-CONTRACTS.md`, `docs/contracts/schemas/`, `docs/architecture/ARCHITECTURE.md`, `docs/product/FRS.md` |
 
@@ -95,7 +95,7 @@ Canonical machine DTOs are `program-plan.schema.json`, `playback-state.schema.js
 | API-005 `api_v1_delete_secret` | `{ clientRequestId; kind: "openai_api_key"; origin }` | `{ requestId; configured: false }` | 5 s | 10-minute key；只删除该 canonical origin 的 credential |
 | API-006 `api_v1_test_provider` | `{ clientRequestId; kind: "llm" | "tts" | "metadata" | "weather" }` | `{ requestId; ok: boolean; latencyMs: number; safeMessage: string }` | 60 s | 10-minute key |
 | API-007 `api_v1_get_settings` | `EmptyRequest` | `SettingsView` | 2 s | Read, idempotent |
-| API-008 `api_v1_update_settings` | `{ clientRequestId; expectedRevision; patch: SettingsPatch }` | `Ack` | 5 s | 10-minute key |
+| API-008 `api_v1_update_settings` | `{ clientRequestId; expectedRevision; patch: SettingsPatch }` | `Ack` | 5 s；`llmModelId` 实际变化时 60 s | 10-minute key；model probe 成功后才原子保存整个 patch |
 | API-009 `api_v1_preview_voice` | `{ clientRequestId; voiceId: string }` | `OperationAccepted` | 2 s accept / 45 s operation | 10-minute key；后端使用版本固定的中文短句，前端不能提供正文 |
 | API-043 `api_v1_list_voices` | `{ provider: "tts" }` | `{ voices: Array<{ voiceId; displayName; previewAvailable: boolean }> }` | 5 s | Read, idempotent |
 | API-048 `api_v1_search_weather_locations` | `{ clientRequestId; query: string; limit: number }` | `{ requestId; candidates: WeatherLocationCandidate[]; expiresAt }` | 10 s | 10-minute key；仅用户显式搜索时调用 |
@@ -109,7 +109,7 @@ Canonical machine DTOs are `program-plan.schema.json`, `playback-state.schema.js
 
 `SettingsView` is the exact non-secret DTO `{ providerOrigin: string; llmModelId: string; ttsModelId: string; ttsVoiceId: string; metadataEnabled: boolean; weatherEnabled: boolean; defaultSourceId: string | null; narrationDensity: "quiet" | "balanced" | "frequent"; ttsEnabled: boolean; audioOutputDeviceId: string | null; audioOutputBehavior: "follow_system_default" | "fixed_device"; minimizeToTray: boolean; launchAtStartup: boolean; notificationsEnabled: boolean; weatherLocation: WeatherLocation | null; secretStatus: { origins: Array<{ origin; openaiApiKeyConfigured: boolean; lastVerifiedAt: string | null }> }; integrationStatuses: Array<{ integration: "openai" | "apple_music" | "musicbrainz" | "weather"; state: "connected" | "degraded" | "disabled" | "unavailable"; lastSuccessAt: string | null; safeMessage: string }>; revision: number }`. It never contains secret material.
 
-`SettingsPatch` is the strict partial DTO `{ providerOrigin?: string; llmModelId?: string; ttsModelId?: string; ttsVoiceId?: string; metadataEnabled?: boolean; weatherEnabled?: boolean; defaultSourceId?: string | null; narrationDensity?: "quiet" | "balanced" | "frequent"; ttsEnabled?: boolean; audioOutputDeviceId?: string | null; audioOutputBehavior?: "follow_system_default" | "fixed_device"; minimizeToTray?: boolean; launchAtStartup?: boolean; notificationsEnabled?: boolean; weatherLocationAction?: "clear" }`。缺失字段保持不变；只有 `defaultSourceId` 与 `audioOutputDeviceId` 明确 nullable，分别表示每次询问来源与跟随系统默认设备。其他字段不接受 `null`，空 patch 以 `ERR-1001` 拒绝。MVP raw conversation retention 固定为创建后最多 30×24 小时，不提供延长或关闭清理的 Settings 字段；用户仍可即时分类删除或全部重置。`providerOrigin` 必须是用户确认的 HTTPS origin；`audioOutputBehavior: "fixed_device"` 要求当前或既有 `audioOutputDeviceId` 非 null。API-004 先以最小 provider 请求验证候选 key；失败时不覆盖现有有效 key，也不持久化候选值。API-037 删除 Credential Manager 中所有 `CyberKindred/provider/*` origin credential；不会只删除当前 Settings 所选 origin。
+`SettingsPatch` is the strict partial DTO `{ providerOrigin?: string; llmModelId?: string; ttsModelId?: string; ttsVoiceId?: string; metadataEnabled?: boolean; weatherEnabled?: boolean; defaultSourceId?: string | null; narrationDensity?: "quiet" | "balanced" | "frequent"; ttsEnabled?: boolean; audioOutputDeviceId?: string | null; audioOutputBehavior?: "follow_system_default" | "fixed_device"; minimizeToTray?: boolean; launchAtStartup?: boolean; notificationsEnabled?: boolean; weatherLocationAction?: "clear" }`。缺失字段保持不变；只有 `defaultSourceId` 与 `audioOutputDeviceId` 明确 nullable，分别表示每次询问来源与跟随系统默认设备。其他字段不接受 `null`，空 patch 以 `ERR-1001` 拒绝。MVP raw conversation retention 固定为创建后最多 30×24 小时，不提供延长或关闭清理的 Settings 字段；用户仍可即时分类删除或全部重置。`providerOrigin` 必须是用户确认的 HTTPS origin；`audioOutputBehavior: "fixed_device"` 要求当前或既有 `audioOutputDeviceId` 非 null。API-004 先以最小 provider 请求验证候选 key；失败时不覆盖现有有效 key，也不持久化候选值；验证成功并切换 origin 时保留其他 origin 已验证 credential，只有 API-005 可删除指定 origin，API-037 删除全部 `CyberKindred/provider/*` origin credential。API-008 只有在 `llmModelId` 与当前值不同时，才以 patch 合并后的候选 `providerOrigin`/`llmModelId` 和该 origin 已验证 credential 执行固定 Responses capability probe；该调用使用 60 秒 timeout，成功后原子保存整个 patch，失败时所有 patch 字段保持不变。不含实际 model 变化的 API-008 保持 5 秒且不得调用 provider；API-006 只测试当前已保存配置。
 
 ### 3.2 Local library
 
@@ -181,7 +181,7 @@ Schedules are notification-only by schema; OS notification action `start` is an 
 
 ## 4. Events
 
-Events use Tauri `emit` and are process-local. Subscribers must treat them as hints and re-read state after a sequence gap. Each payload includes `schemaVersion: "1.0.0"`, an increasing process-local `sequence`, and `occurredAt`; sequence resets on app restart.
+Events use Tauri `emit` and are process-local. Subscribers must treat them as hints and re-read state after a sequence gap. Each payload includes `schemaVersion: "1.0.0"`, an increasing process-local `sequence`, and `occurredAt`; sequence resets on app restart. 每个 accepted operation 在 Rust 权威状态中只能从 accepted 原子转换为 completed、failed 或 cancelled 之一，且只能转换一次。持久化 operation terminal 通过 outbox 重放，因此 EVT-008/009/011 的 transport 是 at-least-once：崩溃窗口或恢复可再次投递同一 `operationId` 的同一权威 terminal。前端必须按 `operationId` 幂等去重；重复投递不是第二个权威结果。
 
 | ID / event name | Payload | Delivery semantics |
 |---|---|---|
@@ -192,12 +192,12 @@ Events use Tauri `emit` and are process-local. Subscribers must treat them as hi
 | EVT-005 `cyberkindred://v1/library/scan` | `{ schemaVersion; sequence; occurredAt; operationId; state: "running" | "completed" | "cancelled" | "failed"; scanned; discovered; failed; safeMessage: string | null }` | Progress may coalesce; terminal event exactly once |
 | EVT-006 `cyberkindred://v1/memory/proposed` | `{ schemaVersion; sequence; occurredAt; memory: MemoryRecord }` | At-most-once; UI re-queries on focus |
 | EVT-007 `cyberkindred://v1/schedule/due` | `{ schemaVersion; sequence; occurredAt; scheduleId; occurrenceId; notificationShown: boolean }` | At-most-once per occurrence |
-| EVT-008 `cyberkindred://v1/operation/completed` | `{ schemaVersion; sequence; occurredAt; operationId; kind: "voice_preview" | "data_export"; outputLabel: string | null }` | Terminal success exactly once |
-| EVT-009 `cyberkindred://v1/operation/failed` | `{ schemaVersion; sequence; occurredAt; operationId; error: ApiError }` | Terminal failure exactly once |
+| EVT-008 `cyberkindred://v1/operation/completed` | `{ schemaVersion; sequence; occurredAt; operationId; kind: "voice_preview" | "data_export"; outputLabel: string | null }` | One authoritative success；at-least-once transport；consumer dedupes `operationId` |
+| EVT-009 `cyberkindred://v1/operation/failed` | `{ schemaVersion; sequence; occurredAt; operationId; error: ApiError }` | One authoritative failure；at-least-once transport；consumer dedupes `operationId` |
 | EVT-010 `cyberkindred://v1/app/resumed` | `{ schemaVersion; sequence; occurredAt; sleptAt: string | null }` | Emitted after resume reconciliation |
-| EVT-011 `cyberkindred://v1/operation/cancelled` | `{ schemaVersion; sequence; occurredAt; operationId; kind: "chat" | "voice_preview" | "library_scan" | "data_export" }` | Terminal cancellation exactly once |
+| EVT-011 `cyberkindred://v1/operation/cancelled` | `{ schemaVersion; sequence; occurredAt; operationId; kind: "chat" | "voice_preview" | "library_scan" | "data_export" }` | One authoritative cancellation；at-least-once transport；consumer dedupes `operationId` |
 
-EVT-002/003 只是内部状态机面向 UI 的 coarse projection，不是逐转换审计流；订阅者不得以缺少中间 event 推断非法转换，必须在 sequence gap、resume 或 terminal 之后通过 read command 重取权威状态。No event contains secret material or absolute local paths. EVT-004 assistant text is user-visible conversation content and must not be written to diagnostic logs. Apple/GSMTC track metadata、timeline、capability payload 与 playback event 不进入 EVT-004、EVT-006、EVT-008/009 的 provider-derived content；Apple track-aware 文本只能是本机 deterministic 产物。
+EVT-002/003 只是内部状态机面向 UI 的 coarse projection，不是逐转换审计流；订阅者不得以缺少中间 event 推断非法转换，必须在 sequence gap、resume 或 terminal 之后通过 read command 重取权威状态。对 EVT-008/009/011，订阅者先按 `operationId` 去重再应用 terminal UI side effect；同一 operation 的重复投递必须成为 no-op，若观察到不同 terminal kind 则停止应用增量并重取权威状态。No event contains secret material or absolute local paths. EVT-004 assistant text is user-visible conversation content and must not be written to diagnostic logs. Apple/GSMTC track metadata、timeline、capability payload 与 playback event 不进入 EVT-004、EVT-006、EVT-008/009 的 provider-derived content；Apple track-aware 文本只能是本机 deterministic 产物。
 
 API-038 成功后该 operation 只可产生 EVT-011（library scan 另产生 EVT-005 `cancelled`）；已在 UI/SQLite 接受的用户 chat 原文保留，但 late provider output 被丢弃，不产生 assistant final message、Memory Proposal、summary、TTS 或 playback side effect。
 

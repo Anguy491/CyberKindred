@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Architecture Owner |
-| Last Verified | 2026-09-02 |
+| Last Verified | 2026-09-03 |
 | Source of Truth For | Music source 与 LLM、TTS、metadata、weather provider 的统一接口和失败语义 |
 | Related Documents | `docs/contracts/API-CONTRACT.md`, `docs/contracts/schemas/`, `docs/architecture/AI-ORCHESTRATION.md`, `docs/integrations/EXTERNAL-INTEGRATIONS.md` |
 
@@ -116,6 +116,8 @@ External metadata and user text are untrusted data fields, never concatenated in
 - `CompanionTurn` is `{ text: string, proposedMemories: MemoryProposal[] }`, with text 1..2000 characters and 0..3 proposals. A proposal contains `kind`, `content` (1..500) and confidence 0..1; it is persisted as `status: proposed`, never auto-approved.
 - `SessionSummary` is `{ summary: string; preferenceSignals: PreferenceSignal[]; proposedMemories: MemoryProposal[] }`；`summary` 为 1..1000 Unicode 字符，只概括显式用户表达、实际 local-source play facts、显式 feedback 与 unfinished topics；`preferenceSignals` 为 0..20 项，每项严格为 `{ kind: "music_tag" | "listening_time" | "feedback" | "narration_density"; label: string; direction: "up" | "stable" | "down"; confidence: number }`，其中 label 1..100 Unicode 字符、confidence 0..1；`proposedMemories` 为 0..3 项并遵守与 `CompanionTurn` 相同约束。它不能创建 approved memory。Orchestration 在本机保存输入的 source message IDs、covered range、prompt/model version 与 `generationKind`；这些 provenance 不是模型自行声明的输出。空/不可发送输入不调用 provider，改用不含推断的 deterministic stats summary、0..20 个 deterministic preference signals 和空 proposals。
 - The adapter requests strict structured output, disables provider-hosted tools for MVP, sets OpenAI `store: false`, and does not use provider conversation IDs. Orchestration supplies prior context on each stateless request.
+
+配置 capability probe 使用候选 `providerOrigin`、候选 `llmModelId` 与该 origin 已验证 credential，向固定 `/v1/responses` 发送最小请求：`store:false`、无 tools、`reasoning.effort=none`，并要求 strict JSON Schema `{"ready":true}`。API-004 用它验证候选 credential；API-008 只在 `llmModelId` 实际变化时、保存任何 patch 字段前使用它验证候选模型，deadline 为 60 秒。API-008 probe 失败时整个 patch 不持久化；不含已变化 `llmModelId` 的 settings patch 不调用 provider。API-006 使用同一 probe 规则测试当前已保存配置。
 
 Deadline: 60 seconds per call, including a possible schema-repair attempt. Cancellation discards late output and prevents persistence.
 

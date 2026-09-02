@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | AI & Program Architecture |
-| Last Verified | 2026-09-02 |
+| Last Verified | 2026-09-03 |
 | Source of Truth For | Context 组装、候选曲目约束、节目规划、LLM/TTS 调用、校验、重试、缓存、记忆提案与 AI 降级流程 |
 | Related Documents | [AI Behavior](../product/AI-BEHAVIOR.md), [FRS](../product/FRS.md), [NFRS](../product/NFRS.md), [Architecture](ARCHITECTURE.md), [Runtime State Machines](RUNTIME-STATE-MACHINES.md), [Data Model](DATA-MODEL.md), [Provider Contracts](../contracts/PROVIDER-CONTRACTS.md), [Program Plan Schema](../contracts/schemas/program-plan.schema.json) |
 
@@ -86,7 +86,7 @@ score = 0.35 * preference
 
 `PlanLocalProgram` 调用 OpenAI Responses：
 
-- 模型 ID 来自用户可编辑的 provider setting；初始默认 `gpt-5.6-luna`，保存前必须通过 capability probe 确认账号可用且支持 Structured Outputs。
+- 模型 ID 来自用户可编辑的 provider setting；初始默认 `gpt-5.6-luna`。API-008 只有在 `llmModelId` 实际变化时，才以 patch 合并后的候选 origin/model 和该 origin 已验证 credential 执行固定 capability probe，确认账号可用且支持 Structured Outputs；该路径总 deadline 为 60 秒，probe 成功后才原子保存整个 patch，失败时任何设置字段都不得改变。API-006 仍只测试当前已保存配置。
 - `store: false`、`text.format.type=json_schema`、schema=`program-plan.schema.json`、禁用 built-in tools、限制最大输出。
 - 包含可选 schema repair 的总 deadline 为 60 秒；网络/5xx 在原 deadline 内最多重试 2 次，使用指数退避和 full jitter；429 遵循 `Retry-After`，若剩余 deadline 不足则直接降级。auth/invalid request 不重试。
 

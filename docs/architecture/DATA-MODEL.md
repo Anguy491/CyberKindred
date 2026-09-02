@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Data Architecture |
-| Last Verified | 2026-09-02 |
+| Last Verified | 2026-09-03 |
 | Source of Truth For | SQLite schema、字段、键、索引、迁移、数据目录、保留、导出与删除规则 |
 | Related Documents | [FRS](../product/FRS.md), [NFRS](../product/NFRS.md), [Architecture](ARCHITECTURE.md), [AI Orchestration](AI-ORCHESTRATION.md), [Privacy Data Lifecycle](../security/PRIVACY-DATA-LIFECYCLE.md), [Memory Schema](../contracts/schemas/memory-record.schema.json) |
 
@@ -197,7 +197,7 @@ Logs/                          # Tauri app_log_dir；结构化且脱敏
 
 以下值禁止作为数据库列或 JSON 值：OpenAI API Key、Authorization header、Credential Manager secret/value/handle、Apple Music 账号 cookie/token、音频文件 bytes、完整 provider request/response body、屏幕/麦克风内容、系统所有媒体会话清单历史、用户未选择目录的路径。
 
-Credential Manager target 固定使用 `CyberKindred/provider/{provider}/{origin_sha256}/api-key`，其中 hash 来自规范化 HTTPS origin，使 custom origin 之间不会共用 Key；数据库只可保存 `credential_present: true/false` 的瞬时 view，不持久化该镜像，避免不同步。MVP 同一 provider 只保留当前 configured origin 的一个 Key：API-004 验证新 origin 成功并切换设置后立即删除旧 origin Credential；失败则保留旧设置/Key。API-005 删除当前 configured origin 条目；全部重置枚举并删除该 provider prefix 下全部条目。
+Credential Manager target 固定使用 `CyberKindred/provider/{provider}/{origin_sha256}/api-key`，其中 hash 来自规范化 HTTPS origin，使 custom origin 之间不会共用 Key；数据库只可保存 `credential_present: true/false` 的瞬时 view，不持久化该镜像，避免不同步。MVP 可为同一 provider 的每个已成功验证 canonical origin 保留一个 Key：API-004 验证新 origin 成功并切换设置后不得删除其他 origin Credential；失败则保留旧设置/Key。API-005 只删除请求中指定 canonical origin 的条目（无论它是否为当前 configured origin）；只有 API-005 或全部重置可删除这些条目。全部重置枚举并删除该 provider prefix 下全部条目。
 
 ## 6. 数据清单与五个分类删除组
 
