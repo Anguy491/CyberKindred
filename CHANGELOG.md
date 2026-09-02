@@ -14,6 +14,7 @@
 
 ### Changed
 
+- 补齐 API-015 `TrackView` 的精确 nullable 标签、MusicBrainz `fetchedAt` 与持久化 match-status 映射，使离线缓存来源/时间验收可由 WebView 在不接收路径的情况下完成。
 - 对齐 onboarding 的扫描/TTS 所有权：首次目录授权只显示名称与待扫描状态，文件计数由 M3 API-013 扫描后提供；不可预览声音在 M2 fail closed，真实 `[PLAYING]`/再次点击停止与 API-038 voice-preview cancel slice 由 M3 `TASK-017` 一并交付。
 - API-002/API-003 onboarding contract 改为严格、revisioned 的七步状态与判别 step submission：每步可保存/恢复和返回编辑，profile/完成前缀原子持久化，目录/provider/城市/日程仍由各专用 API 保持唯一权威；这修复了旧版仅能最终保存 `privacyAccepted: true`、无法满足逐步重启恢复的契约缺口。
 - Product Owner 已解决 M2 三项公共语义：切换 provider origin 保留各 origin credential 直到 API-005/full reset；operation 权威 terminal 唯一但 transport 至少一次，前端按 `operationId` 幂等；API-008 在 model ID 实际变化时以 60 秒 pre-save Responses capability probe 门控整份 patch 的原子保存，API-004 仍以只读 `/v1/models` 最小验证候选 credential。
