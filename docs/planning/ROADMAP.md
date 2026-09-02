@@ -42,7 +42,7 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M2 — Application foundation
 
-**Status:** Active remediation — M2 hard gates did not pass on 2026-09-02; see [`M2 checkpoint`](../testing/checkpoints/M2.md). Product Owner resolved the three blocking semantics on 2026-09-03; M2 remains the only active milestone until implementation and hard-gate revalidation pass.
+**Status:** Active implementation — M2 hard gates did not pass on 2026-09-02; see [`M2 checkpoint`](../testing/checkpoints/M2.md). Product Owner resolved the three blocking semantics on 2026-09-03, and `TASK-008` implementation/review closed `RISK-016`–`RISK-018`; M2 remains the only active milestone while `TASK-010` and final hard-gate revalidation complete.
 
 **Goal:** 建立可测试的 Tauri/React/Rust 外壳与契约边界。
 

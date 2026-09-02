@@ -18,6 +18,7 @@ pub use error::{StorageError, StorageReason};
 pub use operation_outbox::OperationTerminalRecord;
 pub use paths::{AppPaths, CacheArea, resolve_read_only_library_path};
 pub(crate) use provider_settings::{StoredProviderSettings, StoredWeatherLocation};
+pub(crate) use provider_status::ProviderStatusPromotion;
 pub use provider_status::{
     NewProviderOutcome, ProviderOutcomeStatus, ProviderRequestKind, ProviderStatusSnapshot,
     ProviderUsageProvider,

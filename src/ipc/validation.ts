@@ -71,7 +71,7 @@ function localUnexpectedError(): ApiError {
   };
 }
 
-function isApiError(value: unknown): value is ApiError {
+export function isApiError(value: unknown): value is ApiError {
   if (!isRecord(value) || !hasExactKeys(value, [
     "schemaVersion", "errorId", "safeMessage", "retryable", "retryAfterMs", "correlationId", "details",
   ])) {

@@ -38,6 +38,9 @@ impl ProviderUsageProvider {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderRequestKind {
     SecretValidation,
+    SecretValidationApplied,
+    ModelValidation,
+    ModelValidationApplied,
     HealthCheck,
     ProgramGeneration,
     CompanionTurn,
@@ -54,6 +57,9 @@ impl ProviderRequestKind {
     const fn as_str(self) -> &'static str {
         match self {
             Self::SecretValidation => "secret_validation",
+            Self::SecretValidationApplied => "secret_validation_applied",
+            Self::ModelValidation => "model_validation",
+            Self::ModelValidationApplied => "model_validation_applied",
             Self::HealthCheck => "health_check",
             Self::ProgramGeneration => "program_generation",
             Self::CompanionTurn => "companion_turn",
@@ -70,6 +76,9 @@ impl ProviderRequestKind {
     fn parse(value: &str) -> Result<Self, StorageError> {
         match value {
             "secret_validation" => Ok(Self::SecretValidation),
+            "secret_validation_applied" => Ok(Self::SecretValidationApplied),
+            "model_validation" => Ok(Self::ModelValidation),
+            "model_validation_applied" => Ok(Self::ModelValidationApplied),
             "health_check" => Ok(Self::HealthCheck),
             "program_generation" => Ok(Self::ProgramGeneration),
             "companion_turn" => Ok(Self::CompanionTurn),
@@ -82,6 +91,10 @@ impl ProviderRequestKind {
             "current_weather" => Ok(Self::CurrentWeather),
             _ => Err(integrity_error()),
         }
+    }
+
+    const fn is_candidate_validation(self) -> bool {
+        matches!(self, Self::SecretValidation | Self::ModelValidation)
     }
 }
 
@@ -168,6 +181,70 @@ impl NewProviderOutcome {
     }
 }
 
+/// A validated request to bind one successful candidate outcome to the
+/// settings committed by the same SQLite transaction.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ProviderStatusPromotion {
+    outcome_id: Uuid,
+    candidate_kind: ProviderRequestKind,
+    applied_kind: ProviderRequestKind,
+}
+
+impl ProviderStatusPromotion {
+    /// Promotes one successful API-004 credential candidate outcome.
+    ///
+    /// # Errors
+    ///
+    /// Returns `storage_write_failed` unless `outcome_id` is a `UUIDv7`.
+    pub(crate) fn secret_validation(outcome_id: Uuid) -> Result<Self, StorageError> {
+        Self::new(
+            outcome_id,
+            ProviderRequestKind::SecretValidation,
+            ProviderRequestKind::SecretValidationApplied,
+        )
+    }
+
+    /// Promotes one successful API-008 model candidate outcome.
+    ///
+    /// # Errors
+    ///
+    /// Returns `storage_write_failed` unless `outcome_id` is a `UUIDv7`.
+    pub(crate) fn model_validation(outcome_id: Uuid) -> Result<Self, StorageError> {
+        Self::new(
+            outcome_id,
+            ProviderRequestKind::ModelValidation,
+            ProviderRequestKind::ModelValidationApplied,
+        )
+    }
+
+    fn new(
+        outcome_id: Uuid,
+        candidate_kind: ProviderRequestKind,
+        applied_kind: ProviderRequestKind,
+    ) -> Result<Self, StorageError> {
+        if outcome_id.get_version_num() != 7 {
+            return Err(write_error());
+        }
+        Ok(Self {
+            outcome_id,
+            candidate_kind,
+            applied_kind,
+        })
+    }
+
+    pub(super) const fn outcome_id(&self) -> Uuid {
+        self.outcome_id
+    }
+
+    pub(super) const fn candidate_kind(&self) -> &'static str {
+        self.candidate_kind.as_str()
+    }
+
+    pub(super) const fn applied_kind(&self) -> &'static str {
+        self.applied_kind.as_str()
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProviderStatusSnapshot {
     pub provider: ProviderUsageProvider,
@@ -193,6 +270,7 @@ type ProviderOutcomeRow = (
 struct ValidatedOutcomeRow {
     id: Uuid,
     provider: ProviderUsageProvider,
+    request_kind: ProviderRequestKind,
     status: ProviderOutcomeStatus,
     created_at_ms: i64,
 }
@@ -260,6 +338,9 @@ fn aggregate_provider_statuses(
     let mut snapshots: Vec<(ProviderStatusSnapshot, Uuid)> = Vec::new();
     for row in rows {
         let validated = validate_row(row)?;
+        if validated.request_kind.is_candidate_validation() {
+            continue;
+        }
         let existing = snapshots
             .iter_mut()
             .find(|(snapshot, _)| snapshot.provider == validated.provider);
@@ -339,6 +420,7 @@ fn validate_row(row: ProviderOutcomeRow) -> Result<ValidatedOutcomeRow, StorageE
     Ok(ValidatedOutcomeRow {
         id,
         provider,
+        request_kind,
         status,
         created_at_ms,
     })
@@ -352,6 +434,9 @@ fn validate_provider_request(
         ProviderUsageProvider::OpenAi => matches!(
             request_kind,
             ProviderRequestKind::SecretValidation
+                | ProviderRequestKind::SecretValidationApplied
+                | ProviderRequestKind::ModelValidation
+                | ProviderRequestKind::ModelValidationApplied
                 | ProviderRequestKind::HealthCheck
                 | ProviderRequestKind::ProgramGeneration
                 | ProviderRequestKind::CompanionTurn
@@ -442,6 +527,24 @@ mod tests {
         .expect("valid outcome")
     }
 
+    fn candidate_outcome(
+        request_kind: ProviderRequestKind,
+        status: ProviderOutcomeStatus,
+        created_at_ms: i64,
+    ) -> NewProviderOutcome {
+        NewProviderOutcome::new(
+            ProviderUsageProvider::OpenAi,
+            request_kind,
+            (request_kind == ProviderRequestKind::ModelValidation)
+                .then(|| "gpt-5.6-luna".to_owned()),
+            25,
+            status,
+            Uuid::now_v7(),
+            created_at_ms,
+        )
+        .expect("valid candidate outcome")
+    }
+
     #[tokio::test]
     async fn provider_status_success_then_failure_survives_restart() {
         let (_temp, paths, storage, repository) = fixture().await;
@@ -474,6 +577,232 @@ mod tests {
             }]
         );
         reopened.close().await;
+    }
+
+    #[tokio::test]
+    async fn provider_status_ignores_valid_candidate_audit_rows() {
+        let (_temp, _paths, storage, repository) = fixture().await;
+        repository
+            .record_provider_outcome(candidate_outcome(
+                ProviderRequestKind::SecretValidation,
+                ProviderOutcomeStatus::Authentication,
+                100,
+            ))
+            .await
+            .expect("secret candidate audit row");
+        repository
+            .record_provider_outcome(candidate_outcome(
+                ProviderRequestKind::ModelValidation,
+                ProviderOutcomeStatus::Success,
+                200,
+            ))
+            .await
+            .expect("model candidate audit row");
+
+        assert!(
+            repository
+                .load_provider_statuses()
+                .await
+                .expect("candidate rows validate")
+                .is_empty()
+        );
+        storage.close().await;
+    }
+
+    #[tokio::test]
+    async fn promoted_candidate_statuses_aggregate_after_restart() {
+        let (_temp, paths, storage, repository) = fixture().await;
+        let secret_candidate = repository
+            .record_provider_outcome(candidate_outcome(
+                ProviderRequestKind::SecretValidation,
+                ProviderOutcomeStatus::Success,
+                100,
+            ))
+            .await
+            .expect("secret candidate");
+        let settings = super::super::StoredProviderSettings::default();
+        let revision = repository
+            .save_provider_settings(
+                0,
+                &settings,
+                110,
+                false,
+                Some(
+                    ProviderStatusPromotion::secret_validation(secret_candidate)
+                        .expect("secret promotion"),
+                ),
+            )
+            .await
+            .expect("settings and secret status commit");
+
+        let model_candidate = repository
+            .record_provider_outcome(candidate_outcome(
+                ProviderRequestKind::ModelValidation,
+                ProviderOutcomeStatus::Success,
+                200,
+            ))
+            .await
+            .expect("model candidate");
+        let mut updated = settings;
+        updated.llm_model_id = "gpt-5.6-terra".to_owned();
+        repository
+            .save_provider_settings(
+                revision,
+                &updated,
+                210,
+                false,
+                Some(
+                    ProviderStatusPromotion::model_validation(model_candidate)
+                        .expect("model promotion"),
+                ),
+            )
+            .await
+            .expect("settings and model status commit");
+        drop(repository);
+        storage.close().await;
+
+        let reopened = Storage::open(&paths, "0.1.0")
+            .await
+            .expect("reopen storage");
+        let repository = reopened.repository();
+        assert_eq!(
+            repository
+                .load_provider_statuses()
+                .await
+                .expect("promoted status restores"),
+            vec![ProviderStatusSnapshot {
+                provider: ProviderUsageProvider::OpenAi,
+                latest_status: ProviderOutcomeStatus::Success,
+                latest_outcome_at_ms: 200,
+                last_success_at_ms: Some(200),
+            }]
+        );
+        let kinds: Vec<String> = sqlx::query_scalar(
+            "SELECT request_kind FROM provider_usage ORDER BY created_at_ms ASC",
+        )
+        .fetch_all(&repository.writer)
+        .await
+        .expect("promoted audit kinds");
+        assert_eq!(
+            kinds,
+            vec![
+                "secret_validation_applied".to_owned(),
+                "model_validation_applied".to_owned(),
+            ]
+        );
+        reopened.close().await;
+    }
+
+    #[tokio::test]
+    async fn invalid_promotions_roll_back_the_entire_settings_transaction() {
+        let (_temp, _paths, storage, repository) = fixture().await;
+        let baseline = super::super::StoredProviderSettings::default();
+
+        let secret_success = repository
+            .record_provider_outcome(candidate_outcome(
+                ProviderRequestKind::SecretValidation,
+                ProviderOutcomeStatus::Success,
+                100,
+            ))
+            .await
+            .expect("secret candidate");
+        let mut changed = baseline.clone();
+        changed.llm_model_id = "wrong-id-must-rollback".to_owned();
+        let error = repository
+            .save_provider_settings(
+                0,
+                &changed,
+                110,
+                false,
+                Some(
+                    ProviderStatusPromotion::secret_validation(Uuid::now_v7())
+                        .expect("valid missing id"),
+                ),
+            )
+            .await
+            .expect_err("missing candidate id");
+        assert_eq!(error.reason(), StorageReason::StorageWriteFailed);
+        assert_settings_rolled_back(&repository, &baseline).await;
+
+        let model_success = repository
+            .record_provider_outcome(candidate_outcome(
+                ProviderRequestKind::ModelValidation,
+                ProviderOutcomeStatus::Success,
+                200,
+            ))
+            .await
+            .expect("model candidate");
+        changed.llm_model_id = "wrong-kind-must-rollback".to_owned();
+        let error = repository
+            .save_provider_settings(
+                0,
+                &changed,
+                210,
+                false,
+                Some(
+                    ProviderStatusPromotion::secret_validation(model_success)
+                        .expect("mismatched typed promotion"),
+                ),
+            )
+            .await
+            .expect_err("candidate kind mismatch");
+        assert_eq!(error.reason(), StorageReason::StorageWriteFailed);
+        assert_settings_rolled_back(&repository, &baseline).await;
+
+        let secret_failure = repository
+            .record_provider_outcome(candidate_outcome(
+                ProviderRequestKind::SecretValidation,
+                ProviderOutcomeStatus::Timeout,
+                300,
+            ))
+            .await
+            .expect("failed secret candidate");
+        changed.llm_model_id = "wrong-status-must-rollback".to_owned();
+        let error = repository
+            .save_provider_settings(
+                0,
+                &changed,
+                310,
+                false,
+                Some(
+                    ProviderStatusPromotion::secret_validation(secret_failure)
+                        .expect("failed candidate promotion"),
+                ),
+            )
+            .await
+            .expect_err("candidate status mismatch");
+        assert_eq!(error.reason(), StorageReason::StorageWriteFailed);
+        assert_settings_rolled_back(&repository, &baseline).await;
+
+        let candidate_kinds: Vec<String> = sqlx::query_scalar(
+            "SELECT request_kind FROM provider_usage WHERE id IN (?, ?, ?) ORDER BY created_at_ms ASC",
+        )
+        .bind(secret_success.to_string())
+        .bind(model_success.to_string())
+        .bind(secret_failure.to_string())
+        .fetch_all(&repository.writer)
+        .await
+        .expect("candidate facts remain audit-only");
+        assert_eq!(
+            candidate_kinds,
+            vec![
+                "secret_validation".to_owned(),
+                "model_validation".to_owned(),
+                "secret_validation".to_owned(),
+            ]
+        );
+        storage.close().await;
+    }
+
+    async fn assert_settings_rolled_back(
+        repository: &Repository,
+        baseline: &super::super::StoredProviderSettings,
+    ) {
+        let stored = repository
+            .load_provider_settings()
+            .await
+            .expect("settings remain readable after rollback");
+        assert_eq!(stored, *baseline);
     }
 
     #[tokio::test]

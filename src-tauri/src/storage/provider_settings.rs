@@ -1,4 +1,4 @@
-use super::{CanonicalOrigin, Repository, StorageError, StorageReason};
+use super::{CanonicalOrigin, ProviderStatusPromotion, Repository, StorageError, StorageReason};
 
 const SETTINGS_SCHEMA_VERSION: i64 = 1;
 
@@ -84,6 +84,7 @@ impl Repository {
         settings: &StoredProviderSettings,
         updated_at_ms: i64,
         clear_weather_location: bool,
+        promotion: Option<ProviderStatusPromotion>,
     ) -> Result<u64, StorageError> {
         validate_stored_settings(settings)?;
         let mut transaction = self
@@ -136,7 +137,21 @@ impl Repository {
             .bind(updated_at_ms)
             .execute(&mut *transaction)
             .await
+                .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))?;
+        }
+        if let Some(promotion) = promotion {
+            let promoted = sqlx::query(
+                "UPDATE provider_usage SET request_kind = ? WHERE id = ? AND provider = 'openai' AND request_kind = ? AND status_class = 'success'",
+            )
+            .bind(promotion.applied_kind())
+            .bind(promotion.outcome_id().to_string())
+            .bind(promotion.candidate_kind())
+            .execute(&mut *transaction)
+            .await
             .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))?;
+            if promoted.rows_affected() != 1 {
+                return Err(StorageError::new(StorageReason::StorageWriteFailed));
+            }
         }
         transaction
             .commit()

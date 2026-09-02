@@ -15,7 +15,7 @@
 ### Changed
 
 - Product Owner 已解决 M2 三项公共语义：切换 provider origin 保留各 origin credential 直到 API-005/full reset；operation 权威 terminal 唯一但 transport 至少一次，前端按 `operationId` 幂等；API-008 在 model ID 实际变化时以 60 秒 pre-save Responses capability probe 门控整份 patch 的原子保存，API-004 仍以只读 `/v1/models` 最小验证候选 credential。
-- M2 technical checkpoint 仍如实记录为 `Blocked`：WebdriverIO High advisory 已关闭，三项语义已解冻进入 remediation，但在实现与 hard-gate 复验完成前不追溯改写失败结果，也不激活 M3。
+- M2 technical checkpoint 仍如实保留 2026-09-02 的 `Blocked` 结果；`TASK-008` 已完成三项语义 remediation 并关闭 `RISK-016`–`RISK-018`，M2 在 `TASK-010` 和完整 checkpoint 复验完成前不激活 M3。
 - 对齐 SQLx 0.9 的实际 feature 名称：SQLite 基础只启用 bundled SQLite、Tokio runtime、migration/macro，不启用默认的多数据库、JSON 或 load-extension 能力。
 - 补全 `playback-state` 与 `program-plan` 条件分支中的局部 `object`/`array` 类型声明，使不改变实例语义的 v1 schema 可由 AJV strict 模式编译。
 - 为 `TASK-005` 固定 Node-only `ajv 8.20.0` 与 `ajv-formats 3.0.1`，以执行 Draft 2020-12/UUID/date-time 契约校验；两者禁止进入 WebView runtime bundle。
@@ -30,7 +30,7 @@
 
 ### Added
 
-- `TASK-008` blocked candidate 建立 Rust-only provider registry/config、严格 API-004..009/API-043 边界、Windows Credential Manager 内部 unsafe 隔离、显式 Responses capability probe、持久化 accepted→terminal outbox、启动恢复、24 小时/7 天 outbox retention 和脱敏诊断；默认测试不联网、不出声、不触碰真实凭据。
+- `TASK-008` 交付 Rust-only provider registry/config、严格 API-004..009/API-043 边界、Windows Credential Manager 内部 unsafe 隔离、显式 Responses capability probe、候选 usage 与设置事务原子绑定、唯一权威 accepted→terminal outbox、at-least-once transport/frontend dedupe、启动恢复、24 小时/7 天 outbox retention 和脱敏诊断；默认测试不联网、不出声、不触碰真实凭据。
 - 移除含三项 High advisory 的 WebdriverIO 9.31.5 开发依赖链，改用 Node 24 built-in W3C client 直连固定 `tauri-driver`；9 条 hermetic harness 测试与匹配 Microsoft EdgeDriver 的隔离 desktop shell/navigation smoke 通过。
 - `TASK-009` 交付 RADIO/LIBRARY/YOU/SETTINGS 四页静音应用壳、OLED 三层视觉 token、本地字体/fallback 状态、全局键盘导航与可聚焦的 capability 降级原因；四页 1100×720 截图证据已归档。
 - M2 新增 Rust-only 强类型诊断日志：只写入 allowlist 字段与固定 `[redacted]` JSONL，以 5 MiB 单文件、14 天和 50 MiB 总量上限轮换清理，并拒绝 symlink/Windows reparse 路径。

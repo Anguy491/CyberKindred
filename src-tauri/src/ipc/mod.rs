@@ -4,6 +4,7 @@
 //! composition root owns registration after it has injected trusted services.
 
 mod capabilities;
+mod command;
 mod error;
 mod events;
 mod idempotency;
@@ -14,6 +15,7 @@ pub use capabilities::{
     AppCapabilities, AppFeatures, CapabilitiesService, EmptyRequest, Platform, ProviderKind,
     SourceCapabilities, SourceKind, SourceSummary,
 };
+pub use command::parse_command_request;
 pub use error::{
     ApiError, ApiErrorDetails, CapabilityName, ErrorId, InternalReason, PublicField,
     RedactedDiagnostic,

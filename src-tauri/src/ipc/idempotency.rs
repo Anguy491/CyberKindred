@@ -147,14 +147,8 @@ impl<T: Clone> IdempotencyStore<T> {
             );
         }
 
-        if self.entries.len() >= self.max_entries
-            && let Some(oldest) = self
-                .entries
-                .iter()
-                .min_by_key(|(_, stored)| stored.expires_at)
-                .map(|(entry_key, _)| *entry_key)
-        {
-            self.entries.remove(&oldest);
+        if self.entries.len() >= self.max_entries {
+            return Err(ApiError::from_reason(InternalReason::ResourceBusy));
         }
 
         let result = operation();
@@ -177,5 +171,57 @@ impl<T: Clone> IdempotencyStore<T> {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ipc::ErrorId;
+
+    #[test]
+    fn full_store_rejects_new_work_without_evicting_live_key() {
+        let now = Instant::now();
+        let first_id = Uuid::now_v7();
+        let mut store = IdempotencyStore::new(1);
+        assert_eq!(
+            store.execute(
+                now,
+                "first",
+                first_id,
+                &"payload",
+                IdempotencyWindow::Standard,
+                || Ok(7_u8),
+            ),
+            Ok(7)
+        );
+
+        let mut called = false;
+        let overflow = store
+            .execute(
+                now,
+                "second",
+                Uuid::now_v7(),
+                &"payload",
+                IdempotencyWindow::Standard,
+                || {
+                    called = true;
+                    Ok(9)
+                },
+            )
+            .expect_err("live entry must keep its complete retention window");
+        assert_eq!(overflow.error_id, ErrorId::ResourceBusy);
+        assert!(!called);
+        assert_eq!(
+            store.execute(
+                now,
+                "first",
+                first_id,
+                &"payload",
+                IdempotencyWindow::Standard,
+                || Ok(0),
+            ),
+            Ok(7)
+        );
     }
 }

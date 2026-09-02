@@ -26,7 +26,7 @@
 | Retention control | 每个 Responses 请求显式 `store: false`，不使用 provider conversation ID，也不启用 background mode。`store: false` 不是对所有服务端日志/法定义务的零保留承诺；用户仍须参考其 OpenAI 账户的数据控制。 |
 | Limits | 每个 Responses 请求 input ≤24,000 tokens、requested output ≤4,000 tokens、候选曲目≤200，总 deadline 60 秒；Speech 45 秒、输入最多 500 Unicode 字符（低于 API 的 4096 字符上限）、输出最多 20 MiB。请求不启用 hosted web/file/computer tools。 |
 | Cache | LLM 输出不跨程序缓存；语音按规范化文本、voice/model/format 哈希缓存 30 天，或在用户清除数据时立即删除。哈希不含 key。 |
-| Failures | 401/403 → ERR-1301；429 → ERR-1302；deadline → ERR-1303；网络/5xx → ERR-1304；无效 structured output/audio → ERR-1305。LLM 可进行一次无工具 schema repair；TTS 失败回退为屏幕文字。 |
+| Failures | 401/403 → ERR-1301；429 → ERR-1302；deadline → ERR-1303；网络/5xx → ERR-1304；无效 structured output/audio → ERR-1305。LLM 可进行一次无工具 schema repair；TTS 失败回退为屏幕文字。API-004/API-008 候选 probe 的调用事实会记录，但只有设置事务成功提交才影响当前 integration status；拒绝、保存失败与回滚不得在重启后把候选结果归给旧配置。 |
 | Custom origin | 高级设置只接受 HTTPS origin。保存前显示完整 hostname 与“此主机将收到 API Key 和所列上下文”的确认；禁止 userinfo、fragment、IP literal、明文 HTTP、跨 origin redirect。每个 origin 单独存 key；切换 origin 不复制也不删除其他 origin credential，删除/测试均绑定明确 origin。全部重置删除所有 CyberKindred origin 的 key，而非仅当前 origin。 |
 | Test | Fake 断言 Authorization 不进入日志、Responses 必有 `store:false`、无 hosted tools、取消后不落库；真实 smoke test 只验证最短中文输出和短语音，显式标签 `real_openai`。 |
 

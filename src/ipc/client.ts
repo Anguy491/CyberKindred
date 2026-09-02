@@ -29,7 +29,7 @@ export class CyberKindredIpcClient {
   async getCapabilities(): Promise<AppCapabilities> {
     const response = await this.#invoke<unknown>(
       API_V1_GET_CAPABILITIES,
-      {},
+      { request: {} },
       CAPABILITIES_TIMEOUT_MS,
     );
     try {

@@ -187,7 +187,7 @@ Logs/                          # Tauri app_log_dir；结构化且脱敏
 
 #### `provider_usage`
 
-`id TEXT PRIMARY KEY`、`provider TEXT NOT NULL`、`request_kind TEXT NOT NULL`、`model TEXT`、`input_units INTEGER`、`output_units INTEGER`、`audio_seconds REAL`、`latency_ms INTEGER NOT NULL`、`status_class TEXT NOT NULL`、`correlation_id TEXT NOT NULL`、`created_at_ms INTEGER NOT NULL`。不保存 request/response body，不估算价格。索引 `ix_usage_provider_time(provider,created_at_ms)`；按 13 个月保留用于本机会话用量显示与可靠性诊断。
+`id TEXT PRIMARY KEY`、`provider TEXT NOT NULL`、`request_kind TEXT NOT NULL`、`model TEXT`、`input_units INTEGER`、`output_units INTEGER`、`audio_seconds REAL`、`latency_ms INTEGER NOT NULL`、`status_class TEXT NOT NULL`、`correlation_id TEXT NOT NULL`、`created_at_ms INTEGER NOT NULL`。不保存 request/response body，不估算价格。API-004/API-008 先分别写 `secret_validation` / `model_validation` candidate outcome；这些行保留调用事实但不参与当前 integration status 聚合。只有验证成功且设置保存成功时，设置事务才把同一行原子提升为 `secret_validation_applied` / `model_validation_applied`；验证失败、设置失败或崩溃留下的 candidate 行不能污染重启后的当前状态。其他已提交配置上的 provider request kind 直接参与状态聚合。索引 `ix_usage_provider_time(provider,created_at_ms)`；按 13 个月保留用于本机会话用量显示与可靠性诊断。
 
 #### `outbox_events`
 

@@ -166,7 +166,7 @@ Memory 只可来自用户明确陈述或重复、可验证的反馈模式。模�
 | 并发 | LLM 同时最多 1 个 program planning + 1 个 chat/summary；TTS 同时 1 个；MusicBrainz 1 req/s；天气同时 1 个。 |
 | 取消 | 新 program、stop、source switch、power suspend 取消不再需要的 request；取消后的结果不得持久化或播放。 |
 | circuit breaker | 同一 provider 连续 5 次 transient failure 后开启 60 秒；auth failure 立即开启，直到设置被修正并 probe 成功。 |
-| usage | 保存 request kind、model、token/audio usage、latency 与 classified status，用于本机会话用量显示和可靠性诊断；不估算价格，不保存 request/response body。 |
+| usage | 保存 request kind、model、token/audio usage、latency 与 classified status，用于本机会话用量显示和可靠性诊断；不估算价格，不保存 request/response body。候选 credential/model probe 先保存 audit-only candidate kind，只有对应设置在同一 SQLite 事务提交时才提升为 current-status outcome；失败或回滚不得污染重启后的当前 provider 状态。 |
 | prompt version | 每个输出保存 `prompt_version`、`provider`、`model`、schema version 与 input fragment hashes，以便重现规则而不保留发送正文副本。 |
 
 ## 10. 验证要求

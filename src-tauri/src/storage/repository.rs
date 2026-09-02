@@ -303,7 +303,7 @@ mod tests {
         };
         assert!(
             repository
-                .save_provider_settings(0, &unsafe_settings, 1, false)
+                .save_provider_settings(0, &unsafe_settings, 1, false, None)
                 .await
                 .is_err()
         );

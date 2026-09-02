@@ -1,6 +1,6 @@
 import type { IpcTransport, IpcUnlisten } from "./transport";
 import { IPC_SCHEMA_VERSION, type PublicEventPayload } from "./types";
-import { isRecord } from "./validation";
+import { isApiError, isRecord } from "./validation";
 
 export const PUBLIC_EVENT_NAMES = [
   "cyberkindred://v1/playback/event",
@@ -17,6 +17,7 @@ export const PUBLIC_EVENT_NAMES = [
 ] as const;
 
 export type PublicEventName = (typeof PUBLIC_EVENT_NAMES)[number];
+const MAX_PROCESS_OPERATION_TERMINALS = 4_096;
 export type ResyncReason =
   | "initial"
   | "sequence_gap"
@@ -34,6 +35,40 @@ export interface EventSubscriptionHandlers {
 }
 
 type SequenceObservation = "apply" | "awaiting_snapshot" | "gap" | "stale";
+type OperationTerminalKind = "completed" | "failed" | "cancelled";
+export type OperationTerminalObservation = "new" | "replay" | "conflict";
+
+/** Process-local at-least-once dedupe with a deterministic memory bound. */
+export class OperationTerminalTracker {
+  readonly #capacity: number;
+  readonly #entries = new Map<string, OperationTerminalKind>();
+
+  constructor(capacity = MAX_PROCESS_OPERATION_TERMINALS) {
+    if (!Number.isSafeInteger(capacity) || capacity <= 0) {
+      throw new Error("Operation terminal tracker capacity must be a positive safe integer.");
+    }
+    this.#capacity = capacity;
+  }
+
+  get size(): number {
+    return this.#entries.size;
+  }
+
+  classify(operationId: string, kind: OperationTerminalKind): OperationTerminalObservation {
+    const known = this.#entries.get(operationId);
+    if (known === undefined) return "new";
+    return known === kind ? "replay" : "conflict";
+  }
+
+  remember(operationId: string, kind: OperationTerminalKind): void {
+    if (this.#entries.has(operationId)) return;
+    if (this.#entries.size === this.#capacity) {
+      const oldest = this.#entries.keys().next().value;
+      if (oldest !== undefined) this.#entries.delete(oldest);
+    }
+    this.#entries.set(operationId, kind);
+  }
+}
 
 class GlobalSequenceTracker {
   private lastApplied: number | undefined;
@@ -83,6 +118,7 @@ export async function subscribeToPublicEvents(
   let stopped = false;
   let resyncInFlight: Promise<void> | undefined;
   let pendingReason: ResyncReason | undefined;
+  const operationTerminals = new OperationTerminalTracker();
 
   const requestResync = (reason: ResyncReason): void => {
     tracker.requireSnapshot();
@@ -119,16 +155,26 @@ export async function subscribeToPublicEvents(
   };
 
   const receive = (eventName: PublicEventName, value: unknown): void => {
-    const payload = parseEventEnvelope(value);
+    const payload = parseEventPayload(eventName, value);
     if (payload === "protocol_mismatch" || payload === "invalid_event") {
       requestResync(payload);
       return;
     }
 
+    const operationTerminal = getOperationTerminal(eventName, payload);
+    const terminalObservation = operationTerminal === undefined
+      ? undefined
+      : operationTerminals.classify(operationTerminal.operationId, operationTerminal.kind);
+    const terminalReplay = terminalObservation === "replay";
+    const terminalConflict = terminalObservation === "conflict";
     const boundaryReason = eventName === "cyberkindred://v1/app/resumed"
       ? "resume"
       : isTerminalEvent(eventName, payload) ? "terminal" : undefined;
     const observation = tracker.observe(payload.sequence);
+    if (terminalConflict) {
+      requestResync("invalid_event");
+      return;
+    }
     if (observation === "stale") {
       return;
     }
@@ -137,8 +183,17 @@ export async function subscribeToPublicEvents(
       return;
     }
     if (observation === "awaiting_snapshot") {
-      requestResync(boundaryReason ?? "event_during_resync");
+      if (!terminalReplay) {
+        requestResync(boundaryReason ?? "event_during_resync");
+      }
       return;
+    }
+
+    if (terminalReplay) {
+      return;
+    }
+    if (operationTerminal !== undefined) {
+      operationTerminals.remember(operationTerminal.operationId, operationTerminal.kind);
     }
 
     handlers.onEvent(eventName, payload);
@@ -169,6 +224,51 @@ export async function subscribeToPublicEvents(
       unlisten();
     }
   };
+}
+
+function parseEventPayload(
+  eventName: PublicEventName,
+  value: unknown,
+): PublicEventPayload | "protocol_mismatch" | "invalid_event" {
+  const envelope = parseEventEnvelope(value);
+  if (envelope === "protocol_mismatch" || envelope === "invalid_event") {
+    return envelope;
+  }
+  if (eventName === "cyberkindred://v1/operation/completed") {
+    if (
+      !hasExactKeys(envelope, [
+        "schemaVersion", "sequence", "occurredAt", "operationId", "kind", "outputLabel",
+      ])
+      || !isUuid(envelope.operationId)
+      || (envelope.kind !== "voice_preview" && envelope.kind !== "data_export")
+      || (envelope.outputLabel !== null && !isSafeOutputLabel(envelope.outputLabel))
+    ) {
+      return "invalid_event";
+    }
+  }
+  if (eventName === "cyberkindred://v1/operation/failed") {
+    if (
+      !hasExactKeys(envelope, [
+        "schemaVersion", "sequence", "occurredAt", "operationId", "error",
+      ])
+      || !isUuid(envelope.operationId)
+      || !isApiError(envelope.error)
+    ) {
+      return "invalid_event";
+    }
+  }
+  if (eventName === "cyberkindred://v1/operation/cancelled") {
+    if (
+      !hasExactKeys(envelope, [
+        "schemaVersion", "sequence", "occurredAt", "operationId", "kind",
+      ])
+      || !isUuid(envelope.operationId)
+      || !isCancelledOperationKind(envelope.kind)
+    ) {
+      return "invalid_event";
+    }
+  }
+  return envelope;
 }
 
 function preferredReason(
@@ -227,4 +327,49 @@ function isTerminalEvent(eventName: PublicEventName, payload: PublicEventPayload
     return payload.state === "completed" || payload.state === "cancelled" || payload.state === "failed";
   }
   return false;
+}
+
+function getOperationTerminal(
+  eventName: PublicEventName,
+  payload: PublicEventPayload,
+): { readonly operationId: string; readonly kind: OperationTerminalKind } | undefined {
+  const kind = eventName === "cyberkindred://v1/operation/completed"
+    ? "completed"
+    : eventName === "cyberkindred://v1/operation/failed"
+      ? "failed"
+      : eventName === "cyberkindred://v1/operation/cancelled" ? "cancelled" : undefined;
+  if (kind !== undefined && typeof payload.operationId === "string") {
+    return { operationId: payload.operationId, kind };
+  }
+  return undefined;
+}
+
+function isCancelledOperationKind(
+  value: unknown,
+): value is "chat" | "voice_preview" | "library_scan" | "data_export" {
+  return value === "chat"
+    || value === "voice_preview"
+    || value === "library_scan"
+    || value === "data_export";
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expected: ReadonlyArray<string>,
+): boolean {
+  const actual = Object.keys(value);
+  return actual.length === expected.length && expected.every((key) => Object.hasOwn(value, key));
+}
+
+function isUuid(value: unknown): value is string {
+  return typeof value === "string"
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value);
+}
+
+function isSafeOutputLabel(value: unknown): value is string {
+  return typeof value === "string"
+    && value.length >= 1
+    && value.length <= 200
+    && !/\p{Cc}/u.test(value)
+    && !/[\\/]/u.test(value);
 }

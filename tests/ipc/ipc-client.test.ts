@@ -14,6 +14,7 @@ import {
   type PublicEventPayload,
   type ResyncReason,
 } from "../../src/ipc";
+import { OperationTerminalTracker } from "../../src/ipc/events";
 
 const CAPABILITIES: AppCapabilities = {
   protocolVersion: "1.0.0",
@@ -68,7 +69,25 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("TASK-006 typed IPC client", () => {
+describe("TASK-006/TASK-008 typed IPC client", () => {
+  // TEST-ONB-003; FR-ONB-005; NFR-REL-002.
+  it("bounds process-local terminal history with deterministic oldest eviction", () => {
+    const tracker = new OperationTerminalTracker(3);
+    tracker.remember("operation-a", "completed");
+    tracker.remember("operation-b", "failed");
+    tracker.remember("operation-c", "cancelled");
+
+    expect(tracker.size).toBe(3);
+    expect(tracker.classify("operation-b", "failed")).toBe("replay");
+    expect(tracker.classify("operation-b", "completed")).toBe("conflict");
+
+    tracker.remember("operation-d", "completed");
+    expect(tracker.size).toBe(3);
+    expect(tracker.classify("operation-a", "completed")).toBe("new");
+    expect(tracker.classify("operation-b", "failed")).toBe("replay");
+    expect(tracker.classify("operation-d", "failed")).toBe("conflict");
+  });
+
   // API-001; FR-RAD-004; FR-SET-004; NFR-SEC-002.
   it("API-001 serializes only an empty request and accepts the strict capability DTO", async () => {
     const transport = new FakeIpcTransport();
@@ -77,7 +96,7 @@ describe("TASK-006 typed IPC client", () => {
     await expect(client.getCapabilities()).resolves.toEqual(CAPABILITIES);
     expect(transport.invocations).toEqual([{
       command: "api_v1_get_capabilities",
-      args: {},
+      args: { request: {} },
     }]);
   });
 
@@ -151,10 +170,119 @@ describe("TASK-006 typed IPC client", () => {
 
     transport.emit("cyberkindred://v1/app/resumed", event(4));
     await vi.waitFor(() => expect(reasons).toContain("resume"));
-    transport.emit("cyberkindred://v1/operation/completed", event(5));
+    transport.emit("cyberkindred://v1/operation/completed", completedEvent(5));
     await vi.waitFor(() => expect(reasons).toContain("terminal"));
     stop();
     expect([...transport.listeners.values()].every((listeners) => listeners.size === 0)).toBe(true);
+  });
+
+  // TEST-ONB-003; FR-ONB-005; NFR-COST-001.
+  it("deduplicates same-kind EVT-008/009/011 replays while preserving global sequence", async () => {
+    const transport = new FakeIpcTransport();
+    const client = new CyberKindredIpcClient(transport);
+    const received: Array<{ name: PublicEventName; payload: PublicEventPayload }> = [];
+    const reasons: ResyncReason[] = [];
+    const stop = await client.subscribeToEvents({
+      onEvent: (name, payload) => received.push({ name, payload }),
+      refreshSnapshot: async (reason) => {
+        reasons.push(reason);
+      },
+    });
+    await vi.waitFor(() => expect(reasons).toContain("initial"));
+
+    transport.emit("cyberkindred://v1/operation/completed", completedEvent(1, OPERATION_A));
+    expect(received).toHaveLength(1);
+    await vi.waitFor(() => expect(reasons.filter((reason) => reason === "terminal")).toHaveLength(1));
+    transport.emit("cyberkindred://v1/operation/completed", completedEvent(2, OPERATION_A));
+    expect(received).toHaveLength(1);
+
+    transport.emit("cyberkindred://v1/playback/event", event(3));
+    expect(received).toHaveLength(2);
+    transport.emit("cyberkindred://v1/operation/failed", failedEvent(4, OPERATION_B));
+    expect(received).toHaveLength(3);
+    await vi.waitFor(() => expect(reasons.filter((reason) => reason === "terminal")).toHaveLength(2));
+    transport.emit("cyberkindred://v1/operation/failed", failedEvent(5, OPERATION_B));
+    expect(received).toHaveLength(3);
+
+    transport.emit("cyberkindred://v1/operation/cancelled", cancelledEvent(6, OPERATION_C));
+    expect(received).toHaveLength(4);
+    await vi.waitFor(() => expect(reasons.filter((reason) => reason === "terminal")).toHaveLength(3));
+    transport.emit("cyberkindred://v1/operation/cancelled", cancelledEvent(7, OPERATION_C));
+    expect(received).toHaveLength(4);
+    expect(reasons.filter((reason) => reason === "terminal")).toHaveLength(3);
+
+    transport.emit("cyberkindred://v1/playback/event", event(8));
+    expect(received).toHaveLength(5);
+    expect(reasons).not.toContain("sequence_gap");
+    expect(reasons).not.toContain("invalid_event");
+    stop();
+  });
+
+  // TEST-ONB-003; FR-ONB-005; NFR-COST-001.
+  it("blocks conflicting operation terminal kinds and refreshes authoritative state", async () => {
+    const transport = new FakeIpcTransport();
+    const client = new CyberKindredIpcClient(transport);
+    const received: Array<{ name: PublicEventName; payload: PublicEventPayload }> = [];
+    const reasons: ResyncReason[] = [];
+    const stop = await client.subscribeToEvents({
+      onEvent: (name, payload) => received.push({ name, payload }),
+      refreshSnapshot: async (reason) => {
+        reasons.push(reason);
+      },
+    });
+    await vi.waitFor(() => expect(reasons).toContain("initial"));
+
+    transport.emit("cyberkindred://v1/operation/completed", completedEvent(1, OPERATION_A));
+    await vi.waitFor(() => expect(reasons.filter((reason) => reason === "terminal")).toHaveLength(1));
+    transport.emit("cyberkindred://v1/operation/failed", failedEvent(2, OPERATION_A));
+    await vi.waitFor(() => expect(reasons.filter((reason) => reason === "invalid_event")).toHaveLength(1));
+    expect(received).toHaveLength(1);
+
+    transport.emit("cyberkindred://v1/operation/failed", failedEvent(3, OPERATION_B));
+    await vi.waitFor(() => expect(reasons.filter((reason) => reason === "terminal")).toHaveLength(2));
+    transport.emit("cyberkindred://v1/operation/cancelled", cancelledEvent(4, OPERATION_B));
+    await vi.waitFor(() => expect(reasons.filter((reason) => reason === "invalid_event")).toHaveLength(2));
+    expect(received).toHaveLength(2);
+
+    transport.emit("cyberkindred://v1/operation/cancelled", cancelledEvent(5, OPERATION_C));
+    await vi.waitFor(() => expect(reasons.filter((reason) => reason === "terminal")).toHaveLength(3));
+    transport.emit("cyberkindred://v1/operation/completed", completedEvent(6, OPERATION_C));
+    await vi.waitFor(() => expect(reasons.filter((reason) => reason === "invalid_event")).toHaveLength(3));
+    expect(received).toHaveLength(3);
+
+    transport.emit("cyberkindred://v1/playback/event", event(7));
+    expect(received).toHaveLength(4);
+    expect(reasons).not.toContain("sequence_gap");
+    stop();
+  });
+
+  // EVT-009/011; FR-ONB-005; NFR-SEC-004.
+  it("rejects malformed operation terminal payloads without applying canaries", async () => {
+    const transport = new FakeIpcTransport();
+    const client = new CyberKindredIpcClient(transport);
+    const received: Array<{ name: PublicEventName; payload: PublicEventPayload }> = [];
+    const reasons: ResyncReason[] = [];
+    const stop = await client.subscribeToEvents({
+      onEvent: (name, payload) => received.push({ name, payload }),
+      refreshSnapshot: async (reason) => {
+        reasons.push(reason);
+      },
+    });
+    await vi.waitFor(() => expect(reasons).toContain("initial"));
+
+    transport.emit("cyberkindred://v1/operation/failed", {
+      ...event(1),
+      operationId: OPERATION_A,
+      error: { secret: "sk-terminal-canary" },
+    });
+    transport.emit("cyberkindred://v1/operation/cancelled", {
+      ...cancelledEvent(2, OPERATION_B),
+      kind: "unknown_kind",
+      secret: "sk-cancelled-terminal-canary",
+    });
+    await vi.waitFor(() => expect(reasons.filter((reason) => reason === "invalid_event")).toHaveLength(2));
+    expect(received).toHaveLength(0);
+    stop();
   });
 
   // API Contract section 6; NFR-MAINT-003.
@@ -199,5 +327,48 @@ function event(sequence: number): PublicEventPayload {
     schemaVersion: "1.0.0",
     sequence,
     occurredAt: "2026-09-02T00:00:00Z",
+  };
+}
+
+const OPERATION_A = "018f1f64-4ca0-7a2a-8e91-e89c389b3a31";
+const OPERATION_B = "018f1f64-4ca0-7a2a-8e91-e89c389b3a32";
+const OPERATION_C = "018f1f64-4ca0-7a2a-8e91-e89c389b3a33";
+
+function completedEvent(sequence: number, operationId = OPERATION_A): PublicEventPayload {
+  return {
+    ...event(sequence),
+    operationId,
+    kind: "voice_preview",
+    outputLabel: null,
+  };
+}
+
+function failedEvent(sequence: number, operationId: string): PublicEventPayload {
+  return {
+    ...event(sequence),
+    operationId,
+    error: {
+      schemaVersion: "1.0.0",
+      errorId: "ERR-1304",
+      safeMessage: "服务或网络当前不可用。",
+      retryable: true,
+      retryAfterMs: null,
+      correlationId: "018f1f64-4ca0-7a2a-8e91-e89c389b3b01",
+      details: {
+        field: null,
+        reason: "provider_unavailable",
+        currentRevision: null,
+        capability: null,
+        operationId,
+      },
+    },
+  };
+}
+
+function cancelledEvent(sequence: number, operationId: string): PublicEventPayload {
+  return {
+    ...event(sequence),
+    operationId,
+    kind: "voice_preview",
   };
 }
