@@ -28,6 +28,8 @@
 
 ### Added
 
+- `TASK-007` 建立 29 表 SQLite 初始迁移、单写者事务仓储、迁移前校验备份、数据库身份/完整性 fail-closed、30 天原文/voice 清理、路径 containment 与按 canonical origin 隔离的 Windows Credential Vault；默认测试不触碰真实凭据。
+- `TASK-006` 建立 API-001 Tauri 注册、统一安全 `ApiError`、deadline/幂等/revision/全局事件重同步原语，以及唯一可注入的严格 TypeScript IPC transport；WebView 静态审计拒绝直接文件、数据库、凭据和 provider 网络访问。
 - 补齐 M2 已批准的 Tauri dialog/notification/autostart 前端绑定及 Playwright、WebdriverIO、axe 测试依赖；安装期只允许 `esbuild` 本机构建检查，显式禁止 WebdriverIO 传递链下载 Edge/Gecko 驱动。
 - 为 M2 应用壳本地打包 Doto、Space Grotesk 与 Space Mono，固定 Google Fonts source commit、逐文件 SHA-256 和完整 OFL-1.1 文本；运行时不访问字体 CDN。
 - M2 固定并校验 `cargo-deny 0.20.2` 与 `cargo-audit 0.22.2` 本机工具，新增 Windows 目标的 registry/license/advisory/wildcard gate；无漏洞，Tauri 传递链的停止维护告警保留为可见风险。
