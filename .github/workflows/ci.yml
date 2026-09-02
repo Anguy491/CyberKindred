@@ -11,7 +11,7 @@ permissions:
 jobs:
   foundation:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -31,11 +31,20 @@ jobs:
         shell: pwsh
         run: rustup toolchain install 1.98.0 --profile minimal --component clippy,rustfmt
 
+      - name: Install pinned Rust policy tools
+        shell: pwsh
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo install cargo-deny --version 0.20.2 --locked
+
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Run frontend and documentation gates
         run: pnpm check
+
+      - name: Audit production frontend dependencies
+        run: pnpm audit --prod --audit-level high
 
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
@@ -45,3 +54,9 @@ jobs:
 
       - name: Test Rust
         run: cargo test --workspace --all-features --locked
+
+      - name: Enforce Rust dependency policy
+        shell: pwsh
+        run: |
+          cargo audit --file Cargo.lock
+          cargo deny --all-features check
