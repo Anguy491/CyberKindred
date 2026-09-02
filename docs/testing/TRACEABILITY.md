@@ -12,7 +12,7 @@
 
 本矩阵只建立引用，不重新定义需求或契约。表中 `Contract` 的 schema 文件名均位于 `docs/contracts/schemas/`；provider interface 指 `PROVIDER-CONTRACTS.md`。行为、契约或需求映射改变时必须更新受影响行，纯实现切片的状态整理可在 milestone checkpoint 集中完成。任何空单元格、引用不存在、需求无测试/任务或任务无需求都阻断开发。一个测试可覆盖多项需求，但测试失败时必须能回溯到具体需求断言。矩阵完整表示 beta 目标，不表示每个 `TEST-*` 都要在 M1–M6 的每次 checkpoint 执行。
 
-任务状态仍以 [`BACKLOG.md`](../planning/BACKLOG.md) 为准，milestone 状态与用户验收以 [`ROADMAP.md`](../planning/ROADMAP.md) 为准。`TASK-001` 的 M1 `TEST-APL-001/002` 证据归档于 [`TASK-001-MATRIX.md`](../../spikes/gsmtc/evidence/TASK-001-MATRIX.md)；M6 产品 UI 验收仍由 `TASK-025` 承担。`TASK-002` 的 [`Manual-TASK-002`](../../spikes/audio/MANUAL-TEST.md) 与其他探针证据在 M1 checkpoint 集中审阅；它不替代本矩阵为 FR-LIB-001、NFR-PERF-003、NFR-REL-004、NFR-COMPAT-002 映射的后续产品 `TEST-*`。
+任务状态仍以 [`BACKLOG.md`](../planning/BACKLOG.md) 为准，milestone 状态、checkpoint 结论与自动转场以 [`ROADMAP.md`](../planning/ROADMAP.md) 为准。`TASK-001` 的 M1 `TEST-APL-001/002` 证据归档于 [`TASK-001-MATRIX.md`](../../spikes/gsmtc/evidence/TASK-001-MATRIX.md)；M6 产品 UI 验收仍由 `TASK-025` 承担。`TASK-002` 的 [`Manual-TASK-002`](../../spikes/audio/MANUAL-TEST.md) 与其他探针证据在 M1 checkpoint 集中审阅；它不替代本矩阵为 FR-LIB-001、NFR-PERF-003、NFR-REL-004、NFR-COMPAT-002 映射的后续产品 `TEST-*`。
 
 ## 2. Functional requirements
 

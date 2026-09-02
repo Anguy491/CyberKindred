@@ -75,7 +75,7 @@ M1 的 `TASK-002` 真实解码听感、播放/暂停/seek、默认设备切换�
 - 对当前主路径至少保留一次成功证据和一个最重要失败/降级路径的结果；测试可以是 focused automation、人工 smoke 或两者组合。
 - 相关 hard gates 全部通过：secret 不进入前端/日志，文件和网络不越权，声音与可能付费动作只由用户明确触发，改动过的公共契约有效，无已知数据损坏，无 open Critical/High security finding。
 - 覆盖率只采集趋势，不设阻塞阈值；完整 Win10/Win11、分辨率/缩放、Narrator、10,000 首、200 次采样与 soak 默认递延到 M7，除非它们是当前 milestone 的明确目标。
-- checkpoint 记录 candidate commit、环境、已执行检查、实际失败、known gaps、规避方式和目标 milestone。Product Owner 可接受非关键债务，但不能把失败标记成通过。
+- checkpoint 记录 candidate commit、环境、已执行检查、实际失败、known gaps、规避方式和目标 milestone。hard gates 通过时由 Lead Agent 记录 `Passed` 或 `Passed with known gaps` 并自动转场；实际失败不能改写成通过。hard gate 失败时记录 `Blocked`，不得跨 milestone 绕过。
 
 ### M7 beta release
 

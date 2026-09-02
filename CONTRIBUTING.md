@@ -27,9 +27,9 @@
 
 ## Task lifecycle
 
-`Blocked -> Ready -> In Progress -> Review -> Done`。同一时刻只允许一个 Active milestone；其中依赖已满足且文件所有权不冲突的任务可以并行。`Review` 是代码/文档审查，不是用户签字等待区；`Done` 表示实现已集成、快速自检通过或例外已登记，可进入 milestone candidate。用户验收只发生在 milestone checkpoint。
+`Blocked -> Ready -> In Progress -> Review -> Done`。同一时刻只允许一个 Active milestone；其中依赖已满足且文件所有权不冲突的任务可以并行。`Review` 是代码/文档审查，不是用户签字等待区；`Done` 表示实现已集成、快速自检通过或例外已登记，可进入 milestone candidate。
 
-milestone checkpoint 提供一个可运行或可演示的 candidate、一次聚合验收记录、已完成范围和 known gaps。Product Owner 可选择接受、带已登记债务接受或退回；接受后才启动下一 milestone。M1–M6 的非关键测试债务可递延到 M7，硬门槛不得递延。
+milestone checkpoint 提供一个可运行或可演示的 candidate、聚合记录、已完成范围和 known gaps。M1–M6 由 Lead Agent 根据证据记录为 `Passed`、`Passed with known gaps` 或 `Blocked`；前两者立即启动下一 milestone，不等待 Product Owner 在线确认。非关键测试债务可递延到 M7，硬门槛不得递延；`Blocked`、范围/隐私/付费等授权边界和 M7 beta/release 仍需 Product Owner 决策。
 
 ## Blocker handling
 

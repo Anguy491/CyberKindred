@@ -27,6 +27,7 @@ Codex 按项目根到当前目录逐层合并 `AGENTS.md`，更深目录规则�
 
 - 同一时刻只推进一个 Active milestone；依赖已满足、写入范围不重叠且工作区状态可解释时，可认领多个 `TASK-*` 并受控并行。
 - milestone 内可自主实现、测试和修复；范围扩大、隐私语义变化、付费服务、外部发布、不可逆操作或未批准的高风险生产依赖必须询问用户。
+- M1–M6 checkpoint 不等待人工接受。完成范围、验证、hard gates、known gaps 与目标 milestone 以文档记录后，`Passed` 或 `Passed with known gaps` 立即关闭当前 milestone、激活下一 milestone 并继续；只有 `Blocked`、授权边界或本文件规定的用户专属操作才暂停。M7 beta/release 仍需用户批准。
 - 行为或契约变更先更新权威文档，再更新实现与相关测试；`TRACEABILITY.md`、Backlog 和 `CHANGELOG.md` 最迟在 milestone checkpoint 前同步，公共契约与安全/隐私语义不得延后同步。
 - 使用短分支或工作树与原子提交；不自动推送。子代理除非由主代理明确授予提交所有权，否则不得提交。
 - 不覆盖用户的无关更改；不把密钥、令牌、个人对话、绝对用户路径或音乐文件纳入版本控制。

@@ -19,6 +19,7 @@
 - `TASK-003` 仅依赖已批准的文档基线且与 `TASK-002` 写入范围不重叠，按新的 milestone 并行规则从 `Blocked` 调整为 `Ready`。
 - `TASK-002` 的 `Manual-TASK-002` 人工清单保留为 M1 checkpoint 证据，不再单独触发任务级用户签字；产品阶段的自动兼容性、性能与恢复验收不变。
 - 阻塞处理增加 token budget：自动排障最多三次有差异尝试；明确需要用户介入的步骤只请求一次并等待；达到上限后转向独立任务或暂停 Goal，禁止轮询不变状态。
+- M1–M6 checkpoint 改为文档记录即转场：hard gates 通过时由 Lead Agent 记录 `Passed` 或 `Passed with known gaps` 并立即开始下一 milestone，不等待 Product Owner 在线接受；M7 beta/release 仍保留人工批准。
 
 ### Added
 

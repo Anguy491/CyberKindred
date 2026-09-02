@@ -57,8 +57,8 @@
 
 ## 3. 里程碑放行
 
-用户验收以 milestone 为单位。全部计划内任务达到 `Done` 后，由 Lead Agent 生成单一 checkpoint：可运行或可演示 candidate、完成范围、主路径结果、硬门槛结果、未运行/失败检查及其计划 milestone。Product Owner 可接受、带已登记的非关键债务接受或退回；接受后才把下一 milestone 设为 Active。不得把失败写成通过，也不得用任务 `Done` 推断 milestone 已获接受。
+M1–M6 以 milestone checkpoint 为转场单位。全部计划内任务达到 `Done` 后，由 Lead Agent 生成单一 checkpoint：可运行或可演示 candidate、完成范围、主路径结果、硬门槛结果、未运行/失败检查及其计划 milestone。hard gates 通过时记录为 `Passed` 或 `Passed with known gaps`，立即把当前 milestone 标为完成、将下一 milestone 设为 Active 并继续，不等待人工确认；hard gate 失败时只能记录为 `Blocked`。不得把失败写成通过，也不得只用任务 `Done` 推断 checkpoint 通过。
 
-M1–M6 使用 prototype gate：主开发机上能启动或完成该 milestone 的主路径；改动过的 schema/公共契约有效；没有已知数据损坏、secret 泄露、越权文件/网络访问、未经确认的声音或付费调用、Critical/High 安全问题。逐行覆盖率、完整 Win10/Win11 与缩放矩阵、全状态截图、Narrator 全流程、10,000 首性能和长时间 soak 可作为 known gaps 递延到 M7，除非某项本身就是该 milestone 要消除的技术风险。
+M1–M6 使用 prototype gate：主开发机上能启动或完成该 milestone 的主路径；改动过的 schema/公共契约有效；没有已知数据损坏、secret 泄露、越权文件/网络访问、未经确认的声音或付费调用、Critical/High 安全问题。逐行覆盖率、完整 Win10/Win11 与缩放矩阵、全状态截图、Narrator 全流程、10,000 首性能和长时间 soak 可作为 known gaps 递延到 M7，除非某项本身就是该 milestone 要消除的技术风险。M7 beta/release 不自动放行，仍需用户批准。
 
 技术探针可以推翻某个实现选择，但不能静默改变用户行为。`TASK-002` 的 `Manual-TASK-002` 与其他 M1 探针证据在 M1 checkpoint 一次性汇总，不再作为单独任务签字点。若 TASK-001/002/003 触发 `RISK-001`、`RISK-002` 或新的系统权限，先更新 ADR、需求、威胁模型、契约和本 Backlog，再请求用户批准。M7 完成只产生内测候选；签名、发布、上传或向外部用户分发仍需单独授权。

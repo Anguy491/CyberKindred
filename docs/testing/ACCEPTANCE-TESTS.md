@@ -101,6 +101,6 @@
 
 ## 8. Checkpoint 与发布证据索引
 
-M1–M6 每次 checkpoint 在 `artifacts/test-evidence/milestones/<milestone>/manifest.json` 记录 candidate commit、选中的 `TEST-*` 或 milestone-specific smoke、结果、证据相对路径、known gaps 与目标 milestone。未选中测试记为 `Not Run`；实际失败记为 `Failed`，即使 Product Owner 接受债务也不能改写为 `Passed`。
+M1–M6 每次 checkpoint 在 `artifacts/test-evidence/milestones/<milestone>/manifest.json` 记录 candidate commit、选中的 `TEST-*` 或 milestone-specific smoke、结果、证据相对路径、known gaps、目标 milestone 与 checkpoint 结论。未选中测试记为 `Not Run`；实际失败记为 `Failed`，即使 checkpoint 为 `Passed with known gaps` 也不能改写为 `Passed`。hard gates 通过且文档同步后自动进入下一 milestone。
 
 M7 beta candidate 在 `artifacts/test-evidence/<version>/manifest.json` 记录全部适用 `TEST-*` 的结果、证据相对路径与校验和。目录属于本地/CI 制品，不提交可能含个人信息、Apple Music 元数据或绝对路径的原始证据；仓库只保留去标识汇总。发布门槛豁免必须先改变需求基线并取得用户批准，不能把 `skipped` 或 `Not Run` 当作通过。

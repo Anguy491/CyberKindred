@@ -33,7 +33,7 @@ CyberKindred 涉及 AI 行为、用户隐私、本地文件、音频、Windows �
 
 ## Consequences
 
-- 开始编码较晚，但每个任务仍有明确依赖、范围、建议自检与停止条件；用户验收和非关键证据改在 milestone checkpoint 聚合。
+- 开始编码较晚，但每个任务仍有明确依赖、范围、建议自检与停止条件；milestone 结论和非关键证据改在 checkpoint 聚合记录。
 - 文档变更成为实现工作的一部分；review 必须检查 ID 引用、schema 示例和 traceability。
 - 同一事实只能有一个权威文件，其他文档用链接/ID 引用，避免复制粘贴规范。
 - ADR 解释理由与后果，不替代 FRS/NFRS；改变用户可见行为仍先修改需求并获得相应批准。

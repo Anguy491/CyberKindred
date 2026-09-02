@@ -8,7 +8,7 @@
 | Source of Truth For | 里程碑顺序、依赖与阶段退出条件 |
 | Related Documents | `../product/PRD.md`, `BACKLOG.md`, `RISK-REGISTER.md`, `../testing/TEST-STRATEGY.md`, `../architecture/adr/ADR-0007-milestone-prototype-delivery.md` |
 
-Roadmap 描述阶段、checkpoint 和用户验收，不承载具体任务状态。具体执行顺序以 `BACKLOG.md` 为准。
+Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务状态。具体执行顺序以 `BACKLOG.md` 为准。
 
 ## Delivery cadence
 
@@ -16,7 +16,7 @@ Roadmap 描述阶段、checkpoint 和用户验收，不承载具体任务状态�
 - M1–M2 使用 `Technical checkpoint`：证明关键路径可行、形成可运行基础，并明确剩余风险。
 - M3–M6 使用 `Prototype checkpoint`：在主要开发机上演示该 milestone 的端到端主路径。M3 是首个“可用原型”，后续 checkpoint 逐步扩展能力。
 - M7 使用 `Beta release gate`：执行全部 P0/P1 需求、完整默认测试、覆盖率、兼容性、无障碍、性能、恢复、安装和证据要求。
-- M1–M6 可带非关键 known gaps 被 Product Owner 接受；每项必须有影响、规避方式和目标 milestone。安全/隐私硬门槛、公共契约有效性、数据损坏、未经确认的出声或付费调用不可递延。
+- M1–M6 checkpoint 记录为 `Passed`、`Passed with known gaps` 或 `Blocked`。前两者在文档同步完成后自动激活下一 milestone，不等待人工接受；known gap 必须包含影响、规避方式和目标 milestone。安全/隐私硬门槛、公共契约有效性、数据损坏、未经确认的出声或付费调用不可递延，失败时结论只能是 `Blocked`。
 
 ## M0 — Documentation Baseline v1
 
@@ -38,7 +38,7 @@ Roadmap 描述阶段、checkpoint 和用户验收，不承载具体任务状态�
 
 **Scope:** packaged/unpackaged GSMTC 枚举与 Apple Music 控制、rodio 常用格式/设备切换、Credential Manager、Tauri notification/tray/NSIS/WebView2。
 
-**Checkpoint criteria:** 在一次 M1 聚合验收中展示每个探针的环境、结果、失败回退与 ADR/风险更新；Apple Music 不支持的 capability 不进入承诺。单个探针不再单独等待用户签字。
+**Checkpoint criteria:** 在一次 M1 聚合记录中保存每个探针的环境、结果、失败回退与 ADR/风险更新；Apple Music 不支持的 capability 不进入承诺。记录为 `Passed` 或 `Passed with known gaps` 后立即进入 M2，不等待用户签字。
 
 ## M2 — Application foundation
 
