@@ -26,6 +26,7 @@
 | RISK-012 | 第三方字体、音频库或服务许可证不适合分发/商业化 | M | H | 许可证扫描或条款审查不通过 | Dependency Policy、NOTICE/SBOM、非商业内测限定；商业化前法律复核 | Legal | Open |
 | RISK-013 | 文档与实现漂移导致自主开发错误 | M | H | contract/traceability 检查失败、双向映射不对称或行为无 FR | docs-first change coupling、schema tests、ID/link lint、Requirement↔Test/Task 双向检查、每任务文档联动门槛 | Lead | Open |
 | RISK-014 | Windows/WebView2 版本差异导致 UI 或 IPC 行为不同 | M | M | 支持矩阵设备出现启动/渲染失败 | 固定最低 Windows、bootstrapper 检测 WebView2、至少 Win10/Win11 两环境验收 | Release/QA | Open |
+| RISK-015 | WebdriverIO 9.31.5 的传递开发依赖存在未缓解的 High advisory | M | H | 完整 `pnpm audit --audit-level high` 在 `extract-zip 2.0.1`、`deepmerge-ts 7.1.6` 与 `serialize-javascript 6.0.2` 报警；其中审计建议的 `extract-zip >=2.0.2` 在 registry 尚不可安装 | 在 M2 checkpoint 前移除该 desktop E2E 依赖链或升级到已验证且无 High 的组合；未关闭时 M2 只能 `Blocked`，Playwright 仅作前端流程证据不冒充 desktop E2E | Lead/QA | Open |
 
 ## M1 observations
 
