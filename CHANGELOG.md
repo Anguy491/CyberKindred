@@ -14,6 +14,8 @@
 
 ### Changed
 
+- 对齐 onboarding 的扫描/TTS 所有权：首次目录授权只显示名称与待扫描状态，文件计数由 M3 API-013 扫描后提供；不可预览声音在 M2 fail closed，真实 `[PLAYING]`/再次点击停止与 API-038 voice-preview cancel slice 由 M3 `TASK-017` 一并交付。
+- API-002/API-003 onboarding contract 改为严格、revisioned 的七步状态与判别 step submission：每步可保存/恢复和返回编辑，profile/完成前缀原子持久化，目录/provider/城市/日程仍由各专用 API 保持唯一权威；这修复了旧版仅能最终保存 `privacyAccepted: true`、无法满足逐步重启恢复的契约缺口。
 - Product Owner 已解决 M2 三项公共语义：切换 provider origin 保留各 origin credential 直到 API-005/full reset；operation 权威 terminal 唯一但 transport 至少一次，前端按 `operationId` 幂等；API-008 在 model ID 实际变化时以 60 秒 pre-save Responses capability probe 门控整份 patch 的原子保存，API-004 仍以只读 `/v1/models` 最小验证候选 credential。
 - M2 technical checkpoint 仍如实保留 2026-09-02 的 `Blocked` 结果；`TASK-008` 已完成三项语义 remediation 并关闭 `RISK-016`–`RISK-018`，M2 在 `TASK-010` 和完整 checkpoint 复验完成前不激活 M3。
 - 对齐 SQLx 0.9 的实际 feature 名称：SQLite 基础只启用 bundled SQLite、Tokio runtime、migration/macro，不启用默认的多数据库、JSON 或 load-extension 能力。
@@ -30,6 +32,7 @@
 
 ### Added
 
+- `TASK-010` 交付 API-002/API-003 七步可恢复 onboarding、API-010–API-012 原生目录授权边界、路径与 revision 完整性校验、静音/本地文字降级、双隐私确认 gate，以及 Windows 桌面首次启动到 RADIO 的自动化路径；Key、目录 picker 与声音预览都只在用户显式点击后触发。
 - `TASK-008` 交付 Rust-only provider registry/config、严格 API-004..009/API-043 边界、Windows Credential Manager 内部 unsafe 隔离、显式 Responses capability probe、候选 usage 与设置事务原子绑定、唯一权威 accepted→terminal outbox、at-least-once transport/frontend dedupe、启动恢复、24 小时/7 天 outbox retention 和脱敏诊断；默认测试不联网、不出声、不触碰真实凭据。
 - 移除含三项 High advisory 的 WebdriverIO 9.31.5 开发依赖链，改用 Node 24 built-in W3C client 直连固定 `tauri-driver`；9 条 hermetic harness 测试与匹配 Microsoft EdgeDriver 的隔离 desktop shell/navigation smoke 通过。
 - `TASK-009` 交付 RADIO/LIBRARY/YOU/SETTINGS 四页静音应用壳、OLED 三层视觉 token、本地字体/fallback 状态、全局键盘导航与可聚焦的 capability 降级原因；四页 1100×720 截图证据已归档。

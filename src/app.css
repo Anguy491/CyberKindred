@@ -71,7 +71,8 @@ body {
 button,
 a,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -315,6 +316,13 @@ button {
   cursor: not-allowed;
 }
 
+.control:disabled {
+  border-color: var(--border-visible);
+  background: transparent;
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
 .control-reason {
   min-height: 17px;
   color: var(--warning);
@@ -358,7 +366,10 @@ input[type="range"] {
 }
 
 textarea,
-input[type="search"] {
+input[type="search"],
+input[type="text"],
+input[type="password"],
+select {
   width: 100%;
   min-height: 44px;
   padding: 10px 0;
@@ -369,6 +380,11 @@ input[type="search"] {
   color: var(--text-primary);
   font-size: 16px;
   line-height: 24px;
+}
+
+select {
+  appearance: none;
+  cursor: pointer;
 }
 
 textarea {
@@ -492,6 +508,196 @@ input::placeholder {
   max-width: 760px;
 }
 
+.onboarding-gate {
+  margin: 0 auto;
+  padding: clamp(32px, 8vw, 96px);
+}
+
+.onboarding {
+  display: grid;
+  grid-template-columns: 220px minmax(360px, 720px) minmax(180px, 260px);
+  gap: clamp(32px, 5vw, 72px);
+  width: min(100%, 1440px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: clamp(32px, 5vw, 64px);
+}
+
+.onboarding-progress,
+.onboarding-context {
+  padding-top: 16px;
+  font-family: "Space Mono", Consolas, monospace;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.onboarding-progress ol {
+  display: grid;
+  gap: 16px;
+  margin: 48px 0 0;
+  padding: 0;
+  color: var(--text-disabled);
+  list-style: none;
+}
+
+.onboarding-progress li[aria-current="step"] {
+  color: var(--text-display);
+}
+
+.onboarding-progress li[aria-current="step"] span {
+  color: var(--accent);
+}
+
+.onboarding-stage {
+  align-self: center;
+  min-height: 620px;
+  padding: 48px 0;
+}
+
+.onboarding-stage .hero-title {
+  margin-bottom: 48px;
+}
+
+.onboarding-form,
+.choice-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.onboarding-form {
+  min-height: 300px;
+}
+
+.choice-stack {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice-stack legend,
+.select-entry,
+.text-entry {
+  color: var(--text-secondary);
+  font-family: "Space Mono", Consolas, monospace;
+  font-size: 12px;
+}
+
+.choice-row {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 16px;
+  align-items: start;
+  min-height: 56px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.choice-row input {
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+
+.choice-row span,
+.choice-row small {
+  display: block;
+}
+
+.choice-row strong {
+  color: var(--text-primary);
+  font-size: 16px;
+}
+
+.choice-row small {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 19px;
+}
+
+.choice-row--disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+.select-entry {
+  display: grid;
+  gap: 8px;
+}
+
+.root-picker,
+.onboarding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+
+.authorized-root-list {
+  flex-basis: 100%;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.onboarding-actions {
+  justify-content: space-between;
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-visible);
+}
+
+.onboarding-note,
+.onboarding-context p,
+.privacy-summary {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 21px;
+}
+
+.onboarding-note {
+  padding-left: 16px;
+  border-left: 2px solid var(--text-primary);
+}
+
+.onboarding-context {
+  padding-left: 24px;
+  border-left: 1px solid var(--border);
+}
+
+.privacy-summary {
+  display: grid;
+  gap: 8px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.privacy-summary p {
+  margin: 0;
+}
+
+.privacy-summary strong {
+  display: inline-block;
+  min-width: 96px;
+  color: var(--text-primary);
+}
+
+.text-control {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--text-secondary);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
 .mechanical-progress {
   display: grid;
   grid-template-columns: repeat(4, 40px);
@@ -544,6 +750,31 @@ input::placeholder {
     grid-column: 1;
     grid-row: auto;
     padding: 24px 0;
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+
+  .onboarding {
+    grid-template-columns: 1fr;
+  }
+
+  .onboarding-progress ol {
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    margin-top: 24px;
+  }
+
+  .onboarding-progress li {
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .onboarding-stage {
+    min-height: auto;
+  }
+
+  .onboarding-context {
+    padding: 24px 0 0;
     border-top: 1px solid var(--border);
     border-left: 0;
   }

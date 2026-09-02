@@ -5,6 +5,8 @@
 
 mod database;
 mod error;
+mod library_roots;
+mod onboarding;
 mod operation_outbox;
 mod paths;
 mod provider_settings;
@@ -15,6 +17,11 @@ mod secret;
 
 pub use database::{APPLICATION_ID, LATEST_SCHEMA_VERSION, Storage};
 pub use error::{StorageError, StorageReason};
+pub(crate) use library_roots::{StoredLibraryRoot, StoredLibraryRootAddition, StoredLibraryRoots};
+pub(crate) use onboarding::{
+    OnboardingStepWrite, OnboardingWriteError, StoredOnboardingDocument, StoredOnboardingProfile,
+    StoredOnboardingSnapshot,
+};
 pub use operation_outbox::OperationTerminalRecord;
 pub use paths::{AppPaths, CacheArea, resolve_read_only_library_path};
 pub(crate) use provider_settings::{StoredProviderSettings, StoredWeatherLocation};

@@ -75,6 +75,202 @@ export interface AppCapabilities {
   readonly providers: ReadonlyArray<"llm" | "tts" | "metadata" | "weather">;
 }
 
+export type OnboardingStep =
+  | "welcome"
+  | "music_source"
+  | "openai_key"
+  | "voice"
+  | "profile"
+  | "city_schedule"
+  | "privacy";
+
+export type MusicSourceKind = "local" | "apple_music";
+export type NarrationDensity = "quiet" | "balanced" | "frequent";
+
+export interface OnboardingProfile {
+  readonly displayName: string;
+  readonly companionStyle: "quiet_warm";
+  readonly initialPreferences: ReadonlyArray<string>;
+  readonly narrationDensity: NarrationDensity;
+}
+
+export interface OnboardingState {
+  readonly completed: boolean;
+  readonly completedSteps: ReadonlyArray<OnboardingStep>;
+  readonly sourceSelection: ReadonlyArray<MusicSourceKind>;
+  readonly aiMode: "verified" | "local_only" | null;
+  readonly voiceMode: "selected" | "text_only" | null;
+  readonly cityScheduleMode: "configured" | "not_now" | null;
+  readonly profile: OnboardingProfile;
+  readonly privacyConfirmations: {
+    readonly explicitSound: boolean;
+    readonly rawConversationRetention: boolean;
+  };
+  readonly revision: number;
+}
+
+export type OnboardingStepSubmission =
+  | { readonly step: "welcome" }
+  | { readonly step: "music_source"; readonly sources: ReadonlyArray<MusicSourceKind> }
+  | { readonly step: "openai_key"; readonly mode: "verified" | "local_only" }
+  | { readonly step: "voice"; readonly mode: "selected" | "text_only" }
+  | { readonly step: "profile"; readonly profile: OnboardingProfile }
+  | { readonly step: "city_schedule"; readonly mode: "configured" | "not_now" }
+  | {
+    readonly step: "privacy";
+    readonly confirmations: {
+      readonly explicitSound: true;
+      readonly rawConversationRetention: true;
+    };
+  };
+
+export interface SaveOnboardingStepRequest {
+  readonly clientRequestId: string;
+  readonly expectedRevision: number;
+  readonly submission: OnboardingStepSubmission;
+}
+
+export interface Ack {
+  readonly requestId: string;
+  readonly revision: number;
+}
+
+export interface ValidateSecretRequest {
+  readonly clientRequestId: string;
+  readonly kind: "openai_api_key";
+  readonly origin: string;
+  readonly value: string;
+}
+
+export interface ValidateSecretResponse {
+  readonly requestId: string;
+  readonly configured: true;
+  readonly verifiedAt: string;
+}
+
+export interface DeleteSecretRequest {
+  readonly clientRequestId: string;
+  readonly kind: "openai_api_key";
+  readonly origin: string;
+}
+
+export interface DeleteSecretResponse {
+  readonly requestId: string;
+  readonly configured: false;
+}
+
+export interface TestProviderRequest {
+  readonly clientRequestId: string;
+  readonly kind: "llm" | "tts" | "metadata" | "weather";
+}
+
+export interface TestProviderResponse {
+  readonly requestId: string;
+  readonly ok: boolean;
+  readonly latencyMs: number;
+  readonly safeMessage: string;
+}
+
+export interface WeatherLocation {
+  readonly city: string;
+  readonly region: string | null;
+  readonly country: string;
+  readonly countryCode: string;
+  readonly latitude: number;
+  readonly longitude: number;
+  readonly timezone: string;
+}
+
+export interface OriginSecretStatus {
+  readonly origin: string;
+  readonly openaiApiKeyConfigured: boolean;
+  readonly lastVerifiedAt: string | null;
+}
+
+export interface IntegrationStatus {
+  readonly integration: "openai" | "apple_music" | "musicbrainz" | "weather";
+  readonly state: "connected" | "degraded" | "disabled" | "unavailable";
+  readonly lastSuccessAt: string | null;
+  readonly safeMessage: string;
+}
+
+export interface SettingsView {
+  readonly providerOrigin: string;
+  readonly llmModelId: string;
+  readonly ttsModelId: string;
+  readonly ttsVoiceId: string;
+  readonly metadataEnabled: boolean;
+  readonly weatherEnabled: boolean;
+  readonly defaultSourceId: string | null;
+  readonly narrationDensity: NarrationDensity;
+  readonly ttsEnabled: boolean;
+  readonly audioOutputDeviceId: string | null;
+  readonly audioOutputBehavior: "follow_system_default" | "fixed_device";
+  readonly minimizeToTray: boolean;
+  readonly launchAtStartup: boolean;
+  readonly notificationsEnabled: boolean;
+  readonly weatherLocation: WeatherLocation | null;
+  readonly secretStatus: { readonly origins: ReadonlyArray<OriginSecretStatus> };
+  readonly integrationStatuses: ReadonlyArray<IntegrationStatus>;
+  readonly revision: number;
+}
+
+export interface SettingsPatch {
+  readonly providerOrigin?: string;
+  readonly llmModelId?: string;
+  readonly ttsModelId?: string;
+  readonly ttsVoiceId?: string;
+  readonly metadataEnabled?: boolean;
+  readonly weatherEnabled?: boolean;
+  readonly defaultSourceId?: string | null;
+  readonly narrationDensity?: NarrationDensity;
+  readonly ttsEnabled?: boolean;
+  readonly audioOutputDeviceId?: string | null;
+  readonly audioOutputBehavior?: "follow_system_default" | "fixed_device";
+  readonly minimizeToTray?: boolean;
+  readonly launchAtStartup?: boolean;
+  readonly notificationsEnabled?: boolean;
+  readonly weatherLocationAction?: "clear";
+}
+
+export interface UpdateSettingsRequest {
+  readonly clientRequestId: string;
+  readonly expectedRevision: number;
+  readonly patch: SettingsPatch;
+}
+
+export interface OperationAccepted {
+  readonly operationId: string;
+  readonly acceptedAt: string;
+}
+
+export interface LibraryRoot {
+  readonly rootId: string;
+  readonly displayName: string;
+  readonly available: boolean;
+}
+
+export interface LibraryRootsResponse {
+  readonly roots: ReadonlyArray<LibraryRoot>;
+  readonly revision: number;
+}
+
+export interface PickLibraryRootResponse {
+  readonly requestId: string;
+  readonly root: LibraryRoot | null;
+  readonly revision: number;
+}
+
+export interface VoiceView {
+  readonly voiceId: string;
+  readonly displayName: string;
+  readonly previewAvailable: boolean;
+}
+
+export interface VoicesResponse {
+  readonly voices: ReadonlyArray<VoiceView>;
+}
+
 export interface EventEnvelope {
   readonly schemaVersion: string;
   readonly sequence: number;

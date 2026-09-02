@@ -3,6 +3,8 @@
 pub mod contracts;
 pub mod diagnostics;
 pub mod ipc;
+pub mod library;
+mod onboarding;
 pub mod providers;
 pub mod storage;
 
@@ -11,6 +13,16 @@ use diagnostics::{DiagnosticEvent, DiagnosticLog, ValidatedLogDirectory};
 use ipc::{
     ApiError, AppCapabilities, CapabilitiesService, EmptyRequest, ProcessSequence,
     parse_command_request,
+};
+use library::{
+    LibraryRootService, SystemLibraryRootClock, TauriLibraryRootPicker,
+    commands::{
+        api_v1_list_library_roots, api_v1_pick_and_add_library_root, api_v1_remove_library_root,
+    },
+};
+use onboarding::{
+    OnboardingService,
+    commands::{api_v1_get_onboarding_state, api_v1_save_onboarding_step},
 };
 use providers::{
     CandidateSecretValidator, ProviderHealthProbe, ProviderRuntime, ProviderService, SystemClock,
@@ -49,6 +61,7 @@ pub fn run() -> tauri::Result<()> {
         .map_err(|_| io::Error::other("invalid static capability snapshot"))?;
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(capabilities)
         .setup(|app| {
             let now_ms = Utc::now().timestamp_millis();
@@ -111,17 +124,30 @@ pub fn run() -> tauri::Result<()> {
                 preview_events.clone(),
                 clock.clone(),
             );
+            let onboarding_service = OnboardingService::new(repository.clone());
+            let library_root_service = LibraryRootService::new(
+                repository.clone(),
+                Arc::new(TauriLibraryRootPicker::new(app.handle().clone())),
+                Arc::new(SystemLibraryRootClock),
+            );
             let startup_preview_recovery =
                 StartupVoicePreviewOutboxRecovery::new(repository, preview_events, clock);
             app.manage(Mutex::new(diagnostic_log));
             app.manage(process_sequence);
             app.manage(storage);
             app.manage(provider_service);
+            app.manage(onboarding_service);
+            app.manage(library_root_service);
             app.manage(startup_preview_recovery);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             api_v1_get_capabilities,
+            api_v1_get_onboarding_state,
+            api_v1_save_onboarding_step,
+            api_v1_list_library_roots,
+            api_v1_pick_and_add_library_root,
+            api_v1_remove_library_root,
             api_v1_validate_and_set_secret,
             api_v1_delete_secret,
             api_v1_test_provider,

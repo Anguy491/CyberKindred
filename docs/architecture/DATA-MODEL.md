@@ -65,7 +65,7 @@ Logs/                          # Tauri app_log_dir；结构化且脱敏
 | `schema_version` | `INTEGER NOT NULL` | 单项值 schema |
 | `updated_at_ms` | `INTEGER NOT NULL` | 更新时间 |
 
-允许的 key namespace：`ui.*`、`audio.*`、`provider.openai.model`、`provider.openai.base_url`、`provider.openai.tts_*`、`program.*`、`privacy.*`、`os.tray`、`os.autostart`、`os.notifications`。`base_url` 保存前只允许 HTTPS（测试构建可显式 allow localhost）。
+允许的 key namespace：`ui.*`、`audio.*`、`provider.openai.model`、`provider.openai.base_url`、`provider.openai.tts_*`、`program.*`、`privacy.*`、`os.tray`、`os.autostart`、`os.notifications`。`base_url` 保存前只允许 HTTPS（测试构建可显式 allow localhost）。`ui.onboarding_state` 保存 API-002 的非敏感 step prefix、来源/降级 mode、privacy confirmation 与 revision；画像正文仍以 `user_profile` 为唯一权威行，API-003 在一个事务中更新两者。Profile step 同事务同步 `program.narration_density` 并 checked-increment `ui.settings_revision`，从而与 API-007/API-008 共享该设置字段的乐观并发边界；onboarding revision 不复用 settings revision。`ui.library_roots_revision` 是 API-010–API-012 的独立乐观并发 revision；绝对 root path 只存在 `library_roots`，不复制进 onboarding JSON。
 
 #### `user_profile`
 

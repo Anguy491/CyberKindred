@@ -7,10 +7,11 @@ interface RadioPageProps {
   readonly capabilities: AppCapabilities;
   readonly draft: string;
   readonly inputRef: RefObject<HTMLTextAreaElement | null>;
+  readonly startButtonRef?: RefObject<HTMLButtonElement | null>;
   readonly onDraftChange: (value: string) => void;
 }
 
-export function RadioPage({ capabilities, draft, inputRef, onDraftChange }: RadioPageProps) {
+export function RadioPage({ capabilities, draft, inputRef, startButtonRef, onDraftChange }: RadioPageProps) {
   const systemAvailable = capabilities.features.systemMediaSession;
   const engineReason = "[UNAVAILABLE: PROGRAM ENGINE NOT READY]";
   return (
@@ -33,7 +34,8 @@ export function RadioPage({ capabilities, draft, inputRef, onDraftChange }: Radi
         </fieldset>
 
         <div className="primary-action-row">
-          <ControlButton tone="primary" disabledReason={engineReason}>开始节目</ControlButton>
+          <ControlButton ref={startButtonRef} tone="primary" disabledReason={engineReason}
+            data-testid="radio-start">开始节目</ControlButton>
           <span className="inline-status">保持静音，等待用户明确开始。</span>
         </div>
 

@@ -21,9 +21,9 @@
 
 | Test ID | Covers | Mode | Scenario and expected evidence |
 |---|---|---|---|
-| TEST-ONB-001 | FR-ONB-001, FR-ONB-002, FR-ONB-006 | Automated E2E | 首次启动依次走完七步；在每一步重启并返回。断言恢复到首个未完成步骤、已填内容可编辑、音乐来源可选本地/Apple Music/两者；选择本地或两者时必须通过 native picker 授权至少一个目录，取消 picker 不伪造授权；Apple Music 路径不显示或请求 Apple Developer/MusicKit 凭据；非敏感画像可接受默认值。城市步骤必须取得 API-048 搜索结果并以 API-049 的候选选择结果持久化，日程步骤必须取得 API-033 返回的规则/revision；重启后城市和日程结果保持。保存逐步状态与三个专用 API 响应快照。 |
+| TEST-ONB-001 | FR-ONB-001, FR-ONB-002, FR-ONB-006 | Automated E2E | 首次启动依次走完七步；在每一步重启并返回。断言 API-002 的 `completedSteps` 始终为固定无重复前缀，恢复到首个未完成步骤、已填内容可编辑、音乐来源可选本地/Apple Music/两者；选择本地或两者时必须通过 API-011 native picker 授权至少一个目录，取消 picker 不伪造授权；Apple Music 路径不显示或请求 Apple Developer/MusicKit 凭据；非敏感画像可接受默认值。城市/日程选“暂不配置”时仍可完成该步且零网络/通知调用；选“配置”时必须取得 API-048→API-049 与 API-033 的专用响应，重启后结果保持。保存逐步 API-003 Ack、API-002 与专用 API 响应快照。 |
 | TEST-ONB-002 | FR-ONB-003, FR-ONB-004, NFR-SEC-001 | Automated integration | 分别注入有效、无效、429 和断网 Key 验证结果。仅成功项写入 fake Credential Manager；验证并切换到第二个 canonical origin 后，第一个 origin credential 保留；API-005 只删除指定 origin，full reset 删除全部 origin。候选 credential/model 验证失败、验证成功后设置保存失败及事务回滚在重启后均不得改写旧配置的 integration status；验证与设置成功时同一 usage outcome 必须随设置事务提升并可在重启后恢复。SQLite、WebView 状态、IPC、崩溃报告、日志和导出对 canary 扫描为零命中。 |
-| TEST-ONB-003 | FR-ONB-005, NFR-COST-001 | Automated E2E | 加载声音列表；未点击时 TTS 调用为 0，点击预览只调用固定短句一次，选择结果持久化。失败时显示可重试分类且无自动重播。对同一 `operationId` 重放相同 terminal event，前端只应用一次；若同一 operation 出现相冲突 terminal，则停止增量并重取权威状态。 |
+| TEST-ONB-003 | FR-ONB-005, NFR-COST-001 | Automated E2E | 加载声音列表；`previewAvailable: false` 的声音不可触发预览。未点击时 TTS 调用为 0，可用声音点击预览只调用固定短句一次，播放中再次点击经 API-038 停止，选择结果持久化；切回 text-only 后 `ttsEnabled` 必须为 false。失败时显示可重试分类且无自动重播。对同一 `operationId` 重放相同 terminal event，前端只应用一次；若同一 operation 出现相冲突 terminal，则停止增量并重取权威状态。 |
 | TEST-ONB-004 | FR-ONB-007, FR-RAD-001, NFR-PERF-001 | Automated E2E | 完成页逐项显示已选来源、各外发服务与数据、原始对话 30 天保留、通知后确认开播和记忆可见/可改/可删；隐私确认前“完成”不可用，确认后进入 `RADIO`。在基线机器分别执行冷启动与热启动各 10 次：从进程创建到可交互的 P95 冷启动≤5 s、热启动≤3 s；全部启动与引导完成时 loopback 保持静音。 |
 
 ## 3. 本地电台与曲库

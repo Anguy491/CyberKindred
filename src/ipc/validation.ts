@@ -3,7 +3,24 @@ import {
   type ApiError,
   type ApiErrorDetails,
   type AppCapabilities,
+  type Ack,
+  type DeleteSecretResponse,
   type ErrorId,
+  type IntegrationStatus,
+  type LibraryRoot,
+  type LibraryRootsResponse,
+  type OnboardingProfile,
+  type OnboardingState,
+  type OnboardingStep,
+  type OperationAccepted,
+  type OriginSecretStatus,
+  type PickLibraryRootResponse,
+  type SettingsView,
+  type TestProviderResponse,
+  type ValidateSecretResponse,
+  type VoiceView,
+  type VoicesResponse,
+  type WeatherLocation,
   type SourceCapabilities,
   type SourceSummary,
 } from "./types";
@@ -15,6 +32,10 @@ const ERROR_IDS = new Set<ErrorId>([
   "ERR-1402", "ERR-1501", "ERR-1502", "ERR-1601",
 ]);
 const PROVIDERS = new Set(["llm", "tts", "metadata", "weather"]);
+const ONBOARDING_STEPS: ReadonlyArray<OnboardingStep> = [
+  "welcome", "music_source", "openai_key", "voice", "profile", "city_schedule", "privacy",
+];
+const INTEGRATIONS = new Set(["openai", "apple_music", "musicbrainz", "weather"]);
 
 export class IpcResponseValidationError extends Error {
   constructor() {
@@ -44,6 +65,144 @@ export function parseAppCapabilities(value: unknown): AppCapabilities {
     throw new IpcResponseValidationError();
   }
   return value as unknown as AppCapabilities;
+}
+
+export function parseOnboardingState(value: unknown): OnboardingState {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "completed", "completedSteps", "sourceSelection", "aiMode", "voiceMode",
+    "cityScheduleMode", "profile", "privacyConfirmations", "revision",
+  ])) throw new IpcResponseValidationError();
+  const { completedSteps, sourceSelection, privacyConfirmations } = value;
+  if (
+    typeof value.completed !== "boolean"
+    || !Array.isArray(completedSteps)
+    || !completedSteps.every((step, index) => step === ONBOARDING_STEPS[index])
+    || !Array.isArray(sourceSelection)
+    || !sourceSelection.every((source) => source === "local" || source === "apple_music")
+    || new Set(sourceSelection).size !== sourceSelection.length
+    || (value.aiMode !== null && value.aiMode !== "verified" && value.aiMode !== "local_only")
+    || (value.voiceMode !== null && value.voiceMode !== "selected" && value.voiceMode !== "text_only")
+    || (value.cityScheduleMode !== null
+      && value.cityScheduleMode !== "configured" && value.cityScheduleMode !== "not_now")
+    || !isOnboardingProfile(value.profile)
+    || !isRecord(privacyConfirmations)
+    || !hasExactKeys(privacyConfirmations, ["explicitSound", "rawConversationRetention"])
+    || typeof privacyConfirmations.explicitSound !== "boolean"
+    || typeof privacyConfirmations.rawConversationRetention !== "boolean"
+    || !isNonNegativeInteger(value.revision)
+  ) throw new IpcResponseValidationError();
+  const actuallyComplete = completedSteps.length === ONBOARDING_STEPS.length
+    && privacyConfirmations.explicitSound
+    && privacyConfirmations.rawConversationRetention;
+  const coherentPrefix = (completedSteps.length >= 2 ? sourceSelection.length > 0 : sourceSelection.length === 0)
+    && (completedSteps.length >= 3 ? value.aiMode !== null : value.aiMode === null)
+    && (completedSteps.length >= 4 ? value.voiceMode !== null : value.voiceMode === null)
+    && (completedSteps.length >= 6 ? value.cityScheduleMode !== null : value.cityScheduleMode === null)
+    && (completedSteps.length === 7
+      ? privacyConfirmations.explicitSound && privacyConfirmations.rawConversationRetention
+      : !privacyConfirmations.explicitSound && !privacyConfirmations.rawConversationRetention);
+  if (value.completed !== actuallyComplete || !coherentPrefix) throw new IpcResponseValidationError();
+  return value as unknown as OnboardingState;
+}
+
+export function parseAck(value: unknown): Ack {
+  if (!isRecord(value) || !hasExactKeys(value, ["requestId", "revision"])
+    || !isUuid(value.requestId) || !isNonNegativeInteger(value.revision)) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as Ack;
+}
+
+export function parseValidateSecretResponse(value: unknown): ValidateSecretResponse {
+  if (!isRecord(value) || !hasExactKeys(value, ["requestId", "configured", "verifiedAt"])
+    || !isUuid(value.requestId) || value.configured !== true || !isTimestamp(value.verifiedAt)) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as ValidateSecretResponse;
+}
+
+export function parseDeleteSecretResponse(value: unknown): DeleteSecretResponse {
+  if (!isRecord(value) || !hasExactKeys(value, ["requestId", "configured"])
+    || !isUuid(value.requestId) || value.configured !== false) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as DeleteSecretResponse;
+}
+
+export function parseTestProviderResponse(value: unknown): TestProviderResponse {
+  if (!isRecord(value) || !hasExactKeys(value, ["requestId", "ok", "latencyMs", "safeMessage"])
+    || !isUuid(value.requestId) || typeof value.ok !== "boolean"
+    || !isNonNegativeInteger(value.latencyMs) || !isSafeDisplay(value.safeMessage, 300)) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as TestProviderResponse;
+}
+
+export function parseSettingsView(value: unknown): SettingsView {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "providerOrigin", "llmModelId", "ttsModelId", "ttsVoiceId", "metadataEnabled",
+    "weatherEnabled", "defaultSourceId", "narrationDensity", "ttsEnabled",
+    "audioOutputDeviceId", "audioOutputBehavior", "minimizeToTray", "launchAtStartup",
+    "notificationsEnabled", "weatherLocation", "secretStatus", "integrationStatuses", "revision",
+  ])) throw new IpcResponseValidationError();
+  const booleanKeys = [
+    "metadataEnabled", "weatherEnabled", "ttsEnabled", "minimizeToTray",
+    "launchAtStartup", "notificationsEnabled",
+  ] as const;
+  if (
+    !isCanonicalHttpsOrigin(value.providerOrigin)
+    || !isSettingToken(value.llmModelId) || !isSettingToken(value.ttsModelId)
+    || !isSettingToken(value.ttsVoiceId)
+    || !booleanKeys.every((key) => typeof value[key] === "boolean")
+    || (value.defaultSourceId !== null && !isSafeToken(value.defaultSourceId))
+    || !isNarrationDensity(value.narrationDensity)
+    || (value.audioOutputDeviceId !== null && !isBoundedText(value.audioOutputDeviceId, 200))
+    || (value.audioOutputBehavior !== "follow_system_default" && value.audioOutputBehavior !== "fixed_device")
+    || (value.weatherLocation !== null && !isWeatherLocation(value.weatherLocation))
+    || !isSecretStatus(value.secretStatus)
+    || !Array.isArray(value.integrationStatuses)
+    || !value.integrationStatuses.every(isIntegrationStatus)
+    || new Set(value.integrationStatuses.map((status) => (status as IntegrationStatus).integration)).size
+      !== value.integrationStatuses.length
+    || !isNonNegativeInteger(value.revision)
+  ) throw new IpcResponseValidationError();
+  return value as unknown as SettingsView;
+}
+
+export function parseOperationAccepted(value: unknown): OperationAccepted {
+  if (!isRecord(value) || !hasExactKeys(value, ["operationId", "acceptedAt"])
+    || !isUuid(value.operationId) || !isTimestamp(value.acceptedAt)) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as OperationAccepted;
+}
+
+export function parseLibraryRootsResponse(value: unknown): LibraryRootsResponse {
+  if (!isRecord(value) || !hasExactKeys(value, ["roots", "revision"])
+    || !Array.isArray(value.roots) || !value.roots.every(isLibraryRoot)
+    || new Set(value.roots.map((root) => (root as LibraryRoot).rootId)).size !== value.roots.length
+    || !isNonNegativeInteger(value.revision)) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as LibraryRootsResponse;
+}
+
+export function parsePickLibraryRootResponse(value: unknown): PickLibraryRootResponse {
+  if (!isRecord(value) || !hasExactKeys(value, ["requestId", "root", "revision"])
+    || !isUuid(value.requestId) || (value.root !== null && !isLibraryRoot(value.root))
+    || !isNonNegativeInteger(value.revision)) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as PickLibraryRootResponse;
+}
+
+export function parseVoicesResponse(value: unknown): VoicesResponse {
+  if (!isRecord(value) || !hasExactKeys(value, ["voices"])
+    || !Array.isArray(value.voices) || !value.voices.every(isVoiceView)
+    || new Set(value.voices.map((voice) => (voice as VoiceView).voiceId)).size !== value.voices.length) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as VoicesResponse;
 }
 
 export function normalizeApiError(value: unknown): ApiError {
@@ -142,6 +301,74 @@ function isSourceCapabilities(value: unknown): value is SourceCapabilities {
     && Object.values(value).every((field) => typeof field === "boolean");
 }
 
+function isOnboardingProfile(value: unknown): value is OnboardingProfile {
+  return isRecord(value)
+    && hasExactKeys(value, ["displayName", "companionStyle", "initialPreferences", "narrationDensity"])
+    && isContractText(value.displayName, 0, 80)
+    && value.companionStyle === "quiet_warm"
+    && Array.isArray(value.initialPreferences)
+    && value.initialPreferences.length <= 20
+    && value.initialPreferences.every((item) => isContractText(item, 1, 100))
+    && isNarrationDensity(value.narrationDensity);
+}
+
+function isNarrationDensity(value: unknown): boolean {
+  return value === "quiet" || value === "balanced" || value === "frequent";
+}
+
+function isSecretStatus(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, ["origins"])
+    && Array.isArray(value.origins) && value.origins.every(isOriginSecretStatus)
+    && new Set(value.origins.map((entry) => (entry as OriginSecretStatus).origin)).size
+      === value.origins.length;
+}
+
+function isOriginSecretStatus(value: unknown): value is OriginSecretStatus {
+  return isRecord(value) && hasExactKeys(value, [
+    "origin", "openaiApiKeyConfigured", "lastVerifiedAt",
+  ]) && isCanonicalHttpsOrigin(value.origin)
+    && typeof value.openaiApiKeyConfigured === "boolean"
+    && (value.lastVerifiedAt === null || isTimestamp(value.lastVerifiedAt));
+}
+
+function isIntegrationStatus(value: unknown): value is IntegrationStatus {
+  return isRecord(value) && hasExactKeys(value, [
+    "integration", "state", "lastSuccessAt", "safeMessage",
+  ]) && typeof value.integration === "string" && INTEGRATIONS.has(value.integration)
+    && (value.state === "connected" || value.state === "degraded"
+      || value.state === "disabled" || value.state === "unavailable")
+    && (value.lastSuccessAt === null || isTimestamp(value.lastSuccessAt))
+    && isSafeDisplay(value.safeMessage, 300);
+}
+
+function isWeatherLocation(value: unknown): value is WeatherLocation {
+  return isRecord(value) && hasExactKeys(value, [
+    "city", "region", "country", "countryCode", "latitude", "longitude", "timezone",
+  ]) && isSafeDisplay(value.city, 100)
+    && (value.region === null || isSafeDisplay(value.region, 100))
+    && isSafeDisplay(value.country, 100)
+    && typeof value.countryCode === "string" && /^[A-Z]{2}$/u.test(value.countryCode)
+    && typeof value.latitude === "number" && Number.isFinite(value.latitude)
+    && value.latitude >= -90 && value.latitude <= 90
+    && typeof value.longitude === "number" && Number.isFinite(value.longitude)
+    && value.longitude >= -180 && value.longitude <= 180
+    && typeof value.timezone === "string"
+    && /^[A-Za-z0-9._+-]+(?:\/[A-Za-z0-9._+-]+)+$/u.test(value.timezone)
+    && value.timezone.length <= 100;
+}
+
+function isLibraryRoot(value: unknown): value is LibraryRoot {
+  return isRecord(value) && hasExactKeys(value, ["rootId", "displayName", "available"])
+    && isUuid(value.rootId) && isSafeDisplay(value.displayName, 200)
+    && typeof value.available === "boolean";
+}
+
+function isVoiceView(value: unknown): value is VoiceView {
+  return isRecord(value) && hasExactKeys(value, ["voiceId", "displayName", "previewAvailable"])
+    && isSettingToken(value.voiceId) && isSafeDisplay(value.displayName, 100)
+    && typeof value.previewAvailable === "boolean";
+}
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -157,6 +384,40 @@ function isSafeDisplay(value: unknown, maxLength: number): value is string {
     && value.length <= maxLength
     && !/\p{Cc}/u.test(value)
     && !/[\\/]/u.test(value);
+}
+
+function isContractText(value: unknown, minCodePoints: number, maxCodePoints: number): value is string {
+  if (typeof value !== "string") return false;
+  const count = Array.from(value).length;
+  return count >= minCodePoints && count <= maxCodePoints;
+}
+
+function isBoundedText(value: unknown, maxLength: number): value is string {
+  return typeof value === "string"
+    && value.length >= 1
+    && value.length <= maxLength
+    && !/\p{Cc}/u.test(value);
+}
+
+function isSettingToken(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9_.:@-]{1,100}$/u.test(value);
+}
+
+function isCanonicalHttpsOrigin(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 300) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:"
+      && parsed.username === "" && parsed.password === ""
+      && parsed.pathname === "/" && parsed.search === "" && parsed.hash === ""
+      && !/^\[.*\]$|^\d{1,3}(?:\.\d{1,3}){3}$/u.test(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isTimestamp(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 40 && !Number.isNaN(Date.parse(value));
 }
 
 function isSafeToken(value: unknown): value is string {

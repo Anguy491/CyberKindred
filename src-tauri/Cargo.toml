@@ -25,6 +25,7 @@ serde_json.workspace = true
 sha2.workspace = true
 sqlx = { workspace = true, features = ["runtime-tokio", "sqlite-bundled", "migrate", "macros"] }
 tauri = { workspace = true, features = [] }
+tauri-plugin-dialog.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
 url.workspace = true
