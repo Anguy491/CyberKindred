@@ -14,7 +14,7 @@
 
 ### Changed
 
-- Product Owner 已解决 M2 三项公共语义：切换 provider origin 保留各 origin credential 直到 API-005/full reset；operation 权威 terminal 唯一但 transport 至少一次，前端按 `operationId` 幂等；API-008 在 model ID 实际变化时以 60 秒 pre-save capability probe 门控整份 patch 的原子保存。
+- Product Owner 已解决 M2 三项公共语义：切换 provider origin 保留各 origin credential 直到 API-005/full reset；operation 权威 terminal 唯一但 transport 至少一次，前端按 `operationId` 幂等；API-008 在 model ID 实际变化时以 60 秒 pre-save Responses capability probe 门控整份 patch 的原子保存，API-004 仍以只读 `/v1/models` 最小验证候选 credential。
 - M2 technical checkpoint 仍如实记录为 `Blocked`：WebdriverIO High advisory 已关闭，三项语义已解冻进入 remediation，但在实现与 hard-gate 复验完成前不追溯改写失败结果，也不激活 M3。
 - 对齐 SQLx 0.9 的实际 feature 名称：SQLite 基础只启用 bundled SQLite、Tokio runtime、migration/macro，不启用默认的多数据库、JSON 或 load-extension 能力。
 - 补全 `playback-state` 与 `program-plan` 条件分支中的局部 `object`/`array` 类型声明，使不改变实例语义的 v1 schema 可由 AJV strict 模式编译。

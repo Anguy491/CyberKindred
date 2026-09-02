@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Integration Owner |
-| Last Verified | 2026-09-02 |
+| Last Verified | 2026-09-03 |
 | Source of Truth For | 外部服务的认证、数据披露、能力边界、限流、缓存、降级与测试方法 |
 | Related Documents | `docs/contracts/PROVIDER-CONTRACTS.md`, `docs/security/PRIVACY-DATA-LIFECYCLE.md`, `docs/security/LEGAL-AND-LICENSING.md`, `docs/planning/RISK-REGISTER.md` |
 
@@ -19,15 +19,15 @@
 
 | Item | Decision |
 |---|---|
-| Authentication | 用户自带 OpenAI API Key（BYOK），只保存在 Windows Credential Manager；按 canonical API origin 分隔凭据。API-005 删除指定 origin；API-037 枚举并删除所有 `CyberKindred/provider/*` origin credential。WebView、SQLite、导出与日志只看 origin 与“已配置”布尔值。 |
-| Endpoints | 文本与结构化输出使用 `POST /v1/responses`；语音使用 `POST /v1/audio/speech`。官方默认 origin 为 `https://api.openai.com`。 |
+| Authentication | 用户自带 OpenAI API Key（BYOK），只保存在 Windows Credential Manager；按 canonical API origin 分隔凭据。API-004 成功切换当前 origin 时保留其他 origin credential；API-005 删除指定 origin；API-037 枚举并删除所有 `CyberKindred/provider/*` origin credential。WebView、SQLite、导出与日志只看 origin 与“已配置”布尔值。 |
+| Endpoints | API-004 credential validation 使用只读 `GET /v1/models`；文本、结构化输出与 API-006/API-008 model capability probe 使用 `POST /v1/responses`；语音使用 `POST /v1/audio/speech`。官方默认 origin 为 `https://api.openai.com`。 |
 | Data sent | Responses：人格/安全规则、时间、可选天气摘要、用户画像摘要、已批准记忆、近期对话片段、local-source 聚合反馈/实际播放事实、本地候选曲目的文本标签；Speech：合规的最终串场文字、模型/声音/格式参数。Apple Music/GSMTC metadata、session/media identity、capability、timeline 与 playback event 永不发送至 Responses 或 Speech。 |
 | Data never sent | API Key 以外的 credential、本地绝对路径、音频文件/字节、未批准记忆、完整 SQLite、诊断日志、屏幕、麦克风、Apple Music cookie/token。 |
 | Retention control | 每个 Responses 请求显式 `store: false`，不使用 provider conversation ID，也不启用 background mode。`store: false` 不是对所有服务端日志/法定义务的零保留承诺；用户仍须参考其 OpenAI 账户的数据控制。 |
 | Limits | 每个 Responses 请求 input ≤24,000 tokens、requested output ≤4,000 tokens、候选曲目≤200，总 deadline 60 秒；Speech 45 秒、输入最多 500 Unicode 字符（低于 API 的 4096 字符上限）、输出最多 20 MiB。请求不启用 hosted web/file/computer tools。 |
 | Cache | LLM 输出不跨程序缓存；语音按规范化文本、voice/model/format 哈希缓存 30 天，或在用户清除数据时立即删除。哈希不含 key。 |
 | Failures | 401/403 → ERR-1301；429 → ERR-1302；deadline → ERR-1303；网络/5xx → ERR-1304；无效 structured output/audio → ERR-1305。LLM 可进行一次无工具 schema repair；TTS 失败回退为屏幕文字。 |
-| Custom origin | 高级设置只接受 HTTPS origin。保存前显示完整 hostname 与“此主机将收到 API Key 和所列上下文”的确认；禁止 userinfo、fragment、IP literal、明文 HTTP、跨 origin redirect。每个 origin 单独存 key；切换 origin 不复制 credential，删除/测试均绑定明确 origin。全部重置删除所有 CyberKindred origin 的 key，而非仅当前 origin。 |
+| Custom origin | 高级设置只接受 HTTPS origin。保存前显示完整 hostname 与“此主机将收到 API Key 和所列上下文”的确认；禁止 userinfo、fragment、IP literal、明文 HTTP、跨 origin redirect。每个 origin 单独存 key；切换 origin 不复制也不删除其他 origin credential，删除/测试均绑定明确 origin。全部重置删除所有 CyberKindred origin 的 key，而非仅当前 origin。 |
 | Test | Fake 断言 Authorization 不进入日志、Responses 必有 `store:false`、无 hosted tools、取消后不落库；真实 smoke test 只验证最短中文输出和短语音，显式标签 `real_openai`。 |
 
 OpenAI 官方 Responses 接口说明 `store` 控制是否保存生成响应以供后续 API 获取；CyberKindred 将其固定为 false。[Create a model response](https://developers.openai.com/api/reference/cli/resources/responses/methods/create) Speech 接口接受文本并返回或流式返回音频，当前官方参数列出了 `gpt-4o-mini-tts` 等模型与 mp3/opus/aac/flac/wav/pcm 格式。[Create speech](https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create) 服务端实际保留还受账户数据控制与 OpenAI 政策约束，因此 UI 不宣称“OpenAI 零保留”。[OpenAI data controls](https://platform.openai.com/docs/models/default-usage-policies-by-endpoint)
