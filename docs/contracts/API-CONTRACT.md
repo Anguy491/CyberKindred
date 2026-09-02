@@ -272,3 +272,5 @@ Rust 内部只能把以下稳定、安全的 `reason` code 写入 `ApiError.deta
 ## 7. Contract enforcement
 
 Rust owns validation before side effects and validates provider output again before persistence or playback. TypeScript types are generated from the same schema artifacts but are not a security boundary. Contract tests must parse all six schemas, accept every `.valid.json` and `.boundary.json`, reject every `.invalid.json`, and assert command serialization plus error redaction.
+
+`TASK-005` 固定由 `scripts/generate-contracts.mjs` 从六份 schema 生成 `src/contracts/generated.ts` 与 `src-tauri/src/contracts/generated.rs`；`tests/contracts/schema-baseline.json` 保存逐 schema version、`$id`、canonical SHA-256 和 bundle SHA-256。`pnpm contracts:check` 在内存重生成并逐字检查双语言输出，同版本 schema 内容漂移或未经审阅的 baseline 变化立即失败。Rust `ContractRegistry` 关闭 `jsonschema` 的 HTTP/file resolver，只使用内存注册的六个 `$id`，按 Draft 2020-12、format assertion 与 unknown-format fail-closed 在 typed deserialization 和副作用前校验；错误不格式化提交内容。AJV 只存在于 Node contract suite，不进入 `src/` runtime import 或 WebView bundle。command serialization、统一 `ApiError` 与 IPC redaction 由依赖任务 `TASK-006` 补齐，不以 schema 子集通过代替整个传输契约门槛。

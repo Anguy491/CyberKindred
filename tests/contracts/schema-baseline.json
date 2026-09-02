@@ -1,0 +1,35 @@
+{
+  "schemaBundleSha256": "c54de738993a231bdf15fdf158ec8821e4a667fc716cce0902ef28e01c3f26ad",
+  "schemas": {
+    "memory-record.schema.json": {
+      "id": "cyberkindred://contracts/v1/memory-record.schema.json",
+      "schemaVersion": "1.0.0",
+      "sha256": "a0fef3f674ae03cf8b2ddf113bfed9702cf7514255b9f7a0f22f92ed63e182c8"
+    },
+    "playback-event.schema.json": {
+      "id": "cyberkindred://contracts/v1/playback-event.schema.json",
+      "schemaVersion": "1.0.0",
+      "sha256": "5df7a8012047b2f0bc9ba4eac88ce87c3cf739c9169a0a06217b7022b9052f5a"
+    },
+    "playback-state.schema.json": {
+      "id": "cyberkindred://contracts/v1/playback-state.schema.json",
+      "schemaVersion": "1.0.0",
+      "sha256": "5f361952f924bfe0de1055525a776b62df117ae354d9a3da3b0fede3833b7e4e"
+    },
+    "program-plan.schema.json": {
+      "id": "cyberkindred://contracts/v1/program-plan.schema.json",
+      "schemaVersion": "1.0.0",
+      "sha256": "cda3701a64cafd76856d0a97cccc3bf49d49c0641fbc769fb6442c22feb68ecb"
+    },
+    "provider-error.schema.json": {
+      "id": "cyberkindred://contracts/v1/provider-error.schema.json",
+      "schemaVersion": "1.0.0",
+      "sha256": "37627328a273f50e02395cbfb8bc8d2b5a15dac15b82622668dd1ba150d005ff"
+    },
+    "schedule-rule.schema.json": {
+      "id": "cyberkindred://contracts/v1/schedule-rule.schema.json",
+      "schemaVersion": "1.0.0",
+      "sha256": "0ac124958e128ba801e0edeb42e9cf7ae65f666890385eba74aae63a8fd51249"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+[
+  { "schema": "memory-record", "example": "memory-record.valid.json", "expected": true },
+  { "schema": "memory-record", "example": "memory-record.boundary.json", "expected": true },
+  { "schema": "memory-record", "example": "memory-record.invalid.json", "expected": false },
+  { "schema": "playback-event", "example": "playback-event.valid.json", "expected": true },
+  { "schema": "playback-event", "example": "playback-event.boundary.json", "expected": true },
+  { "schema": "playback-event", "example": "playback-event.invalid.json", "expected": false },
+  { "schema": "playback-state", "example": "playback-state.valid.json", "expected": true },
+  { "schema": "playback-state", "example": "playback-state.boundary.json", "expected": true },
+  { "schema": "playback-state", "example": "playback-state.invalid.json", "expected": false },
+  { "schema": "program-plan", "example": "program-plan.valid.json", "expected": true },
+  { "schema": "program-plan", "example": "program-plan.boundary.json", "expected": true },
+  { "schema": "program-plan", "example": "program-plan.invalid.json", "expected": false },
+  { "schema": "provider-error", "example": "provider-error.valid.json", "expected": true },
+  { "schema": "provider-error", "example": "provider-error.boundary.json", "expected": true },
+  { "schema": "provider-error", "example": "provider-error.invalid.json", "expected": false },
+  { "schema": "schedule-rule", "example": "schedule-rule.valid.json", "expected": true },
+  { "schema": "schedule-rule", "example": "schedule-rule.boundary.json", "expected": true },
+  { "schema": "schedule-rule", "example": "schedule-rule.invalid.json", "expected": false }
+]

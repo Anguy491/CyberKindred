@@ -26,11 +26,11 @@
   "allOf": [
     {
       "if": { "properties": { "mode": { "const": "local" } }, "required": ["mode"] },
-      "then": { "properties": { "segments": { "contains": { "$ref": "#/$defs/trackSegment" }, "minContains": 1 } } }
+      "then": { "properties": { "segments": { "type": "array", "contains": { "$ref": "#/$defs/trackSegment" }, "minContains": 1 } } }
     },
     {
       "if": { "properties": { "mode": { "const": "system_session" } }, "required": ["mode"] },
-      "then": { "properties": { "segments": { "items": { "$ref": "#/$defs/voiceSegment" } } } }
+      "then": { "properties": { "segments": { "type": "array", "items": { "$ref": "#/$defs/voiceSegment" } } } }
     }
   ],
   "$defs": {

@@ -36,7 +36,7 @@
   "allOf": [
     {
       "if": { "properties": { "sourceKind": { "const": "system_session" } }, "required": ["sourceKind"] },
-      "then": { "properties": { "capabilities": { "properties": { "setQueue": { "const": false } } } } }
+      "then": { "properties": { "capabilities": { "type": "object", "properties": { "setQueue": { "const": false } } } } }
     },
     {
       "if": { "properties": { "status": { "const": "disconnected" } }, "required": ["status"] },

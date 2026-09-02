@@ -13,7 +13,11 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 tauri-build = { workspace = true, features = [] }
 
 [dependencies]
+jsonschema.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 tauri = { workspace = true, features = [] }
+thiserror.workspace = true
 
 [lints]
 workspace = true

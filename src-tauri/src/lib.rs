@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+pub mod contracts;
+
 /// Starts the minimal desktop shell without registering commands or plugins.
 ///
 /// # Errors
