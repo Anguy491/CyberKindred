@@ -17,8 +17,10 @@
     "lint": "oxlint --deny-warnings src tests scripts vite.config.ts vitest.config.ts",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
+    "test:axe": "vitest run tests/ui/app-shell-accessibility.test.tsx",
     "test:contracts": "pnpm contracts:check && vitest run tests/contracts/schema-contract.test.ts",
     "test:coverage": "vitest run --coverage",
+    "test:visual": "vitest run tests/ui/visual-policy.test.ts",
     "verify:docs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-docs.ps1",
     "check": "pnpm contracts:check && pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm build && pnpm verify:docs"
   },

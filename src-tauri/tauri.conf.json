@@ -16,8 +16,8 @@
         "title": "CyberKindred",
         "width": 1100,
         "height": 720,
-        "minWidth": 800,
-        "minHeight": 600,
+        "minWidth": 1024,
+        "minHeight": 640,
         "resizable": true
       }
     ],
