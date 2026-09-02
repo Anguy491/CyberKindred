@@ -4,6 +4,8 @@ pub mod contracts;
 pub mod diagnostics;
 pub mod ipc;
 pub mod library;
+pub mod llm;
+mod llm_repository;
 pub mod metadata;
 mod onboarding;
 pub mod playback;

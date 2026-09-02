@@ -33,6 +33,7 @@
 
 ### Added
 
+- `TASK-016` 交付 OpenAI Responses ProgramPlan provider、按当前 origin 精确读取的 BYOK adapter、strict structured output、无 tools/不存储请求、24k/4k 预算、有序脱敏 context、60 秒取消/deadline 与结构化无效恰好一次修复；无 credential 或 provider 不可用时由 `TASK-015` 确定性计划降级。
 - `TASK-015` 交付 path-free 本地候选评分、重复冷却与明确 scarcity degradation、最多 200 个真实 UUIDv7 候选、双层 ProgramPlan 校验和确定性文字/六首队列 fallback；节目计划及 segment 以事务写入 SQLite，崩溃恢复不会留下可误恢复的活跃节目。
 - `TASK-012`–`TASK-014` 交付 path-free 分页曲库与扫描 UI、严格 MusicBrainz/CAA 最小披露/限流/缓存 provider，以及 API-016–API-023/EVT-001 本地播放 actor；生产解码保持 direct Symphonia 0.6 → rodio output 边界，队列预置与启动恢复默认静音，只有明确用户动作才打开设备并播放。
 - `TASK-011` 交付授权目录内的六格式本地扫描、坏文件隔离、增量/移动识别、碰撞容忍的文件身份匹配、可取消进度、事务提交与可重放 terminal outbox；扫描不复制音频，事件与错误不携带本地路径。

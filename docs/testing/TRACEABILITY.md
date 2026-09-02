@@ -24,6 +24,8 @@ M3 `TASK-012`–`TASK-014` 已集成 path-free API-015/曲库 UI、严格 MusicB
 
 M3 `TASK-015` 已集成最多 200 个 path-free 真实候选的确定性评分、冷却降级、ProgramPlan schema/domain 双重校验、provider 非法 ID 拒绝与文字/本地队列 fallback；SQLite adapter 仅投影 adopted 标签和活动反馈，计划与 segments 原子持久化且启动恢复把未终止节目转为 interrupted。TEST-LIB-004 的固定时钟/seed、反馈、画像、批准记忆、冷却和候选外 ID 路径由 focused hermetic tests 覆盖。
 
+M3 `TASK-016` 已集成 stateless OpenAI Responses ProgramPlan provider：请求固定 HTTPS `/v1/responses`、`store:false`、空 tools/`tool_choice:none`、strict `json_schema`、24k/4k 预算和 60 秒 deadline；上下文按 policy、画像、approved memory、可选天气、摘要、近期轮次、当前请求与 path-free candidates 排序并过滤 secret/路径。Hermetic tests 覆盖封闭请求、结构化失败恰好一次修复、取消/超时、provider 分类和候选外 ID 交回领域校验；真实联网调用保持 `Not Run`，不作为默认测试副作用。
+
 ## 2. Functional requirements
 
 ### 2.1 Onboarding
