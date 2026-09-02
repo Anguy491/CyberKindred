@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0.0",
   "milestone": "M2",
-  "lastCommittedBase": "6db5514009bbe733c7defbb565e82773a5c62334",
+  "lastCommittedFoundation": "ec4ae288dc14829749c1b381b4162589ef3b95bd",
   "candidateState": "blocked_uncommitted_provider_worktree",
   "capturedAt": "2026-09-02",
   "environment": {
