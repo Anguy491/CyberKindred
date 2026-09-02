@@ -81,6 +81,8 @@ UI 字体 `Space Grotesk`、`Space Mono`、`Doto` 作为本地静态资产按 SI
 | `oxlint` | `1.81.0` | TypeScript/React static lint；只作为开发依赖，不启用 optional type-aware plugin |
 | `ajv`, `ajv-formats` | `8.20.0`, `3.0.1` | Node-only Draft 2020-12 contract tests；不得打入 WebView runtime bundle |
 
+本地字体不通过 npm 解析：Doto、Space Grotesk 和 Space Mono 固定取自 `google/fonts` commit `f6b2b7e8545e086ad3f821af21895d732b6485cf`，文件级来源、copyright、OFL-1.1 文本与 SHA-256 记录在 `src/assets/fonts/MANIFEST.json`。升级该 commit 必须同时重新核对许可证和所有二进制哈希。
+
 | Rust crate | Exact version | Rust crate | Exact version |
 |---|---:|---|---:|
 | `tauri` | `2.11.5` | `tauri-build` | `2.6.3` |

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "sourceRepository": "https://github.com/google/fonts",
+  "sourceCommit": "f6b2b7e8545e086ad3f821af21895d732b6485cf",
+  "retrievedAt": "2026-09-02",
+  "runtimeNetworkRequired": false,
+  "files": [
+    {
+      "file": "Doto-ROND-wght.ttf",
+      "sourcePath": "ofl/doto/Doto[ROND,wght].ttf",
+      "sha256": "6F4FE7D37853B91DF3698DAA84CDE2DBE1C9695D88C986E6510134910337D426",
+      "copyright": "Copyright 2024 The Doto Project Authors",
+      "license": "OFL-1.1",
+      "licenseFile": "OFL-Doto.txt"
+    },
+    {
+      "file": "SpaceGrotesk-wght.ttf",
+      "sourcePath": "ofl/spacegrotesk/SpaceGrotesk[wght].ttf",
+      "sha256": "ACAD6DE1FC93436F5C0F1F4137751EF04F1AEA3063E7036535970FFCFBD79F72",
+      "copyright": "Copyright 2020 The Space Grotesk Project Authors",
+      "license": "OFL-1.1",
+      "licenseFile": "OFL-SpaceGrotesk.txt"
+    },
+    {
+      "file": "SpaceMono-Regular.ttf",
+      "sourcePath": "ofl/spacemono/SpaceMono-Regular.ttf",
+      "sha256": "95837E182BAEEADA83368F7748DB28357F0A1B75C6B84FF7065B5EDF933C8E18",
+      "copyright": "Copyright 2016 The Space Mono Project Authors",
+      "license": "OFL-1.1",
+      "licenseFile": "OFL-SpaceMono.txt"
+    },
+    {
+      "file": "SpaceMono-Bold.ttf",
+      "sourcePath": "ofl/spacemono/SpaceMono-Bold.ttf",
+      "sha256": "405E73D41AFB7E5906EFCE206A326AF5C956F38E255F35421C260E861E599C59",
+      "copyright": "Copyright 2016 The Space Mono Project Authors",
+      "license": "OFL-1.1",
+      "licenseFile": "OFL-SpaceMono.txt"
+    }
+  ]
+}

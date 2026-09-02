@@ -68,11 +68,11 @@ MVP 在城市搜索结果显示 `Location data by GeoNames via Open-Meteo`，在
 | Asset | Baseline license | Distribution rule |
 |---|---|---|
 | Nothing Design Skill | MIT | 若复制其代码/文档的实质部分，安装包 source notices 保留 copyright 与 MIT permission text。[Upstream license](https://github.com/dominikmartn/nothing-design-skill/blob/main/LICENSE) |
-| Space Grotesk | SIL Open Font License 1.1 | 可与软件捆绑；安装包附原 copyright 与完整 OFL，不单独销售字体，不用 Reserved Font Name 命名修改版。[OFL source](https://github.com/google/fonts/blob/main/ofl/spacegrotesk/OFL.txt) |
-| Space Mono | SIL Open Font License 1.1 | 同上；保留字体二进制来源 commit/hash 与许可文本。[OFL source](https://github.com/googlefonts/spacemono/blob/main/OFL.txt) |
-| Doto | SIL Open Font License 1.1 | 同上；保留字体二进制来源 commit/hash 与许可文本。[OFL source](https://github.com/google/fonts/blob/main/ofl/doto/OFL.txt) |
+| Space Grotesk | SIL Open Font License 1.1 | 可与软件捆绑；安装包附原 copyright 与完整 OFL，不单独销售字体，不用 Reserved Font Name 命名修改版。[Pinned OFL source](https://github.com/google/fonts/blob/f6b2b7e8545e086ad3f821af21895d732b6485cf/ofl/spacegrotesk/OFL.txt) |
+| Space Mono | SIL Open Font License 1.1 | 同上；保留字体二进制来源 commit/hash 与许可文本。[Pinned OFL source](https://github.com/google/fonts/blob/f6b2b7e8545e086ad3f821af21895d732b6485cf/ofl/spacemono/OFL.txt) |
+| Doto | SIL Open Font License 1.1 | 同上；保留字体二进制来源 commit/hash 与许可文本。[Pinned OFL source](https://github.com/google/fonts/blob/f6b2b7e8545e086ad3f821af21895d732b6485cf/ofl/doto/OFL.txt) |
 
-字体必须随 app 本地打包，不在运行时从 Google Fonts/CDN 拉取。发布 manifest 记录精确文件名、上游 URL、commit/tag、SHA-256、copyright 和 license；只从附带许可的上游 release/source 取得二进制。
+字体必须随 app 本地打包，不在运行时从 Google Fonts/CDN 拉取。发布 manifest 记录精确文件名、上游 URL、commit/tag、SHA-256、copyright 和 license；只从附带许可的上游 release/source 取得二进制。M2 的固定清单位于 `src/assets/fonts/MANIFEST.json`。
 
 ## 9. Software dependencies
 
