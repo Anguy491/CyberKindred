@@ -45,12 +45,12 @@ UI 字体 `Space Grotesk`、`Space Mono`、`Doto` 作为本地静态资产按 SI
 | `thiserror` | 内部 typed error | 对外先映射稳定 `ERR-*`，不透传 cause/body。 |
 | `tracing`, `tracing-subscriber` | 结构化日志 | 使用 redact layer；禁止 body/header/path 字段。 |
 | `sqlx` (`sqlite-bundled`, `runtime-tokio`, `migrate`, `macros`) | SQLite repository/migration | 禁用 default features；0.9 的 SQLite-only 路径不启用 TLS/MySQL/PostgreSQL/load-extension；查询在 repository；单 writer 配置。 |
-| `reqwest` (`rustls-tls`, `json`, `stream`) | provider HTTPS | 禁用 default/native-tls；统一 timeout、限流、redaction middleware；不允许 UI 提供任意 URL。 |
+| `reqwest` (`rustls`, `json`) | provider HTTPS | `0.13` 使用实际 feature 名 `rustls`；禁用 default/native-tls 与自动 redirect，响应通过有界 chunk 读取，未使用的 `stream` feature 不启用；统一 timeout、限流与脱敏；不允许 UI 提供任意 URL。 |
 | `url` | HTTPS/base URL 与 provider URL 验证 | 生产拒绝非 HTTPS、credential-in-URL 和非官方/非用户明确确认的当前 configured origin。 |
 | `rodio` | 本地 output/sink | 只在 playback actor 中持有。 |
 | `symphonia` | MP3/FLAC/M4A/MP4/AAC/WAV/OGG probe/decode | 只启用所需 codec/container；不写原文件。 |
 | `lofty` | 本地 tag/embedded cover 读取 | 只读打开；metadata 修改功能不进入 v1。 |
-| `windows` (`windows-rs`) | GSMTC、Credential Manager、power/必要 Win32 API | feature 精确到所用 namespace；所有 handle RAII，unsafe 封装在 infrastructure 模块。 |
+| `windows` (`windows-rs`) | GSMTC、Credential Manager、power/必要 Win32 API | feature 精确到所用 namespace；所有 handle RAII。Credential Manager FFI 的 `unsafe` 只允许存在于内部 `crates/windows-credential` infrastructure crate，经窄 safe API 暴露；产品 crate 继续 `forbid(unsafe_code)`。 |
 | `uuid` (`v7`, `serde`) | 主键/request ID | ID 在 Rust 生成，不信任 UI 提供的 owner ID。 |
 | `chrono`, `chrono-tz` | UTC、IANA timezone、DST 日程计算 | 数据库存 UTC ms + IANA zone；不依赖 OS locale 字符串运算。 |
 | `sha2`, `hex` | cache/source/content hash | 不作为密码哈希；不把 secret 放入普通 hash。 |

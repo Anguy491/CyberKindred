@@ -1,3 +1,4 @@
+use serde::{Deserialize, Deserializer};
 use sha2::{Digest, Sha256};
 use std::fmt;
 use thiserror::Error;
@@ -6,7 +7,7 @@ use zeroize::Zeroizing;
 
 const CREDENTIAL_PREFIX: &str = "CyberKindred/provider/";
 const CREDENTIAL_USER: &str = "api-key";
-const MAX_SECRET_BYTES: usize = 16 * 1024;
+const MAX_SECRET_BYTES: usize = cyberkindred_windows_credential::MAX_SECRET_BYTES;
 
 /// A canonical HTTPS provider origin without a path, query, fragment, or IP host.
 #[derive(Clone, Eq, PartialEq)]
@@ -100,6 +101,13 @@ impl SecretValue {
     }
 }
 
+impl<'de> Deserialize<'de> for SecretValue {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Self::new(value).map_err(serde::de::Error::custom)
+    }
+}
+
 /// Stable credential boundary errors that never contain a value or OS message.
 #[derive(Clone, Copy, Debug, Error, Eq, PartialEq)]
 pub enum SecretError {
@@ -111,15 +119,21 @@ pub enum SecretError {
     Unavailable,
     #[error("credential operation failed")]
     OperationFailed,
+    #[error("credential replacement failed; previous value restored")]
+    ReplacementFailedRestored,
+    #[error("credential replacement and restoration failed; state unknown")]
+    CredentialStateUnknown,
 }
 
 /// Secret store boundary used by provider code and fake-backed default tests.
-pub trait SecretVault {
+pub trait SecretVault: Send {
     /// Replaces the exact origin-scoped credential.
     ///
     /// # Errors
     ///
     /// Returns a stable credential error if the OS/fake store cannot write.
+    /// `ReplacementFailedRestored` proves the prior value was restored;
+    /// `CredentialStateUnknown` explicitly means restoration also failed.
     fn set(&mut self, target: &CredentialTarget, value: SecretValue) -> Result<(), SecretError>;
 
     /// Retrieves the exact origin-scoped credential into a zeroizing wrapper.
@@ -128,6 +142,15 @@ pub trait SecretVault {
     ///
     /// Returns a stable credential error if the OS/fake store cannot read.
     fn get(&self, target: &CredentialTarget) -> Result<Option<SecretValue>, SecretError>;
+
+    /// Checks the exact origin-scoped credential without returning its value.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable credential error if the OS/fake store cannot query it.
+    fn contains(&self, target: &CredentialTarget) -> Result<bool, SecretError> {
+        self.get(target).map(|value| value.is_some())
+    }
 
     /// Deletes the exact origin-scoped credential and is idempotent if absent.
     ///
@@ -149,16 +172,11 @@ mod platform {
     use super::{
         CREDENTIAL_PREFIX, CREDENTIAL_USER, CredentialTarget, SecretError, SecretValue, SecretVault,
     };
-    use windows::{
-        Security::Credentials::{PasswordCredential, PasswordVault},
-        core::HSTRING,
-    };
-
-    const HRESULT_NOT_FOUND: u32 = 0x8007_0490;
+    use cyberkindred_windows_credential::{CredentialError, CredentialSecret, CredentialStore};
 
     /// Windows Credential Manager adapter. Construction and all writes are explicit.
     pub struct WindowsCredentialVault {
-        vault: PasswordVault,
+        store: CredentialStore,
     }
 
     impl WindowsCredentialVault {
@@ -168,22 +186,9 @@ mod platform {
         ///
         /// Returns `Unavailable` if Windows cannot construct the vault.
         pub fn new() -> Result<Self, SecretError> {
-            PasswordVault::new()
-                .map(|vault| Self { vault })
-                .map_err(|_| SecretError::Unavailable)
-        }
-
-        fn retrieve(
-            &self,
-            target: &CredentialTarget,
-        ) -> Result<Option<PasswordCredential>, SecretError> {
-            let resource = HSTRING::from(target.as_resource());
-            let user = HSTRING::from(CREDENTIAL_USER);
-            match self.vault.Retrieve(&resource, &user) {
-                Ok(credential) => Ok(Some(credential)),
-                Err(error) if error.code().0.cast_unsigned() == HRESULT_NOT_FOUND => Ok(None),
-                Err(_) => Err(SecretError::OperationFailed),
-            }
+            Ok(Self {
+                store: CredentialStore::new(),
+            })
         }
     }
 
@@ -193,82 +198,57 @@ mod platform {
             target: &CredentialTarget,
             value: SecretValue,
         ) -> Result<(), SecretError> {
-            let resource = HSTRING::from(target.as_resource());
-            let user = HSTRING::from(CREDENTIAL_USER);
-            let credential = value.with_exposed(|secret| {
-                let password = HSTRING::from(secret);
-                PasswordCredential::CreatePasswordCredential(&resource, &user, &password)
-            });
-            let credential = credential.map_err(|_| SecretError::OperationFailed)?;
-            let previous = self.retrieve(target)?;
-            if let Some(previous) = &previous {
-                // Load the old value before removal so a failed replacement can
-                // restore it instead of silently losing a valid credential.
-                previous
-                    .RetrievePassword()
-                    .map_err(|_| SecretError::OperationFailed)?;
-                self.vault
-                    .Remove(previous)
-                    .map_err(|_| SecretError::OperationFailed)?;
-            }
-            if self.vault.Add(&credential).is_ok() {
-                return Ok(());
-            }
-            if let Some(previous) = previous {
-                let _ = self.vault.Add(&previous);
-            }
-            Err(SecretError::OperationFailed)
+            let mut credential = value
+                .with_exposed(|secret| CredentialSecret::new(secret.as_bytes()))
+                .map_err(map_credential_error)?;
+            self.store
+                .write(target.as_resource(), CREDENTIAL_USER, &mut credential)
+                .map_err(map_credential_error)
         }
 
         fn get(&self, target: &CredentialTarget) -> Result<Option<SecretValue>, SecretError> {
-            let Some(credential) = self.retrieve(target)? else {
+            let Some(credential) = self
+                .store
+                .read(target.as_resource())
+                .map_err(map_credential_error)?
+            else {
                 return Ok(None);
             };
             credential
-                .RetrievePassword()
-                .map_err(|_| SecretError::OperationFailed)?;
-            let password = credential
-                .Password()
-                .map_err(|_| SecretError::OperationFailed)?;
-            SecretValue::new(password.to_string()).map(Some)
+                .with_exposed(|bytes| {
+                    std::str::from_utf8(bytes)
+                        .map_err(|_| SecretError::OperationFailed)
+                        .and_then(|value| SecretValue::new(value.to_owned()))
+                })
+                .map(Some)
+        }
+
+        fn contains(&self, target: &CredentialTarget) -> Result<bool, SecretError> {
+            self.store
+                .contains(target.as_resource())
+                .map_err(map_credential_error)
         }
 
         fn delete(&mut self, target: &CredentialTarget) -> Result<(), SecretError> {
-            let Some(credential) = self.retrieve(target)? else {
-                return Ok(());
-            };
-            self.vault
-                .Remove(&credential)
-                .map_err(|_| SecretError::OperationFailed)
+            self.store
+                .delete(target.as_resource())
+                .map_err(map_credential_error)
         }
 
         fn delete_cyberkindred_namespace(&mut self) -> Result<u32, SecretError> {
-            let credentials = self
-                .vault
-                .RetrieveAll()
-                .map_err(|_| SecretError::OperationFailed)?;
-            let size = credentials
-                .Size()
-                .map_err(|_| SecretError::OperationFailed)?;
-            let mut matching = Vec::new();
-            for index in 0..size {
-                let credential = credentials
-                    .GetAt(index)
-                    .map_err(|_| SecretError::OperationFailed)?;
-                let resource = credential
-                    .Resource()
-                    .map_err(|_| SecretError::OperationFailed)?;
-                if resource.to_string().starts_with(CREDENTIAL_PREFIX) {
-                    matching.push(credential);
-                }
+            self.store
+                .delete_prefix(CREDENTIAL_PREFIX)
+                .map_err(map_credential_error)
+        }
+    }
+
+    const fn map_credential_error(error: CredentialError) -> SecretError {
+        match error {
+            CredentialError::InvalidInput => SecretError::InvalidValue,
+            CredentialError::Unavailable => SecretError::Unavailable,
+            CredentialError::OperationFailed | CredentialError::InvalidStoredValue => {
+                SecretError::OperationFailed
             }
-            let count = u32::try_from(matching.len()).map_err(|_| SecretError::OperationFailed)?;
-            for credential in matching {
-                self.vault
-                    .Remove(&credential)
-                    .map_err(|_| SecretError::OperationFailed)?;
-            }
-            Ok(count)
         }
     }
 }
@@ -316,6 +296,10 @@ mod tests {
                 .get(target.as_resource())
                 .map(|value| value.with_exposed(|secret| SecretValue::new(secret.to_owned())))
                 .transpose()
+        }
+
+        fn contains(&self, target: &CredentialTarget) -> Result<bool, SecretError> {
+            Ok(self.values.contains_key(target.as_resource()))
         }
 
         fn delete(&mut self, target: &CredentialTarget) -> Result<(), SecretError> {
@@ -381,6 +365,7 @@ mod tests {
                 SecretValue::new(canary.to_owned()).expect("valid secret"),
             )
             .expect("fake write");
+        assert!(vault.contains(&target).expect("fake contains"));
         let retrieved = vault
             .get(&target)
             .expect("fake read")
@@ -388,6 +373,7 @@ mod tests {
         assert!(retrieved.with_exposed(|value| value == canary));
         assert!(!format!("{}", SecretError::OperationFailed).contains(canary));
         vault.delete(&target).expect("fake delete");
+        assert!(!vault.contains(&target).expect("fake contains"));
         assert!(vault.get(&target).expect("fake read").is_none());
     }
 
@@ -430,8 +416,23 @@ mod tests {
             )
             .expect("write canary");
         let exists = vault.get(&target).expect("read canary").is_some();
+        assert!(vault.contains(&target).expect("contains canary"));
+        vault
+            .set(
+                &target,
+                SecretValue::new("ck-task007-live-replacement".to_owned())
+                    .expect("valid replacement"),
+            )
+            .expect("atomic replacement");
+        let replaced = vault
+            .get(&target)
+            .expect("read replacement")
+            .is_some_and(|value| {
+                value.with_exposed(|secret| secret == "ck-task007-live-replacement")
+            });
         let deleted = vault.delete(&target).is_ok();
-        assert!(exists && deleted);
+        assert!(exists && replaced && deleted);
+        assert!(!vault.contains(&target).expect("contains after cleanup"));
         assert!(vault.get(&target).expect("verify cleanup").is_none());
     }
 }

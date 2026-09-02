@@ -15,8 +15,10 @@ tauri-build = { workspace = true, features = [] }
 
 [dependencies]
 chrono.workspace = true
+cyberkindred-windows-credential.workspace = true
 hex.workspace = true
 jsonschema.workspace = true
+reqwest.workspace = true
 secrecy.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
@@ -27,7 +29,6 @@ thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
 url.workspace = true
 uuid = { workspace = true, features = ["v7", "serde"] }
-windows = { workspace = true, features = ["Foundation_Collections", "Security_Credentials"] }
 zeroize.workspace = true
 
 [dev-dependencies]
