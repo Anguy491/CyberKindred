@@ -604,8 +604,8 @@ impl SchedulerService {
         Ok(())
     }
 
-    pub fn start(self: Arc<Self>) -> tokio::task::JoinHandle<()> {
-        tokio::spawn(async move {
+    pub fn start(self: Arc<Self>) -> tauri::async_runtime::JoinHandle<()> {
+        tauri::async_runtime::spawn(async move {
             loop {
                 let _ = self.process_due(self.clock.now_ms()).await;
                 tokio::select! {
@@ -782,10 +782,10 @@ impl NotificationProgramStarter for RadioService {
     }
 }
 
-pub(crate) struct SchedulerRuntime(tokio::task::JoinHandle<()>);
+pub(crate) struct SchedulerRuntime(tauri::async_runtime::JoinHandle<()>);
 
 impl SchedulerRuntime {
-    pub(crate) fn new(handle: tokio::task::JoinHandle<()>) -> Self {
+    pub(crate) fn new(handle: tauri::async_runtime::JoinHandle<()>) -> Self {
         Self(handle)
     }
 }

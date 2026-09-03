@@ -148,6 +148,18 @@ fn scheduler_dst_moves_missing_time_forward_and_uses_first_ambiguous_time() {
     );
 }
 
+#[test]
+fn scheduler_actor_can_start_from_sync_tauri_setup() {
+    let now_ms = utc("2026-09-06T00:00:00Z");
+    let (_temp, storage, _clock, _notifications, _events, service) =
+        tauri::async_runtime::block_on(fixture(now_ms));
+
+    let runtime = SchedulerRuntime::new(Arc::new(service).start());
+    drop(runtime);
+
+    tauri::async_runtime::block_on(storage.close());
+}
+
 #[tokio::test]
 async fn scheduler_crud_persists_and_keeps_rust_owned_identity() {
     let now_ms = utc("2026-09-06T00:00:00Z");
