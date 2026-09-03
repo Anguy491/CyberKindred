@@ -14,6 +14,9 @@
 
 ### Changed
 
+- 明确 M4 对话降级契约：Provider 不可用时保留用户原文并保存带 `local/deterministic` provenance 的固定可用性提示；该提示不是 AI 生成内容，不产生 Memory Proposal，也不自动重放付费请求。
+- 修复 `MemoryRecord.lastUsedAt`、proposal `expectedRevision` 与 SQLite 数据模型的基线不一致：前向 `V0003` 迁移新增 `memories.last_used_at_ms` 和 `memory_proposals.revision`；使用时间只在 approved memory 实际进入 Context 后写入，proposal 决策保持乐观并发。
+- Product Owner 已解除 post-M3 stop 并仅授权 M4；Roadmap 将 M4 设为 Active，`TASK-020`–`TASK-022` 已按依赖完成，M4 checkpoint 后不自动激活 M5。
 - 补齐 API-015 `TrackView` 的精确 nullable 标签、MusicBrainz `fetchedAt` 与持久化 match-status 映射，使离线缓存来源/时间验收可由 WebView 在不接收路径的情况下完成。
 - 对齐 onboarding 的扫描/TTS 所有权：首次目录授权只显示名称与待扫描状态，文件计数由 M3 API-013 扫描后提供；不可预览声音在 M2 fail closed，真实 `[PLAYING]`/再次点击停止与 API-038 voice-preview cancel slice 由 M3 `TASK-017` 一并交付。
 - API-002/API-003 onboarding contract 改为严格、revisioned 的七步状态与判别 step submission：每步可保存/恢复和返回编辑，profile/完成前缀原子持久化，目录/provider/城市/日程仍由各专用 API 保持唯一权威；这修复了旧版仅能最终保存 `privacyAccepted: true`、无法满足逐步重启恢复的契约缺口。
@@ -32,6 +35,9 @@
 - M1–M6 checkpoint 改为文档记录即转场：hard gates 通过时由 Lead Agent 记录 `Passed` 或 `Passed with known gaps` 并立即开始下一 milestone，不等待 Product Owner 在线接受；M7 beta/release 仍保留人工批准。
 
 ### Added
+
+- 完成 M4 Understanding and conversation 原型：Radio 支持有界文字对话、取消、喜欢/跳过/少说一点反馈与确定性降级；`YOU` 支持画像、偏好趋势、记忆提案审批/编辑/拒绝/停用/删除及摘要查看/删除。
+- 增加 approved-memory-only Context、严格 Structured Outputs/no-tools chat provider、创建后 30 天原文与拒绝提案清理、启动及每 24 小时维护、删除 tombstone，以及取消/保留/上下文/竞态的 hermetic 回归测试。
 
 - 完成 M3 首个可用本地电台原型：代表性许可六格式 fixture 可扫描/标签、生成确定性或 provider 计划，并在用户显式点击后连续执行六曲节目，支持权威 Now Playing、播放控制、停止与陈旧事件隔离。
 - 增加有界 TTS provider/actor/cache 与节目 runner；OpenAI 或 TTS 不可用时保留文字并降级为确定性本地队列，TTS 关闭时保持零请求，任何启动/恢复路径均不自行出声或触发付费调用。

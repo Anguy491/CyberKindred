@@ -175,7 +175,23 @@ impl<'a> RunExecution<'a> {
             self.ensure_not_cancelled()?;
             match self.planned.plan.segments[index].clone() {
                 ProgramPlanSegmentsItem::VoiceSegment(voice) => {
-                    self.execute_voice(&voice, authorization).await?;
+                    if self
+                        .runner
+                        .store
+                        .voice_allowed_after_feedback(self.program_id)
+                        .await?
+                    {
+                        self.execute_voice(&voice, authorization).await?;
+                    } else {
+                        let segment_id = parse_v7(&voice.segment_id)?;
+                        self.transition_segment(
+                            segment_id,
+                            ProgramSegmentPhase::Skipped,
+                            Some(ProgramSegmentEventState::Skipped),
+                            None,
+                        )
+                        .await?;
+                    }
                     index += 1;
                 }
                 ProgramPlanSegmentsItem::TrackSegment(_) => {

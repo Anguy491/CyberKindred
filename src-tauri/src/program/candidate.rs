@@ -8,6 +8,7 @@ use super::ProgramError;
 pub const MAX_PROGRAM_CANDIDATES: usize = 200;
 pub const MAX_CANDIDATE_SOURCE_ROWS: usize = 10_000;
 const MAX_CONTEXT_TAGS: usize = 100;
+const MAX_CONTEXT_TAG_CHARS: usize = 240;
 const MAX_TRACK_TAGS: usize = 100;
 const MAX_TAG_CHARS: usize = 100;
 const MAX_LABEL_CHARS: usize = 300;
@@ -159,7 +160,10 @@ fn normalize_context_tags(values: &[String]) -> Result<HashSet<String>, ProgramE
     }
     let mut normalized = HashSet::with_capacity(values.len());
     for value in values {
-        normalized.insert(normalize_tag(value).ok_or(ProgramError::InvalidSelectionRequest)?);
+        normalized.insert(
+            normalize_tag(value, MAX_CONTEXT_TAG_CHARS)
+                .ok_or(ProgramError::InvalidSelectionRequest)?,
+        );
     }
     Ok(normalized)
 }
@@ -199,7 +203,7 @@ fn validate_candidate(
     validate_optional_label(track.album.as_deref())?;
     let mut tags = HashSet::with_capacity(track.normalized_tags.len());
     for tag in track.normalized_tags {
-        tags.insert(normalize_tag(&tag).ok_or(ProgramError::InvalidCandidateData)?);
+        tags.insert(normalize_tag(&tag, MAX_TAG_CHARS).ok_or(ProgramError::InvalidCandidateData)?);
     }
     let mut time_tags = HashSet::with_capacity(track.time_tags.len());
     for time_tag in track.time_tags {
@@ -230,12 +234,12 @@ fn validate_optional_label(value: Option<&str>) -> Result<(), ProgramError> {
     Ok(())
 }
 
-fn normalize_tag(value: &str) -> Option<String> {
+fn normalize_tag(value: &str, maximum_chars: usize) -> Option<String> {
     if value.chars().any(char::is_control) {
         return None;
     }
     let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    if normalized.is_empty() || normalized.chars().count() > MAX_TAG_CHARS {
+    if normalized.is_empty() || normalized.chars().count() > maximum_chars {
         return None;
     }
     Some(normalized.to_lowercase())

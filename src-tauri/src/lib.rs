@@ -18,6 +18,7 @@ mod radio_speech_repository;
 pub mod scanner;
 pub mod speech;
 pub mod storage;
+mod understanding;
 
 use chrono::Utc;
 use diagnostics::{DiagnosticEvent, DiagnosticLog, ValidatedLogDirectory};
@@ -32,7 +33,10 @@ use library::{
         api_v1_remove_library_root,
     },
 };
-use llm::{EmptyProgramContextSource, OpenAiProgramPlanProvider, SystemProgramCallContextFactory};
+use llm::{
+    EmptyProgramContextSource, OpenAiChatProvider, OpenAiProgramPlanProvider,
+    SystemProgramCallContextFactory,
+};
 use llm_repository::RepositoryProgramCredentialSource;
 use onboarding::{
     OnboardingService,
@@ -80,9 +84,51 @@ use std::{
     io,
     sync::{Arc, Mutex},
 };
-use storage::{AppPaths, Storage, WindowsCredentialVault};
+use storage::{AppPaths, RetentionResult, Storage, WindowsCredentialVault};
 use tauri::Manager;
+use understanding::{
+    TauriChatEventSink, UnderstandingService,
+    commands::{
+        api_v1_approve_memory, api_v1_delete_memory, api_v1_delete_session_summary,
+        api_v1_get_profile_view, api_v1_list_memories, api_v1_list_session_summaries,
+        api_v1_reject_memory_proposal, api_v1_submit_chat, api_v1_submit_feedback,
+        api_v1_update_memory, api_v1_update_profile,
+    },
+};
 use uuid::Uuid;
+
+struct RetentionMaintenance(tauri::async_runtime::JoinHandle<()>);
+
+impl Drop for RetentionMaintenance {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+async fn run_daily_retention<C, R>(repository: storage::Repository, mut now_ms: C, mut report: R)
+where
+    C: FnMut() -> i64 + Send,
+    R: FnMut(i64, Result<RetentionResult, storage::StorageError>) + Send,
+{
+    let mut interval = tokio::time::interval(std::time::Duration::from_hours(24));
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    interval.tick().await;
+    loop {
+        interval.tick().await;
+        let occurred_at_ms = now_ms();
+        let result = repository.run_retention_batch(occurred_at_ms, 500).await;
+        report(occurred_at_ms, result);
+    }
+}
+
+const fn retention_item_count(retention: &RetentionResult) -> u64 {
+    retention
+        .messages_deleted
+        .saturating_add(retention.voice_text_cleared)
+        .saturating_add(retention.rejected_proposal_content_cleared)
+        .saturating_add(retention.delivered_outbox_deleted)
+        .saturating_add(retention.expired_undelivered_outbox_deleted)
+}
 
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)] // Tauri extracts command arguments and managed State by value.
@@ -116,15 +162,10 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
             .await?;
         Ok::<_, storage::StorageError>((storage, retention))
     })?;
-    let retention_item_count = retention
-        .messages_deleted
-        .saturating_add(retention.voice_text_cleared)
-        .saturating_add(retention.delivered_outbox_deleted)
-        .saturating_add(retention.expired_undelivered_outbox_deleted);
     diagnostic_log.write(DiagnosticEvent::MaintenanceCompleted {
         correlation_id: Uuid::now_v7(),
         occurred_at_ms: now_ms,
-        item_count: retention_item_count,
+        item_count: retention_item_count(&retention),
         bytes_removed: 0,
     })?;
     if retention.expired_undelivered_outbox_deleted > 0 {
@@ -135,6 +176,36 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
         })?;
     }
     let repository = storage.repository();
+    let retention_repository = repository.clone();
+    let retention_app_handle = app.handle().clone();
+    let retention_maintenance = RetentionMaintenance(tauri::async_runtime::spawn(async move {
+        run_daily_retention(
+            retention_repository,
+            || Utc::now().timestamp_millis(),
+            move |occurred_at_ms, result| {
+                let event = match result {
+                    Ok(retention) => DiagnosticEvent::MaintenanceCompleted {
+                        correlation_id: Uuid::now_v7(),
+                        occurred_at_ms,
+                        item_count: retention_item_count(&retention),
+                        bytes_removed: 0,
+                    },
+                    Err(_) => DiagnosticEvent::OperationFailed {
+                        correlation_id: Uuid::now_v7(),
+                        occurred_at_ms,
+                        duration_ms: 0,
+                        attempt: 1,
+                    },
+                };
+                if let Some(log) = retention_app_handle.try_state::<Mutex<DiagnosticLog>>()
+                    && let Ok(mut log) = log.lock()
+                {
+                    let _ = log.write(event);
+                }
+            },
+        )
+        .await;
+    }));
     let provider_runtime = Arc::new(
         ProviderRuntime::new().map_err(|_| io::Error::other("provider runtime unavailable"))?,
     );
@@ -192,7 +263,7 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
         Box::new(WindowsCredentialVault::new()?),
     ));
     let program_provider = OpenAiProgramPlanProvider::new(
-        program_credentials,
+        program_credentials.clone(),
         Arc::new(EmptyProgramContextSource),
         Arc::new(SystemProgramCallContextFactory),
     )
@@ -230,11 +301,24 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
         sequence: process_sequence.clone(),
         id_factory: Arc::new(SystemRadioIdFactory),
     });
+    let chat_provider = OpenAiChatProvider::new(program_credentials)
+        .ok()
+        .map(|provider| Arc::new(provider) as Arc<dyn understanding::ChatProvider>);
+    let understanding_service = UnderstandingService::new(
+        repository.clone(),
+        chat_provider,
+        Arc::new(TauriChatEventSink::new(
+            app.handle().clone(),
+            process_sequence.clone(),
+        )),
+        clock.clone(),
+    );
     let startup_preview_recovery =
         StartupVoicePreviewOutboxRecovery::new(repository, preview_events, clock);
     app.manage(Mutex::new(diagnostic_log));
     app.manage(process_sequence);
     app.manage(storage);
+    app.manage(retention_maintenance);
     app.manage(provider_service);
     app.manage(onboarding_service);
     app.manage(library_root_service);
@@ -243,6 +327,7 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     app.manage(track_resolver);
     app.manage(playback_service);
     app.manage(radio_service);
+    app.manage(understanding_service);
     app.manage(startup_preview_recovery);
     Ok(())
 }
@@ -288,6 +373,119 @@ pub fn run() -> tauri::Result<()> {
             api_v1_list_voices,
             api_v1_start_program,
             api_v1_stop_program,
+            api_v1_submit_chat,
+            api_v1_submit_feedback,
+            api_v1_list_memories,
+            api_v1_approve_memory,
+            api_v1_update_memory,
+            api_v1_delete_memory,
+            api_v1_reject_memory_proposal,
+            api_v1_get_profile_view,
+            api_v1_update_profile,
+            api_v1_list_session_summaries,
+            api_v1_delete_session_summary,
         ])
         .run(tauri::generate_context!())
+}
+
+#[cfg(test)]
+mod retention_schedule_tests {
+    use super::*;
+    use storage::{ChatRole, NewChatMessage, Repository};
+
+    const DAY_MS: i64 = 24 * 60 * 60 * 1_000;
+
+    async fn insert_expiring_message(repository: &Repository) {
+        repository
+            .create_chat_session("daily-retention-session", 0)
+            .await
+            .expect("session");
+        repository
+            .insert_message(NewChatMessage::new(
+                "daily-retention-message".to_owned(),
+                "daily-retention-session".to_owned(),
+                ChatRole::User,
+                "private retention fixture".to_owned(),
+                None,
+                None,
+                None,
+                0,
+            ))
+            .await
+            .expect("message");
+    }
+
+    #[tokio::test]
+    async fn daily_retention_runs_after_virtual_twenty_four_hours() {
+        let temp = tempfile::tempdir().expect("temporary root");
+        let paths = AppPaths::create(
+            temp.path().join("data"),
+            temp.path().join("cache"),
+            temp.path().join("logs"),
+        )
+        .expect("paths");
+        let storage = Storage::open(&paths, "0.4.0").await.expect("storage");
+        let repository = storage.repository();
+        insert_expiring_message(&repository).await;
+        tokio::time::pause();
+        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
+        let task = tokio::spawn(run_daily_retention(
+            repository.clone(),
+            || 30 * DAY_MS,
+            move |_, result| {
+                let _ = sender.send(result);
+            },
+        ));
+        tokio::task::yield_now().await;
+        tokio::time::advance(std::time::Duration::from_hours(24)).await;
+        let result = receiver
+            .recv()
+            .await
+            .expect("scheduled result")
+            .expect("cleanup");
+        assert_eq!(result.messages_deleted, 1);
+        task.abort();
+        tokio::time::resume();
+        storage.close().await;
+    }
+
+    #[tokio::test]
+    async fn failed_daily_retention_is_retried_by_next_startup_run() {
+        let temp = tempfile::tempdir().expect("temporary root");
+        let data = temp.path().join("data");
+        let cache = temp.path().join("cache");
+        let logs = temp.path().join("logs");
+        let paths = AppPaths::create(&data, &cache, &logs).expect("paths");
+        let storage = Storage::open(&paths, "0.4.0").await.expect("storage");
+        let repository = storage.repository();
+        insert_expiring_message(&repository).await;
+        storage.close().await;
+        tokio::time::pause();
+
+        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
+        let task = tokio::spawn(run_daily_retention(
+            repository,
+            || 30 * DAY_MS,
+            move |_, result| {
+                let _ = sender.send(result);
+            },
+        ));
+        tokio::task::yield_now().await;
+        tokio::time::advance(std::time::Duration::from_hours(24)).await;
+        assert!(receiver.recv().await.expect("scheduled failure").is_err());
+        task.abort();
+        tokio::time::resume();
+
+        let reopened_paths = AppPaths::create(data, cache, logs).expect("reopened paths");
+        let reopened = Storage::open(&reopened_paths, "0.4.0")
+            .await
+            .expect("reopened storage");
+        let retry = reopened
+            .repository()
+            .run_retention_batch(30 * DAY_MS, 500)
+            .await
+            .expect("startup retry");
+        assert_eq!(retry.messages_deleted, 1);
+        reopened.close().await;
+    }
 }

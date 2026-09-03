@@ -25,6 +25,19 @@ import type {
   StopProgramRequest,
   CancelOperationRequest,
   CancelOperationResponse,
+  DeleteSummaryRequest,
+  ListMemoriesRequest,
+  MemoryMutationRequest,
+  MemoryPage,
+  MemoryRecord,
+  PageRequest,
+  ProfileViewResponse,
+  RejectMemoryResponse,
+  SessionSummaryPage,
+  SubmitChatRequest,
+  SubmitFeedbackRequest,
+  UpdateMemoryRequest,
+  UpdateProfileRequest,
   StartLibraryScanRequest,
   TestProviderRequest,
   TestProviderResponse,
@@ -51,6 +64,11 @@ import {
   parsePlaybackState,
   parseStartProgramResponse,
   parseCancelOperationResponse,
+  parseMemoryPage,
+  parseMemoryRecord,
+  parseProfileViewResponse,
+  parseRejectMemoryResponse,
+  parseSessionSummaryPage,
   parseTestProviderResponse,
   parseValidateSecretResponse,
   parseVoicesResponse,
@@ -257,6 +275,74 @@ export class CyberKindredIpcClient {
   async stopProgram(request: StopProgramRequest): Promise<Ack> {
     return this.#invokeValidated(
       "api_v1_stop_program", { request }, STANDARD_TIMEOUT_MS, parseAck,
+    );
+  }
+
+  /** API-026: accepts one explicit text request for the active program. */
+  async submitChat(request: SubmitChatRequest): Promise<OperationAccepted> {
+    return this.#invokeValidated(
+      "api_v1_submit_chat", { request }, OPERATION_ACCEPT_TIMEOUT_MS, parseOperationAccepted,
+    );
+  }
+
+  /** API-027: persists explicit feedback before acknowledging it. */
+  async submitFeedback(request: SubmitFeedbackRequest): Promise<Ack> {
+    return this.#invokeValidated(
+      "api_v1_submit_feedback", { request }, STANDARD_TIMEOUT_MS, parseAck,
+    );
+  }
+
+  async listMemories(request: ListMemoriesRequest): Promise<MemoryPage> {
+    return this.#invokeValidated(
+      "api_v1_list_memories", { request }, STANDARD_TIMEOUT_MS, parseMemoryPage,
+    );
+  }
+
+  async approveMemory(request: MemoryMutationRequest): Promise<MemoryRecord> {
+    return this.#invokeValidated(
+      "api_v1_approve_memory", { request }, STANDARD_TIMEOUT_MS, parseMemoryRecord,
+    );
+  }
+
+  async updateMemory(request: UpdateMemoryRequest): Promise<MemoryRecord> {
+    return this.#invokeValidated(
+      "api_v1_update_memory", { request }, STANDARD_TIMEOUT_MS, parseMemoryRecord,
+    );
+  }
+
+  async deleteMemory(request: MemoryMutationRequest): Promise<Ack> {
+    return this.#invokeValidated(
+      "api_v1_delete_memory", { request }, STANDARD_TIMEOUT_MS, parseAck,
+    );
+  }
+
+  async rejectMemoryProposal(request: MemoryMutationRequest): Promise<RejectMemoryResponse> {
+    return this.#invokeValidated(
+      "api_v1_reject_memory_proposal", { request }, STANDARD_TIMEOUT_MS, parseRejectMemoryResponse,
+    );
+  }
+
+  async getProfileView(): Promise<ProfileViewResponse> {
+    return this.#invokeValidated(
+      "api_v1_get_profile_view", { request: {} }, STANDARD_TIMEOUT_MS, parseProfileViewResponse,
+    );
+  }
+
+  async updateProfile(request: UpdateProfileRequest): Promise<Ack> {
+    return this.#invokeValidated(
+      "api_v1_update_profile", { request }, STANDARD_TIMEOUT_MS, parseAck,
+    );
+  }
+
+  async listSessionSummaries(request: PageRequest): Promise<SessionSummaryPage> {
+    return this.#invokeValidated(
+      "api_v1_list_session_summaries", { request }, STANDARD_TIMEOUT_MS, parseSessionSummaryPage,
+    );
+  }
+
+  async deleteSessionSummary(request: DeleteSummaryRequest): Promise<Ack> {
+    return this.#invokeValidated(
+      "api_v1_delete_session_summary", { request }, STANDARD_TIMEOUT_MS, parseAck,
     );
   }
 

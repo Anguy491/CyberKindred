@@ -47,7 +47,7 @@ impl fmt::Display for StorageReason {
 }
 
 /// An error safe to map to an `ApiError` without including SQL or a path.
-#[derive(Debug, Error)]
+#[derive(Clone, Debug, Error)]
 #[error("本地数据操作失败（{reason}）")]
 pub struct StorageError {
     reason: StorageReason,

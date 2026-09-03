@@ -54,6 +54,18 @@ impl OpenAiProgramCredential {
             secret,
         })
     }
+
+    pub(super) const fn origin(&self) -> &CanonicalOrigin {
+        &self.origin
+    }
+
+    pub(super) fn model_id(&self) -> &str {
+        &self.model_id
+    }
+
+    pub(super) const fn secret(&self) -> &SecretValue {
+        &self.secret
+    }
 }
 
 /// Loads the current verified origin/model and its exact origin-scoped BYOK

@@ -118,6 +118,20 @@ fn candidate_pool_is_bounded_and_rejects_duplicate_or_illegal_ids() {
     );
 }
 
+#[test]
+fn approved_memory_context_accepts_the_documented_240_character_projection() {
+    let mut request = selection_request();
+    request.desired_count = 1;
+    request.approved_memory_tags = vec!["记".repeat(240)];
+    assert!(select_candidates(vec![track(uuid::Uuid::now_v7(), "ambient")], &request).is_ok());
+
+    request.approved_memory_tags = vec!["记".repeat(241)];
+    assert_eq!(
+        select_candidates(vec![track(uuid::Uuid::now_v7(), "ambient")], &request),
+        Err(ProgramError::InvalidSelectionRequest)
+    );
+}
+
 struct FakeRepository {
     tracks: Mutex<Option<Result<Vec<CandidateTrack>, ProgramError>>>,
     requests: Mutex<Vec<CandidateLoadRequest>>,

@@ -7,6 +7,12 @@ import "./radio.css";
 
 type LoadState = "loading" | "ready" | "error";
 type ProgramState = "idle" | "planning" | "running" | "paused" | "stopping" | "completed" | "failed";
+interface ChatLine {
+  readonly key: string;
+  readonly operationId: string;
+  readonly role: "user" | "assistant" | "status";
+  readonly text: string;
+}
 
 export interface RadioViewProps {
   readonly ipc: RadioIpc;
@@ -30,8 +36,12 @@ export function RadioView({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [chatLines, setChatLines] = useState<ReadonlyArray<ChatLine>>([]);
+  const [chatOperation, setChatOperation] = useState<string | null>(null);
+  const [feedbackStatus, setFeedbackStatus] = useState<string | null>(null);
   const [subscriptionAttempt, setSubscriptionAttempt] = useState(0);
   const programIdRef = useRef<string | null>(null);
+  const terminalChatOperationsRef = useRef(new Set<string>());
 
   const refreshSnapshot = useCallback(async () => {
     try {
@@ -64,6 +74,35 @@ export function RadioView({
           ? current
           : [...current, message]);
       }
+      return;
+    }
+    if (event.type === "chat-message") {
+      if (programIdRef.current !== event.payload.programId) return;
+      setChatLines((current) => appendChat(current, {
+        key: `${event.payload.operationId}:${event.payload.role}`,
+        operationId: event.payload.operationId,
+        role: event.payload.role,
+        text: event.payload.text,
+      }));
+      if (event.payload.role === "user") setChatOperation(event.payload.operationId);
+      if (event.payload.final) {
+        rememberTerminal(terminalChatOperationsRef.current, event.payload.operationId);
+        setChatOperation((current) => current === event.payload.operationId ? null : current);
+      }
+      return;
+    }
+    if (event.type === "operation-cancelled") {
+      if (event.payload.kind !== "chat") return;
+      rememberTerminal(terminalChatOperationsRef.current, event.payload.operationId);
+      setChatOperation((current) => current === event.payload.operationId ? null : current);
+      setChatLines((current) => current.some((line) => line.operationId === event.payload.operationId)
+        ? appendChat(current, {
+          key: `${event.payload.operationId}:cancelled`,
+          operationId: event.payload.operationId,
+          role: "status",
+          text: "这次文字请求已取消；不会产生 AI 回复或记忆提案。",
+        })
+        : current);
       return;
     }
     if (programIdRef.current !== null && programIdRef.current !== event.payload.programId) return;
@@ -119,6 +158,8 @@ export function RadioView({
     if (busy !== null || unavailable !== undefined || active) return;
     programIdRef.current = null;
     setProgramId(null); setBusy("start"); setError(null); setMessages([]); setSegmentStates({});
+    setChatLines([]); setChatOperation(null); setFeedbackStatus(null);
+    terminalChatOperationsRef.current.clear();
     setProgramState("planning");
     try {
       const response = await ipc.startProgram("local");
@@ -134,6 +175,37 @@ export function RadioView({
     setBusy("stop"); setError(null); setProgramState("stopping");
     try { await ipc.stopProgram(programId); } catch (cause) { setError(safeError(cause)); }
     finally { setBusy(null); }
+  };
+
+  const sendChat = async () => {
+    const text = draft.trim();
+    if (programId === null || !active || chatOperation !== null || text.length === 0) return;
+    setError(null);
+    try {
+      const accepted = await ipc.submitChat(programId, text);
+      setDraft("");
+      if (terminalChatOperationsRef.current.delete(accepted.operationId)) {
+        setChatOperation(null);
+      } else {
+        setChatOperation(accepted.operationId);
+      }
+    } catch (cause) { setError(safeError(cause)); }
+  };
+
+  const cancelChat = async () => {
+    if (chatOperation === null) return;
+    try { await ipc.cancelChat(chatOperation); } catch (cause) { setError(safeError(cause)); }
+  };
+
+  const feedback = async (kind: "like" | "skip" | "less_talk") => {
+    if (programId === null || !active) return;
+    const trackId = kind === "less_talk" ? null : playback?.currentTrack?.trackId ?? null;
+    if (kind !== "less_talk" && trackId === null) return;
+    setFeedbackStatus(null); setError(null);
+    try {
+      await ipc.submitFeedback(programId, trackId, kind);
+      setFeedbackStatus(kind === "less_talk" ? "已应用：本节目余下时间每 4–6 首至多一次串场。" : kind === "like" ? "已保存喜欢反馈；后续节目选择会参考它。" : "已保存跳过反馈；后续节目选择会降低相似候选。" );
+    } catch (cause) { setError(safeError(cause)); }
   };
 
   if (loadState === "loading") {
@@ -216,6 +288,16 @@ export function RadioView({
         </label>
       </div>
 
+      <div className="feedback-controls" aria-label="节目反馈">
+        <ControlButton {...disabledWhen(!active || playback === null || playback.currentTrack === null, "[NO CURRENT TRACK]")}
+          onClick={() => void feedback("like")}>喜欢</ControlButton>
+        <ControlButton {...disabledWhen(!active || playback === null || playback.currentTrack === null, "[NO CURRENT TRACK]")}
+          onClick={() => void feedback("skip")}>跳过反馈</ControlButton>
+        <ControlButton {...disabledWhen(!active, "[NO ACTIVE PROGRAM]")}
+          onClick={() => void feedback("less_talk")}>少说一点</ControlButton>
+      </div>
+      {feedbackStatus !== null ? <p role="status" className="inline-status">{feedbackStatus}</p> : null}
+
       {error !== null ? <p role="alert" className="inline-status radio-error">{error}</p> : null}
       {messages.map((message) => <p key={message} role="status" className="radio-degradation">
         {message.includes("语音") ? "[TTS UNAVAILABLE — TEXT CONTINUES] " : "[DETERMINISTIC LOCAL QUEUE] "}{message}
@@ -227,9 +309,28 @@ export function RadioView({
         <span className="instrument-label">告诉 CyberKindred 你现在想听什么</span>
         <textarea id="radio-message" rows={2} value={draft}
           onChange={(event) => setDraft(event.currentTarget.value)}
-          placeholder="可以先写下想法；文字发送将在 M4 开放。" />
+          maxLength={4_000}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault(); void sendChat();
+            }
+          }}
+          placeholder="输入文字请求。Enter 发送，Shift+Enter 换行。" />
       </label>
-      <ControlButton disabledReason="[UNAVAILABLE UNTIL M4]">发送</ControlButton>
+      <div className="primary-action-row">
+        <ControlButton tone="primary"
+          {...disabledWhen(!active || programId === null || draft.trim().length === 0 || chatOperation !== null,
+            chatOperation !== null ? "[REQUEST IN PROGRESS]" : "[START A PROGRAM FIRST]")}
+          onClick={() => void sendChat()}>发送</ControlButton>
+        <ControlButton {...disabledWhen(chatOperation === null, "[NO ACTIVE REQUEST]")}
+          onClick={() => void cancelChat()}>取消请求</ControlButton>
+      </div>
+      <ol className="chat-transcript" aria-label="文字对话" aria-live="polite">
+        {chatLines.map((line) => <li key={line.key} data-role={line.role}>
+          <strong>{line.role === "user" ? "你" : line.role === "assistant" ? "CyberKindred" : "状态"}</strong>
+          <span>{line.text}</span>
+        </li>)}
+      </ol>
     </div>
 
     <aside className="page-tertiary" aria-label="电台状态">
@@ -241,6 +342,19 @@ export function RadioView({
       </dl>
     </aside>
   </section>;
+}
+
+function appendChat(current: ReadonlyArray<ChatLine>, next: ChatLine): ReadonlyArray<ChatLine> {
+  if (current.some((line) => line.key === next.key)) return current;
+  return [...current, next].slice(-20);
+}
+
+function rememberTerminal(operations: Set<string>, operationId: string): void {
+  operations.add(operationId);
+  if (operations.size > 64) {
+    const oldest = operations.values().next().value;
+    if (oldest !== undefined) operations.delete(oldest);
+  }
 }
 
 function PlanView({ plan, segmentStates }: {

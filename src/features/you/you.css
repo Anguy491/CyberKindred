@@ -1,0 +1,28 @@
+.knowledge-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.knowledge-list li {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+}
+
+.knowledge-list textarea {
+  min-height: 76px;
+}
+
+.knowledge-list small {
+  color: var(--text-muted);
+}
+
+.knowledge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

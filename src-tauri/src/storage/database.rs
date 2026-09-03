@@ -8,12 +8,15 @@ use sqlx::{
 use std::{path::Path, time::Duration};
 
 pub const APPLICATION_ID: i64 = 1_129_008_708;
-pub const LATEST_SCHEMA_VERSION: i64 = 2;
+pub const LATEST_SCHEMA_VERSION: i64 = 3;
 const INITIAL_MIGRATION_NAME: &str = "initial_schema";
 const INITIAL_MIGRATION_SQL: &str = include_str!("../../migrations/V0001__initial_schema.sql");
 const SCAN_OPERATIONS_MIGRATION_NAME: &str = "scan_operations";
 const SCAN_OPERATIONS_MIGRATION_SQL: &str =
     include_str!("../../migrations/V0002__scan_operations.sql");
+const MEMORY_LAST_USED_MIGRATION_NAME: &str = "memory_last_used";
+const MEMORY_LAST_USED_MIGRATION_SQL: &str =
+    include_str!("../../migrations/V0003__memory_last_used.sql");
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -22,7 +25,7 @@ struct Migration {
     sql: &'static str,
 }
 
-const MIGRATIONS: [Migration; 2] = [
+const MIGRATIONS: [Migration; 3] = [
     Migration {
         version: 1,
         name: INITIAL_MIGRATION_NAME,
@@ -32,6 +35,11 @@ const MIGRATIONS: [Migration; 2] = [
         version: 2,
         name: SCAN_OPERATIONS_MIGRATION_NAME,
         sql: SCAN_OPERATIONS_MIGRATION_SQL,
+    },
+    Migration {
+        version: 3,
+        name: MEMORY_LAST_USED_MIGRATION_NAME,
+        sql: MEMORY_LAST_USED_MIGRATION_SQL,
     },
 ];
 
@@ -283,6 +291,7 @@ async fn set_user_version(
     let statement = match version {
         1 => "PRAGMA user_version = 1",
         2 => "PRAGMA user_version = 2",
+        3 => "PRAGMA user_version = 3",
         _ => return Err(StorageError::new(StorageReason::MigrationFailed)),
     };
     sqlx::query(statement)
@@ -561,7 +570,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn repository_v0002_upgrade_preserves_v0001_data_and_verified_backup() {
+    async fn repository_upgrade_to_latest_preserves_v0001_data_and_verified_backups() {
         let (_temp, paths) = temporary_paths();
         let pool = connect_pool(&paths.database_path(), 1, true)
             .await
@@ -583,12 +592,14 @@ mod tests {
         .expect("preserved track");
         pool.close().await;
 
-        let storage = Storage::open(&paths, "0.2.0").await.expect("V0002 upgrade");
+        let storage = Storage::open(&paths, "0.4.0")
+            .await
+            .expect("latest upgrade");
         assert_eq!(
             pragma_i64(&storage.reader, "PRAGMA user_version")
                 .await
-                .expect("V0002 user version"),
-            2
+                .expect("latest user version"),
+            LATEST_SCHEMA_VERSION
         );
         let preserved: (i64, i64) = sqlx::query_as(
             "SELECT (SELECT count(*) FROM library_roots), (SELECT count(*) FROM tracks)",
@@ -602,29 +613,42 @@ mod tests {
                 .fetch_all(&storage.reader)
                 .await
                 .expect("migration history");
-        assert_eq!(migrations, vec![1, 2]);
+        assert_eq!(migrations, vec![1, 2, 3]);
+        let added_columns: (i64, i64) = sqlx::query_as(
+            "SELECT \
+             EXISTS(SELECT 1 FROM pragma_table_info('memories') WHERE name = 'last_used_at_ms'), \
+             EXISTS(SELECT 1 FROM pragma_table_info('memory_proposals') WHERE name = 'revision')",
+        )
+        .fetch_one(&storage.reader)
+        .await
+        .expect("V0003 columns");
+        assert_eq!(added_columns, (1, 1));
         storage.close().await;
 
         let backups = std::fs::read_dir(paths.backups_dir())
             .expect("backup directory")
             .collect::<Result<Vec<_>, _>>()
             .expect("backup entries");
-        assert_eq!(backups.len(), 1);
-        let backup = connect_validation_pool(&backups[0].path())
-            .await
-            .expect("backup pool");
-        assert_eq!(
-            pragma_i64(&backup, "PRAGMA user_version")
+        assert_eq!(backups.len(), 2);
+        let mut backup_versions = Vec::new();
+        for entry in backups {
+            let backup = connect_validation_pool(&entry.path())
                 .await
-                .expect("backup version"),
-            1
-        );
-        let backup_tracks: i64 = sqlx::query_scalar("SELECT count(*) FROM tracks")
-            .fetch_one(&backup)
-            .await
-            .expect("backup tracks");
-        assert_eq!(backup_tracks, 1);
-        backup.close().await;
+                .expect("backup pool");
+            backup_versions.push(
+                pragma_i64(&backup, "PRAGMA user_version")
+                    .await
+                    .expect("backup version"),
+            );
+            let backup_tracks: i64 = sqlx::query_scalar("SELECT count(*) FROM tracks")
+                .fetch_one(&backup)
+                .await
+                .expect("backup tracks");
+            assert_eq!(backup_tracks, 1);
+            backup.close().await;
+        }
+        backup_versions.sort_unstable();
+        assert_eq!(backup_versions, vec![1, 2]);
     }
 
     #[tokio::test]
@@ -729,7 +753,7 @@ mod tests {
             .execute(&pool)
             .await
             .expect("application id fixture");
-        sqlx::query("PRAGMA user_version = 3")
+        sqlx::query("PRAGMA user_version = 4")
             .execute(&pool)
             .await
             .expect("future version fixture");

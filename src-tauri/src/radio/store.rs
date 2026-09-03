@@ -68,6 +68,13 @@ pub trait RadioProgramStore: Send + Sync {
         occurred_at_ms: i64,
         failure_code: Option<&'static str>,
     ) -> RadioFuture<'_, Result<(), ApiError>>;
+
+    fn voice_allowed_after_feedback(
+        &self,
+        _program_id: Uuid,
+    ) -> RadioFuture<'_, Result<bool, ApiError>> {
+        Box::pin(async { Ok(true) })
+    }
 }
 
 impl RadioProgramStore for Repository {
@@ -149,6 +156,17 @@ impl RadioProgramStore for Repository {
             )
             .await
             .map_err(|error| map_storage_error(&error))
+        })
+    }
+
+    fn voice_allowed_after_feedback(
+        &self,
+        program_id: Uuid,
+    ) -> RadioFuture<'_, Result<bool, ApiError>> {
+        Box::pin(async move {
+            Repository::voice_allowed_after_feedback(self, program_id)
+                .await
+                .map_err(|error| map_storage_error(&error))
         })
     }
 }

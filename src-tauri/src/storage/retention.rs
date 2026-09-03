@@ -6,6 +6,7 @@ const MAX_RETENTION_BATCH: u32 = 500;
 const DAY_MS: i64 = 24 * 60 * 60 * 1_000;
 const DELIVERED_OUTBOX_RETENTION_MS: i64 = DAY_MS;
 const UNDELIVERED_OUTBOX_RETENTION_MS: i64 = 7 * DAY_MS;
+const REJECTED_PROPOSAL_RETENTION_MS: i64 = 30 * DAY_MS;
 
 impl Repository {
     /// Runs one absolute-time retention batch.
@@ -18,6 +19,7 @@ impl Repository {
     ///
     /// Returns a stable storage error and rolls back the whole batch if summary
     /// generation, content deletion, outbox expiry, or commit fails.
+    #[allow(clippy::too_many_lines)] // One transaction makes the shared 500-row budget auditable.
     pub async fn run_retention_batch(
         &self,
         now_ms: i64,
@@ -102,6 +104,27 @@ impl Repository {
             .min(u64::from(u32::MAX));
         let remaining = i64::try_from(remaining)
             .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))?;
+        let rejected_proposal_content_cleared = if remaining == 0 {
+            0
+        } else {
+            sqlx::query(
+                "UPDATE memory_proposals SET statement_text = NULL, reason_text = NULL WHERE id IN (SELECT id FROM memory_proposals WHERE status = 'rejected' AND statement_text IS NOT NULL AND decided_at_ms IS NOT NULL AND decided_at_ms + ? <= ? ORDER BY decided_at_ms, id LIMIT ?)",
+            )
+            .bind(REJECTED_PROPOSAL_RETENTION_MS)
+            .bind(now_ms)
+            .bind(remaining)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))?
+            .rows_affected()
+        };
+
+        let processed = processed.saturating_add(rejected_proposal_content_cleared);
+        let remaining = u64::from(limit)
+            .saturating_sub(processed)
+            .min(u64::from(u32::MAX));
+        let remaining = i64::try_from(remaining)
+            .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))?;
         let (delivered_outbox_deleted, expired_undelivered_outbox_deleted) =
             delete_expired_outbox(&mut transaction, now_ms, remaining).await?;
 
@@ -113,6 +136,7 @@ impl Repository {
             messages_deleted,
             summaries_created,
             voice_text_cleared,
+            rejected_proposal_content_cleared,
             delivered_outbox_deleted,
             expired_undelivered_outbox_deleted,
         })
@@ -313,6 +337,27 @@ mod tests {
                 .await
                 .expect("voice text");
         assert!(text.is_none());
+        storage.close().await;
+    }
+
+    #[tokio::test]
+    async fn retention_clears_rejected_proposal_body_at_exactly_thirty_days() {
+        let (_temp, storage, repository) = retention_fixture().await;
+        let decided_at = 75_000;
+        sqlx::query("INSERT INTO memory_proposals(id, category, statement_text, statement_hash, confidence, status, created_at_ms, decided_at_ms, prompt_version, revision) VALUES('proposal-rejected', 'preference', 'private proposal', ?, 0.5, 'rejected', 1, ?, 'fixture', 1)")
+            .bind("a".repeat(64)).bind(decided_at).execute(&repository.writer).await.expect("proposal");
+        let before = repository
+            .run_retention_batch(decided_at + 30 * DAY_MS - 1, 500)
+            .await
+            .expect("before");
+        assert_eq!(before.rejected_proposal_content_cleared, 0);
+        let exact = repository
+            .run_retention_batch(decided_at + 30 * DAY_MS, 500)
+            .await
+            .expect("exact");
+        assert_eq!(exact.rejected_proposal_content_cleared, 1);
+        let row: (Option<String>, String) = sqlx::query_as("SELECT statement_text, statement_hash FROM memory_proposals WHERE id = 'proposal-rejected'").fetch_one(&repository.writer).await.expect("tombstone");
+        assert_eq!(row, (None, "a".repeat(64)));
         storage.close().await;
     }
 

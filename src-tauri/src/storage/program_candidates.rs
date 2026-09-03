@@ -14,6 +14,8 @@ use super::Repository;
 const MAX_PROFILE_TAGS: usize = 20;
 const MAX_PROFILE_TAG_CHARS: usize = 100;
 const MAX_RECENT_TRACKS: i64 = 20;
+const MAX_APPROVED_MEMORIES: i64 = 20;
+const MAX_CONTEXT_MEMORY_CHARS: usize = 240;
 
 impl ProgramRepository for Repository {
     fn load_candidate_tracks(
@@ -54,7 +56,7 @@ impl Repository {
     /// Loads the bounded, path-free local facts required by radio planning.
     ///
     /// Both projections come from one SQLite read transaction. The tuple is
-    /// `(profile_tags, recently_played_track_ids)` and intentionally contains
+    /// `(profile_tags, approved_memory_tags, recently_played_track_ids)` and intentionally contains
     /// neither profile prose nor any filesystem field.
     ///
     /// # Errors
@@ -63,7 +65,7 @@ impl Repository {
     /// error when an authoritative profile/track row violates its contract.
     pub(crate) async fn load_program_planning_facts(
         &self,
-    ) -> Result<(Vec<String>, Vec<String>), super::StorageError> {
+    ) -> Result<(Vec<String>, Vec<String>, Vec<String>), super::StorageError> {
         let mut transaction = self.writer.begin().await.map_err(|_| read_error())?;
         let preferences_json: Option<String> = sqlx::query_scalar(
             "SELECT program_preferences_json FROM user_profile WHERE id = 'current'",
@@ -75,6 +77,27 @@ impl Repository {
             Some(encoded) => decode_profile_tags(encoded)?,
             None => Vec::new(),
         };
+
+        let approved_memory_rows: Vec<String> = sqlx::query_scalar(
+            "SELECT revision.statement_text \
+             FROM memories memory \
+             JOIN memory_revisions revision ON revision.memory_id = memory.id AND revision.revision = memory.current_revision \
+             WHERE memory.status = 'approved' AND memory.deleted_at_ms IS NULL AND revision.statement_text IS NOT NULL \
+             ORDER BY memory.pinned DESC, memory.updated_at_ms DESC, memory.id ASC LIMIT ?",
+        )
+        .bind(MAX_APPROVED_MEMORIES)
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(|_| read_error())?;
+        if approved_memory_rows.iter().any(|tag| {
+            tag.is_empty() || tag.chars().count() > 500 || tag.chars().any(char::is_control)
+        }) {
+            return Err(integrity_error());
+        }
+        let approved_memory_tags = approved_memory_rows
+            .into_iter()
+            .map(|value| value.chars().take(MAX_CONTEXT_MEMORY_CHARS).collect())
+            .collect();
 
         let rows: Vec<(String, i64)> = sqlx::query_as(
             "SELECT t.id, t.last_played_at_ms \
@@ -100,7 +123,7 @@ impl Repository {
             })
             .collect::<Result<Vec<_>, _>>()?;
         transaction.commit().await.map_err(|_| read_error())?;
-        Ok((profile_tags, recent_track_ids))
+        Ok((profile_tags, approved_memory_tags, recent_track_ids))
     }
 }
 
@@ -324,12 +347,13 @@ mod tests {
             played.push(track_id.to_string());
         }
 
-        let (profile_tags, recent_track_ids) = repository
+        let (profile_tags, approved_memory_tags, recent_track_ids) = repository
             .load_program_planning_facts()
             .await
             .expect("planning facts");
         assert_eq!(profile_tags.len(), MAX_PROFILE_TAGS);
         assert_eq!(profile_tags[0], "preference-0");
+        assert!(approved_memory_tags.is_empty());
         assert_eq!(
             recent_track_ids.len(),
             usize::try_from(MAX_RECENT_TRACKS).expect("bounded test constant")

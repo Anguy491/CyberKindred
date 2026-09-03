@@ -61,7 +61,7 @@ impl ProgramPlannerContextSource for RepositoryProgramContextSource {
         program_id: Uuid,
     ) -> Pin<Box<dyn Future<Output = Result<RadioPlanningContext, ApiError>> + Send + '_>> {
         Box::pin(async move {
-            let (profile_tags, recently_played_track_ids) = self
+            let (profile_tags, approved_memory_tags, recently_played_track_ids) = self
                 .repository
                 .load_program_planning_facts()
                 .await
@@ -73,9 +73,9 @@ impl ProgramPlannerContextSource for RepositoryProgramContextSource {
             Ok(RadioPlanningContext {
                 local_hour,
                 profile_tags,
-                // Approved memories enter this adapter only at the explicit M5
-                // context-integration boundary; M3 must not read proposal prose.
-                approved_memory_tags: Vec::new(),
+                // The repository projection admits approved current revisions only.
+                // Proposed, disabled and deleted memory prose cannot cross this seam.
+                approved_memory_tags,
                 recently_played_track_ids,
                 cooldown_ms: PROGRAM_COOLDOWN_MS,
                 allow_cooldown_relaxation: true,

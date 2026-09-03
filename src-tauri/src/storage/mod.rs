@@ -19,6 +19,7 @@ mod retention;
 mod scanner;
 mod secret;
 pub(crate) mod track_catalog;
+mod understanding;
 
 pub use database::{APPLICATION_ID, LATEST_SCHEMA_VERSION, Storage};
 pub use error::{StorageError, StorageReason};
@@ -47,3 +48,8 @@ pub use secret::{
     CanonicalOrigin, CredentialTarget, SecretError, SecretValue, SecretVault,
     WindowsCredentialVault,
 };
+pub(crate) use understanding::{
+    ChatContextSnapshot, NewMemoryProposal, StoredMemory, StoredMemoryKind, StoredMemoryStatus,
+};
+#[cfg(test)]
+pub(crate) use understanding::{ContextMemory, ContextTurn};

@@ -65,6 +65,7 @@ pub struct RetentionResult {
     pub messages_deleted: u64,
     pub summaries_created: u64,
     pub voice_text_cleared: u64,
+    pub rejected_proposal_content_cleared: u64,
     pub delivered_outbox_deleted: u64,
     pub expired_undelivered_outbox_deleted: u64,
 }

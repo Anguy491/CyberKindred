@@ -157,7 +157,7 @@ V0002 只新增这两个关联表和索引，不重写音轨或源路径；升�
 
 #### `memory_proposals`
 
-`id TEXT PRIMARY KEY`、`category TEXT NOT NULL CHECK(category IN ('preference','routine','boundary','biographical'))`、`statement_text TEXT`、`statement_hash TEXT NOT NULL`、`reason_text TEXT`、`confidence REAL NOT NULL CHECK(confidence BETWEEN 0 AND 1)`、`status TEXT NOT NULL CHECK(status IN ('proposed','approved','rejected','superseded'))`、`created_at_ms INTEGER NOT NULL`、`decided_at_ms INTEGER`、`prompt_version TEXT NOT NULL`、`model TEXT`。proposed/approved 状态必须有 statement；rejected 后 30 天将 statement/reason 置 NULL，只保留 hash/status 防止重复。
+`id TEXT PRIMARY KEY`、`category TEXT NOT NULL CHECK(category IN ('preference','routine','boundary','biographical'))`、`statement_text TEXT`、`statement_hash TEXT NOT NULL`、`reason_text TEXT`、`confidence REAL NOT NULL CHECK(confidence BETWEEN 0 AND 1)`、`status TEXT NOT NULL CHECK(status IN ('proposed','approved','rejected','superseded'))`、`revision INTEGER NOT NULL DEFAULT 0 CHECK(revision>=0)`、`created_at_ms INTEGER NOT NULL`、`decided_at_ms INTEGER`、`prompt_version TEXT NOT NULL`、`model TEXT`。proposed/approved 状态必须有 statement；API-029/API-030/API-039 对 proposal 使用该单调 revision 做乐观并发，决策或编辑后递增；rejected 后 30 天将 statement/reason 置 NULL，只保留 hash/status/revision 防止重复。
 
 #### `memory_proposal_sources`
 
@@ -165,7 +165,7 @@ V0002 只新增这两个关联表和索引，不重写音轨或源路径；升�
 
 #### `memories`
 
-`id TEXT PRIMARY KEY`、`category TEXT NOT NULL CHECK(category IN ('preference','routine','boundary','biographical'))`、`current_revision INTEGER NOT NULL CHECK(current_revision>0)`、`status TEXT NOT NULL CHECK(status IN ('approved','disabled','deleted'))`、`pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1))`、`created_from_proposal_id TEXT REFERENCES memory_proposals(id) ON DELETE SET NULL`、`created_at_ms INTEGER NOT NULL`、`updated_at_ms INTEGER NOT NULL`、`deleted_at_ms INTEGER`。只有 `status='approved'` 可进入 AI context。
+`id TEXT PRIMARY KEY`、`category TEXT NOT NULL CHECK(category IN ('preference','routine','boundary','biographical'))`、`current_revision INTEGER NOT NULL CHECK(current_revision>0)`、`status TEXT NOT NULL CHECK(status IN ('approved','disabled','deleted'))`、`pinned INTEGER NOT NULL DEFAULT 0 CHECK(pinned IN (0,1))`、`created_from_proposal_id TEXT REFERENCES memory_proposals(id) ON DELETE SET NULL`、`created_at_ms INTEGER NOT NULL`、`updated_at_ms INTEGER NOT NULL`、`last_used_at_ms INTEGER`、`deleted_at_ms INTEGER`。`last_used_at_ms` 初始为 NULL，仅在该 approved memory 实际进入一次 LLM Context 后更新；停用、重新启用和内容编辑不伪造使用时间。只有 `status='approved'` 可进入 AI context。
 
 #### `memory_revisions`
 

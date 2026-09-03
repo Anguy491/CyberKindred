@@ -60,6 +60,9 @@ function fixture(local = source()) {
     seek: vi.fn(async (_revision, positionMs) => ({ ...playback("playing", 4), positionMs })),
     next: vi.fn(async () => playback("playing", 5)),
     previous: vi.fn(async () => playback("playing", 6)),
+    submitChat: vi.fn(async () => ({ operationId: id(120), acceptedAt: "2026-09-03T01:00:00.000Z" })),
+    cancelChat: vi.fn(async () => undefined),
+    submitFeedback: vi.fn(async () => ({ requestId: id(121), revision: 1 })),
     subscribeRadio: vi.fn(async (nextHandler, nextRefresh) => {
       handler = nextHandler; refresh = nextRefresh; await nextRefresh(); return () => undefined;
     }),
@@ -162,5 +165,80 @@ describe("[TASK-019] local radio view", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("本地电台操作失败");
     expect(document.body.textContent).not.toContain("Alice");
     expect(document.body.textContent).not.toContain("sk-radio-secret-canary");
+  });
+
+  // FR-CHAT-001/003; cancellation must not invent a late assistant line.
+  it("sends on Enter and exposes an explicit cancellation result", async () => {
+    const test = fixture();
+    const user = userEvent.setup();
+    render(<RadioView ipc={test.ipc} />);
+    await user.click(await screen.findByRole("button", { name: "开始节目" }));
+    const input = screen.getByLabelText("告诉 CyberKindred 你现在想听什么");
+    await user.type(input, "今天安静一点{Enter}");
+    await waitFor(() => expect(test.ipc.submitChat).toHaveBeenCalledWith(PROGRAM_ID, "今天安静一点"));
+    test.emit({ type: "chat-message", payload: {
+      schemaVersion: "1.0.0", sequence: 5, occurredAt: "2026-09-03T01:00:04.000Z",
+      operationId: id(120), programId: PROGRAM_ID, role: "user", text: "今天安静一点", final: false,
+    } });
+    expect(screen.getByText("今天安静一点")).not.toBeNull();
+    await user.click(screen.getByRole("button", { name: "取消请求" }));
+    expect(test.ipc.cancelChat).toHaveBeenCalledWith(id(120));
+    test.emit({ type: "operation-cancelled", payload: {
+      schemaVersion: "1.0.0", sequence: 6, occurredAt: "2026-09-03T01:00:05.000Z",
+      operationId: id(120), kind: "chat",
+    } });
+    expect(screen.getByText(/不会产生 AI 回复或记忆提案/u)).not.toBeNull();
+    expect(screen.queryByText("不应出现的回复")).toBeNull();
+  });
+
+  // FR-CHAT-001: a fast terminal event may arrive before the accept promise resolves.
+  it("does not leave chat busy when a terminal event beats the accept response", async () => {
+    const test = fixture();
+    let resolveSubmit: ((value: { operationId: string; acceptedAt: string }) => void) | undefined;
+    vi.mocked(test.ipc.submitChat).mockReturnValueOnce(new Promise((resolve) => {
+      resolveSubmit = resolve;
+    }));
+    const user = userEvent.setup();
+    render(<RadioView ipc={test.ipc} />);
+    await user.click(await screen.findByRole("button", { name: "开始节目" }));
+    await user.type(screen.getByLabelText("告诉 CyberKindred 你现在想听什么"), "现在怎么样{Enter}");
+    await waitFor(() => expect(test.ipc.submitChat).toHaveBeenCalledTimes(1));
+    test.emit({ type: "chat-message", payload: {
+      schemaVersion: "1.0.0", sequence: 7, occurredAt: "2026-09-03T01:00:06.000Z",
+      operationId: id(120), programId: PROGRAM_ID, role: "user", text: "现在怎么样", final: false,
+    } });
+    test.emit({ type: "chat-message", payload: {
+      schemaVersion: "1.0.0", sequence: 8, occurredAt: "2026-09-03T01:00:07.000Z",
+      operationId: id(120), programId: PROGRAM_ID, role: "assistant", text: "现在可以继续听。", final: true,
+    } });
+    await act(async () => resolveSubmit?.({
+      operationId: id(120), acceptedAt: "2026-09-03T01:00:00.000Z",
+    }));
+
+    expect(await screen.findByText("现在可以继续听。")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "发送" }).getAttribute("aria-disabled")).toBe("true");
+    await user.type(screen.getByLabelText("告诉 CyberKindred 你现在想听什么"), "再来一次");
+    expect(screen.getByRole("button", { name: "发送" }).getAttribute("aria-disabled")).not.toBe("true");
+  });
+
+  // FR-RAD-005: acknowledgements are visible only after the persisted command resolves.
+  it("persists like and less-talk feedback and shows the applied policy", async () => {
+    const test = fixture();
+    const user = userEvent.setup();
+    render(<RadioView ipc={test.ipc} />);
+    await user.click(await screen.findByRole("button", { name: "开始节目" }));
+    test.emit({ type: "playback", payload: {
+      schemaVersion: "1.0.0", eventId: id(130), sequence: 2, type: "track_changed",
+      occurredAt: "2026-09-03T01:00:01.000Z", sourceId: "local", stateRevision: 2,
+      reason: "adapter_update", state: playback("playing", 2),
+    } });
+    await user.click(await screen.findByRole("button", { name: "喜欢" }));
+    expect(test.ipc.submitFeedback).toHaveBeenCalledWith(
+      PROGRAM_ID, "018f47c0-8b8b-7c35-8bf7-278e15b1a101", "like",
+    );
+    expect(await screen.findByText(/后续节目选择会参考/u)).not.toBeNull();
+    await user.click(screen.getByRole("button", { name: "少说一点" }));
+    expect(test.ipc.submitFeedback).toHaveBeenCalledWith(PROGRAM_ID, null, "less_talk");
+    expect(await screen.findByText(/每 4–6 首至多一次串场/u)).not.toBeNull();
   });
 });

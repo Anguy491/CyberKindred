@@ -67,6 +67,40 @@
   overflow-wrap: anywhere;
 }
 
+.feedback-controls,
+.chat-transcript {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chat-transcript {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat-transcript li {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--border-visible);
+}
+
+.chat-transcript li[data-role="assistant"] {
+  border-color: var(--accent);
+}
+
+.chat-transcript li[data-role="status"] {
+  color: var(--text-muted);
+}
+
+.chat-transcript strong {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
 @media (max-width: 760px) {
   .radio-readout {
     grid-template-columns: 1fr;

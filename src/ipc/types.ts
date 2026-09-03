@@ -1,4 +1,4 @@
-import type { PlaybackState, ProgramPlan } from "../contracts";
+import type { MemoryRecord, PlaybackState, ProgramPlan } from "../contracts";
 
 export type { MemoryRecord, PlaybackEvent, PlaybackState, ProgramPlan } from "../contracts";
 
@@ -113,6 +113,110 @@ export interface CancelOperationResponse {
   readonly requestId: string;
   readonly operationId: string;
   readonly state: "cancelled" | "already_terminal";
+}
+
+export interface SubmitChatRequest {
+  readonly clientRequestId: string;
+  readonly programId: string;
+  readonly text: string;
+}
+
+export interface SubmitFeedbackRequest {
+  readonly clientRequestId: string;
+  readonly programId: string;
+  readonly trackId: string | null;
+  readonly kind: "like" | "skip" | "less_talk";
+}
+
+export interface ListMemoriesRequest {
+  readonly cursor: string | null;
+  readonly limit: number;
+  readonly status: "proposed" | "approved" | "disabled" | null;
+}
+
+export interface MemoryPage {
+  readonly items: ReadonlyArray<MemoryRecord>;
+  readonly nextCursor: string | null;
+}
+
+export interface MemoryMutationRequest {
+  readonly clientRequestId: string;
+  readonly memoryId: string;
+  readonly expectedRevision: number;
+}
+
+export interface UpdateMemoryRequest extends MemoryMutationRequest {
+  readonly content: string;
+  readonly enabled: boolean;
+}
+
+export interface RejectMemoryResponse {
+  readonly requestId: string;
+  readonly memoryId: string;
+  readonly status: "rejected";
+  readonly rejectedAt: string;
+  readonly contentDeleteAt: string;
+  readonly revision: number;
+}
+
+export interface UserProfileView {
+  readonly displayName: string;
+  readonly companionStyle: "quiet_warm";
+  readonly initialPreferences: ReadonlyArray<string>;
+  readonly narrationDensity: NarrationDensity;
+  readonly weatherLocation: WeatherLocation | null;
+}
+
+export interface PreferenceTrend {
+  readonly kind: string;
+  readonly label: string;
+  readonly direction: "up" | "stable" | "down";
+  readonly sampleCount: number;
+  readonly windowDays: number;
+}
+
+export interface ProfileViewResponse {
+  readonly profile: UserProfileView;
+  readonly preferenceTrends: ReadonlyArray<PreferenceTrend>;
+  readonly revision: number;
+}
+
+export interface ProfilePatch {
+  readonly displayName?: string;
+  readonly companionStyle?: "quiet_warm";
+  readonly initialPreferences?: ReadonlyArray<string>;
+  readonly narrationDensity?: NarrationDensity;
+}
+
+export interface UpdateProfileRequest {
+  readonly clientRequestId: string;
+  readonly expectedRevision: number;
+  readonly patch: ProfilePatch;
+}
+
+export interface PageRequest {
+  readonly cursor: string | null;
+  readonly limit: number;
+}
+
+export interface SessionSummaryView {
+  readonly summaryId: string;
+  readonly coveredFrom: string;
+  readonly coveredTo: string;
+  readonly summary: string;
+  readonly generationKind: "llm" | "deterministic";
+  readonly revision: number;
+}
+
+export interface SessionSummaryPage {
+  readonly items: ReadonlyArray<SessionSummaryView>;
+  readonly nextCursor: string | null;
+}
+
+export interface DeleteSummaryRequest {
+  readonly clientRequestId: string;
+  readonly summaryId: string;
+  readonly expectedRevision: number;
 }
 
 export interface AppCapabilities {
@@ -399,6 +503,23 @@ export interface ProgramSegmentEvent extends EventEnvelope {
   readonly programId: string;
   readonly segmentId: string;
   readonly state: "queued" | "playing" | "completed" | "skipped" | "failed";
+}
+
+export interface ChatMessageEvent extends EventEnvelope {
+  readonly operationId: string;
+  readonly programId: string;
+  readonly role: "user" | "assistant";
+  readonly text: string;
+  readonly final: boolean;
+}
+
+export interface MemoryProposedEvent extends EventEnvelope {
+  readonly memory: MemoryRecord;
+}
+
+export interface OperationCancelledEvent extends EventEnvelope {
+  readonly operationId: string;
+  readonly kind: "chat" | "voice_preview" | "library_scan" | "data_export";
 }
 
 export interface VoiceView {

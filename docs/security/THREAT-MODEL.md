@@ -12,7 +12,7 @@
 
 CyberKindred 是 Windows 10 22H2/Windows 11 上的单用户桌面 AI 陪伴电台。正常数据流是：React WebView 收集显式用户意图，经 allowlisted Tauri IPC 进入 Rust Core；Rust Core 访问用户选择的只读音乐目录、SQLite/cache、Windows Credential Manager、Windows GSMTC 与明确配置的 HTTPS provider；本地音频引擎播放用户文件和 TTS。MVP 不监听端口、不提供外部 HTTP API、不读取屏幕/麦克风，也不自动播放日程通知。
 
-当前仓库已完成 M1、M2 与 M3；M3 candidate 的完整安全差异审查覆盖 101 个源码 review item 和 8 个攻击面，未发现 Critical/High/Medium/Low 安全 finding。下表控制混合了已由 hermetic 测试证明的 M2 基础与 M3 本地曲库/电台实现，以及尚待后续 milestone 的设计要求；每一行明确区分 evidence 和 unknown。M2 的 credential 生命周期、terminal delivery 与 model pre-save probe 已按 Product Owner 选择完成并关闭 `RISK-016`–`RISK-018`，详见 [`M2 checkpoint`](../testing/checkpoints/M2.md)；M3 结论和递延验证见 [`M3 checkpoint`](../testing/checkpoints/M3.md)。
+当前仓库已完成 M1、M2 与 M3，并正在封存 M4 candidate。M3 candidate 的完整安全差异审查覆盖 101 个源码 review item 和 8 个攻击面，未发现 Critical/High/Medium/Low 安全 finding；M4 对话/记忆 working-tree 安全差异审查覆盖全部变更源码，未发现可报告 finding。下表控制混合了已由 hermetic 测试证明的 M2 基础、M3 本地曲库/电台与 M4 对话/记忆实现，以及尚待后续 milestone 的设计要求；每一行明确区分 evidence 和 unknown。M2 的 credential 生命周期、terminal delivery 与 model pre-save probe 已按 Product Owner 选择完成并关闭 `RISK-016`–`RISK-018`，详见 [`M2 checkpoint`](../testing/checkpoints/M2.md)；M3 结论和递延验证见 [`M3 checkpoint`](../testing/checkpoints/M3.md)，M4 的完整结论由对应 checkpoint 封存。
 
 ### 1.1 Components and sources
 
@@ -23,6 +23,7 @@ CyberKindred 是 Windows 10 22H2/Windows 11 上的单用户桌面 AI 陪伴电�
 | Rust Core | 唯一的授权与 side-effect coordinator；provider/source capability、路径、保留和删除执行者 | [Architecture](../architecture/ARCHITECTURE.md), [Provider Contracts](../contracts/PROVIDER-CONTRACTS.md) |
 | Local media scanner/player | 解析不可信音频/tag/artwork，维护只读索引并播放 | [Data Model](../architecture/DATA-MODEL.md) |
 | SQLite/cache/logs/outbox | profile、历史、对话、memory、schedule 与可再生缓存；不得含 secret；outbox 只含 coarse ID/state/counter，不含正文、路径或 GSMTC metadata | [Data Model](../architecture/DATA-MODEL.md), [Privacy Lifecycle](PRIVACY-DATA-LIFECYCLE.md) |
+| M4 conversation and memory service | 接受有界用户文字与反馈、组装 approved-only Context、校验无 tools 的 structured reply、串行化取消/完成并执行 revisioned memory/profile/summary 事务；模型输出无播放或审批权 | [AI Orchestration](../architecture/AI-ORCHESTRATION.md), [API Contract](../contracts/API-CONTRACT.md), [Data Model](../architecture/DATA-MODEL.md) |
 | Windows Credential Manager | 保存按 origin 隔离的 OpenAI-compatible API Key | [Privacy Lifecycle](PRIVACY-DATA-LIFECYCLE.md) |
 | GSMTC adapter | 绑定一个用户选择的系统媒体会话并按 runtime capability 控制 | [Provider Contracts](../contracts/PROVIDER-CONTRACTS.md), [External Integrations](../integrations/EXTERNAL-INTEGRATIONS.md) |
 | Network providers | OpenAI Responses/Speech、MusicBrainz、CAA、Open-Meteo；只接收最小 allowlisted 数据 | [External Integrations](../integrations/EXTERNAL-INTEGRATIONS.md) |

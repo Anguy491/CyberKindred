@@ -1,9 +1,11 @@
 //! Bounded, stateless `OpenAI` Responses adapter for local program planning.
 
+mod chat;
 mod context;
 mod provider;
 mod transport;
 
+pub(crate) use chat::OpenAiChatProvider;
 pub use context::{
     ContextTurn, ContextTurnRole, EmptyProgramContextSource, MAX_PROVIDER_INPUT_TOKENS,
     MAX_PROVIDER_OUTPUT_TOKENS, ProgramContextExtras, ProgramContextSource,

@@ -86,6 +86,7 @@ struct FakeStore {
     state: Mutex<StoreState>,
     fail_begin: AtomicBool,
     fail_persist: AtomicBool,
+    voice_allowed: AtomicBool,
 }
 
 impl FakeStore {
@@ -94,6 +95,7 @@ impl FakeStore {
             state: Mutex::new(StoreState::default()),
             fail_begin: AtomicBool::new(false),
             fail_persist: AtomicBool::new(false),
+            voice_allowed: AtomicBool::new(true),
         }
     }
 
@@ -194,6 +196,13 @@ impl RadioProgramStore for FakeStore {
             state.segments.insert(segment_id, next);
             Ok(())
         })
+    }
+
+    fn voice_allowed_after_feedback(
+        &self,
+        _program_id: Uuid,
+    ) -> traits::RadioFuture<'_, Result<bool, ApiError>> {
+        Box::pin(async { Ok(self.voice_allowed.load(Ordering::SeqCst)) })
     }
 }
 
@@ -479,6 +488,36 @@ async fn program_runner_executes_six_tracks_in_bounded_plan_order_and_text_only_
             .filter(|message| message.contains("语音不可用"))
             .count(),
         1
+    );
+}
+
+#[tokio::test]
+async fn program_runner_applies_less_talk_before_the_next_voice_segment() {
+    let fixture = fixture();
+    fixture.store.voice_allowed.store(false, Ordering::SeqCst);
+    fixture
+        .service
+        .start_local_program(start_request())
+        .await
+        .expect("confirmed start");
+    wait_for_phase(&fixture.store, ProgramRunPhase::Completed).await;
+
+    assert_eq!(fixture.speech.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(fixture.playback.calls.load(Ordering::SeqCst), 3);
+    assert!(
+        fixture
+            .sink
+            .0
+            .lock()
+            .expect("events")
+            .iter()
+            .filter(|event| matches!(
+                event,
+                RadioEvent::ProgramSegment(segment)
+                    if segment.state == ProgramSegmentEventState::Skipped
+            ))
+            .count()
+            >= 3
     );
 }
 

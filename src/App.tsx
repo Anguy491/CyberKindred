@@ -25,6 +25,7 @@ import {
   createRadioIpc,
   type RadioIpc,
 } from "./features/radio";
+import { BROWSER_YOU_IPC, createYouIpc, type YouIpc } from "./features/you";
 import type { AppCapabilities } from "./ipc";
 import { OnboardingFlow } from "./onboarding/OnboardingFlow";
 import {
@@ -49,6 +50,7 @@ export interface AppProps {
   readonly onboardingLoader?: OnboardingLoader;
   readonly libraryIpc?: LibraryIpc;
   readonly radioIpc?: RadioIpc;
+  readonly youIpc?: YouIpc;
   /** Deterministic visual scenario injection for hermetic UI tests. */
   readonly scenario?: FoundationState;
 }
@@ -61,6 +63,7 @@ export function App({
   onboardingLoader = loadOnboardingState,
   libraryIpc,
   radioIpc,
+  youIpc,
   scenario,
 }: AppProps) {
   const browserBypass = scenario !== undefined
@@ -80,6 +83,7 @@ export function App({
   const onboardingIpc = useMemoOnboardingClient(onboardingClient);
   const libraryClient = useMemoLibraryIpc(libraryIpc);
   const radioClient = useMemoRadioIpc(radioIpc);
+  const youClient = useMemoYouIpc(youIpc);
 
   useEffect(() => {
     if (scenario !== undefined || browserBypass) return;
@@ -220,7 +224,7 @@ export function App({
               />
             </div>
             <div hidden={activeRoute !== "you"}>
-              <YouPage />
+              <YouPage ipc={youClient} />
             </div>
             <div hidden={activeRoute !== "settings"}>
               <SettingsPage
@@ -256,6 +260,15 @@ function useMemoRadioIpc(ipc: RadioIpc | undefined): RadioIpc {
   if (ref.current === null) {
     const desktop = typeof window !== "undefined" && Reflect.has(window, "__TAURI_INTERNALS__");
     ref.current = ipc ?? (desktop ? createRadioIpc() : BROWSER_RADIO_IPC);
+  }
+  return ref.current;
+}
+
+function useMemoYouIpc(ipc: YouIpc | undefined): YouIpc {
+  const ref = useRef<YouIpc | null>(null);
+  if (ref.current === null) {
+    const desktop = typeof window !== "undefined" && Reflect.has(window, "__TAURI_INTERNALS__");
+    ref.current = ipc ?? (desktop ? createYouIpc() : BROWSER_YOU_IPC);
   }
   return ref.current;
 }

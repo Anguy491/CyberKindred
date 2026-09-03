@@ -4,6 +4,8 @@ import {
   type PlaybackState,
   type ProgramSegmentEvent,
   type ProgramStateEvent,
+  type ChatMessageEvent,
+  type OperationCancelledEvent,
 } from "../../ipc";
 import type { RadioIpc } from "./types";
 
@@ -18,6 +20,9 @@ type RadioClient = Pick<CyberKindredIpcClient,
   | "seek"
   | "next"
   | "previous"
+  | "submitChat"
+  | "submitFeedback"
+  | "cancelOperation"
   | "subscribeToEvents"
 >;
 
@@ -44,6 +49,17 @@ export function createRadioIpc(client: RadioClient = new CyberKindredIpcClient()
     seek: (revision, positionMs) => client.seek({ ...control(revision), positionMs }),
     next: (revision) => client.next(control(revision)),
     previous: (revision) => client.previous(control(revision)),
+    submitChat: (programId, text) => client.submitChat({
+      clientRequestId: globalThis.crypto.randomUUID(), programId, text,
+    }),
+    cancelChat: async (operationId) => {
+      await client.cancelOperation({
+        clientRequestId: globalThis.crypto.randomUUID(), operationId, expectedKind: "chat",
+      });
+    },
+    submitFeedback: (programId, trackId, kind) => client.submitFeedback({
+      clientRequestId: globalThis.crypto.randomUUID(), programId, trackId, kind,
+    }),
     subscribeRadio: (handler, refreshSnapshot) => client.subscribeToEvents({
       onEvent: (eventName, payload) => {
         if (eventName === "cyberkindred://v1/playback/event") {
@@ -52,6 +68,10 @@ export function createRadioIpc(client: RadioClient = new CyberKindredIpcClient()
           handler({ type: "program-state", payload: payload as unknown as ProgramStateEvent });
         } else if (eventName === "cyberkindred://v1/program/segment") {
           handler({ type: "program-segment", payload: payload as unknown as ProgramSegmentEvent });
+        } else if (eventName === "cyberkindred://v1/chat/message") {
+          handler({ type: "chat-message", payload: payload as unknown as ChatMessageEvent });
+        } else if (eventName === "cyberkindred://v1/operation/cancelled") {
+          handler({ type: "operation-cancelled", payload: payload as unknown as OperationCancelledEvent });
         }
       },
       refreshSnapshot,
@@ -87,6 +107,9 @@ export const BROWSER_RADIO_IPC: RadioIpc = {
   seek: async () => { throw new Error("Radio requires the desktop runtime."); },
   next: async () => { throw new Error("Radio requires the desktop runtime."); },
   previous: async () => { throw new Error("Radio requires the desktop runtime."); },
+  submitChat: async () => { throw new Error("Radio requires the desktop runtime."); },
+  cancelChat: async () => { throw new Error("Radio requires the desktop runtime."); },
+  submitFeedback: async () => { throw new Error("Radio requires the desktop runtime."); },
   subscribeRadio: async (_handler, refreshSnapshot) => {
     await refreshSnapshot();
     return () => undefined;

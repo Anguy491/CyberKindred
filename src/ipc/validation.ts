@@ -27,6 +27,10 @@ import {
   type ProgramPlan,
   type StartProgramResponse,
   type CancelOperationResponse,
+  type MemoryPage,
+  type ProfileViewResponse,
+  type RejectMemoryResponse,
+  type SessionSummaryPage,
   type TestProviderResponse,
   type ValidateSecretResponse,
   type VoiceView,
@@ -278,6 +282,56 @@ export function parseCancelOperationResponse(value: unknown): CancelOperationRes
   return value as unknown as CancelOperationResponse;
 }
 
+export function parseMemoryRecord(value: unknown): MemoryRecord {
+  if (!isMemoryRecord(value)) throw new IpcResponseValidationError();
+  return value;
+}
+
+export function parseMemoryPage(value: unknown): MemoryPage {
+  if (!isRecord(value) || !hasExactKeys(value, ["items", "nextCursor"])
+    || !Array.isArray(value.items) || value.items.length > 100
+    || !value.items.every(isMemoryRecord)
+    || new Set(value.items.map((item) => (item as MemoryRecord).memoryId)).size !== value.items.length
+    || (value.nextCursor !== null && !isOpaqueCursor(value.nextCursor))) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as MemoryPage;
+}
+
+export function parseRejectMemoryResponse(value: unknown): RejectMemoryResponse {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "requestId", "memoryId", "status", "rejectedAt", "contentDeleteAt", "revision",
+  ]) || !isUuid(value.requestId) || !isUuid(value.memoryId) || value.status !== "rejected"
+    || !isTimestamp(value.rejectedAt) || !isTimestamp(value.contentDeleteAt)
+    || Date.parse(value.contentDeleteAt) < Date.parse(value.rejectedAt)
+    || !isNonNegativeInteger(value.revision)) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as RejectMemoryResponse;
+}
+
+export function parseProfileViewResponse(value: unknown): ProfileViewResponse {
+  if (!isRecord(value) || !hasExactKeys(value, ["profile", "preferenceTrends", "revision"])
+    || !isUserProfileView(value.profile) || !Array.isArray(value.preferenceTrends)
+    || value.preferenceTrends.length > 100 || !value.preferenceTrends.every(isPreferenceTrend)
+    || !isNonNegativeInteger(value.revision)) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as ProfileViewResponse;
+}
+
+export function parseSessionSummaryPage(value: unknown): SessionSummaryPage {
+  if (!isRecord(value) || !hasExactKeys(value, ["items", "nextCursor"])
+    || !Array.isArray(value.items) || value.items.length > 100
+    || !value.items.every(isSessionSummary)
+    || new Set(value.items.map((item) => (item as { summaryId: string }).summaryId)).size
+      !== value.items.length
+    || (value.nextCursor !== null && !isOpaqueCursor(value.nextCursor))) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as SessionSummaryPage;
+}
+
 export function normalizeApiError(value: unknown): ApiError {
   if (isApiError(value)) {
     return value;
@@ -420,6 +474,35 @@ export function isMemoryRecord(value: unknown): value is MemoryRecord {
     && (value.lastUsedAt === null || isTimestamp(value.lastUsedAt))
     && typeof value.enabled === "boolean" && isNonNegativeInteger(value.revision)
     && statusCoherent;
+}
+
+function isUserProfileView(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, [
+    "displayName", "companionStyle", "initialPreferences", "narrationDensity", "weatherLocation",
+  ]) && isContractText(value.displayName, 0, 80) && value.companionStyle === "quiet_warm"
+    && Array.isArray(value.initialPreferences) && value.initialPreferences.length <= 20
+    && value.initialPreferences.every((item) => isContractText(item, 1, 100))
+    && isNarrationDensity(value.narrationDensity)
+    && (value.weatherLocation === null || isWeatherLocation(value.weatherLocation));
+}
+
+function isPreferenceTrend(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, [
+    "kind", "label", "direction", "sampleCount", "windowDays",
+  ]) && isSafeToken(value.kind) && isSafeDisplay(value.label, 100)
+    && (value.direction === "up" || value.direction === "stable" || value.direction === "down")
+    && isNonNegativeInteger(value.sampleCount) && isNonNegativeInteger(value.windowDays)
+    && value.windowDays > 0;
+}
+
+function isSessionSummary(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, [
+    "summaryId", "coveredFrom", "coveredTo", "summary", "generationKind", "revision",
+  ]) && isUuid(value.summaryId) && isTimestamp(value.coveredFrom) && isTimestamp(value.coveredTo)
+    && Date.parse(value.coveredTo) >= Date.parse(value.coveredFrom)
+    && isContractText(value.summary, 1, 1_000)
+    && (value.generationKind === "llm" || value.generationKind === "deterministic")
+    && isNonNegativeInteger(value.revision);
 }
 
 function isPlaybackStatus(value: unknown): boolean {

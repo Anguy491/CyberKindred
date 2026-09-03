@@ -10,6 +10,7 @@ use super::{
     UpdateSettingsRequest, ValidateSecretRequest, ValidateSecretResponse, VoicesResponse,
 };
 use crate::ipc::{ApiError, EmptyRequest, parse_command_request};
+use crate::understanding::UnderstandingService;
 
 /// API-004: validates a candidate credential before storing it for its exact origin.
 ///
@@ -117,9 +118,15 @@ pub async fn api_v1_preview_voice(
 pub async fn api_v1_cancel_operation(
     request: tauri::ipc::Request<'_>,
     provider_service: State<'_, ProviderService>,
+    understanding_service: State<'_, UnderstandingService>,
     startup_recovery: State<'_, StartupVoicePreviewOutboxRecovery>,
 ) -> Result<CancelOperationResponse, ApiError> {
     let request = parse_command_request::<CancelOperationRequest>(&request)?;
+    if request.expected_kind == super::OperationKind::Chat {
+        return understanding_service
+            .cancel_chat(request.client_request_id, request.operation_id)
+            .await;
+    }
     startup_recovery.ensure_recovered().await?;
     provider_service.cancel_operation(request).await
 }

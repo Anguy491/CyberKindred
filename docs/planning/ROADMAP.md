@@ -50,7 +50,7 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M3 — Local radio vertical slice
 
-**Status:** Complete — `Passed with known gaps` on 2026-09-03; see [`M3 checkpoint`](../testing/checkpoints/M3.md). Per the Product Owner stop condition, no later milestone is activated.
+**Status:** Complete — `Passed with known gaps` on 2026-09-03; see [`M3 checkpoint`](../testing/checkpoints/M3.md). The Product Owner lifted the post-M3 stop condition on 2026-09-03 and authorized M4 only.
 
 **Goal:** 从导入曲库到生成并连续播放一次完整本地节目。
 
@@ -58,13 +58,15 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M4 — Understanding and conversation
 
-**Status:** Not active — intentionally not entered after the M3 checkpoint.
+**Status:** Active — authorized by the Product Owner on 2026-09-03. `TASK-020`–`TASK-022` are implemented and self-checked; the M4 prototype checkpoint is being sealed. M5 remains explicitly out of scope.
 
 **Goal:** 建立可解释、可控的用户画像、文字对话、摘要与记忆提案闭环。
 
 **Checkpoint criteria:** 在 M3 candidate 上演示一次文字对话和记忆提案的审批、编辑、停用与删除，且下一轮上下文可见变化；原文保留与删除边界不被破坏。长周期清理、20 轮回归和完整导出矩阵可递延到 M7。
 
 ## M5 — Context and proactive scheduling
+
+**Status:** Not active — the Product Owner directed this run to stop after the M4 checkpoint even if M4 passes.
 
 **Goal:** 增加手动城市天气、日程与“通知后确认开播”；托盘和自启动随 M6 设置整合完成。
 

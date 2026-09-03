@@ -15,6 +15,7 @@ import {
   type ResyncReason,
 } from "../../src/ipc";
 import { OperationTerminalTracker } from "../../src/ipc/events";
+import { isMemoryRecord } from "../../src/ipc/validation";
 
 const CAPABILITIES: AppCapabilities = {
   protocolVersion: "1.0.0",
@@ -301,6 +302,92 @@ describe("TASK-006/TASK-008 typed IPC client", () => {
     transport.emit("cyberkindred://v1/playback/event", { ...playbackEvent(1), schemaVersion: "2.0.0" });
     await vi.waitFor(() => expect(reasons).toContain("protocol_mismatch"));
     expect(onEvent).not.toHaveBeenCalled();
+    stop();
+  });
+
+  // API-026/027/028..031/039/044..047; TASK-020/TASK-021.
+  it("serializes and validates the complete M4 chat, feedback, memory, profile and summary surface", async () => {
+    const transport = new FakeIpcTransport();
+    const client = new CyberKindredIpcClient(transport);
+    const requestId = "018f1f64-4ca0-7a2a-8e91-e89c389b3c01";
+    const programId = "018f1f64-4ca0-7a2a-8e91-e89c389b3c02";
+    const memoryId = "018f1f64-4ca0-7a2a-8e91-e89c389b3c03";
+    const summaryId = "018f1f64-4ca0-7a2a-8e91-e89c389b3c04";
+    const accepted = { operationId: OPERATION_A, acceptedAt: "2026-09-03T00:00:00.000Z" };
+    const ack = { requestId, revision: 1 };
+    const memory = {
+      schemaVersion: "1.0.0", memoryId, status: "proposed", kind: "preference",
+      content: "喜欢环境音乐", confidence: 0.9, sourceSessionId: null,
+      createdAt: "2026-09-03T00:00:00.000Z", updatedAt: "2026-09-03T00:00:00.000Z",
+      approvedAt: null, lastUsedAt: null, enabled: false, revision: 0,
+    } as const;
+
+    transport.response = accepted;
+    await expect(client.submitChat({ clientRequestId: requestId, programId, text: "陪我聊聊" })).resolves.toEqual(accepted);
+    transport.response = ack;
+    await client.submitFeedback({ clientRequestId: requestId, programId, trackId: null, kind: "less_talk" });
+    transport.response = { items: [memory], nextCursor: null };
+    await client.listMemories({ cursor: null, limit: 20, status: null });
+    transport.response = memory;
+    await client.approveMemory({ clientRequestId: requestId, memoryId, expectedRevision: 0 });
+    await client.updateMemory({ clientRequestId: requestId, memoryId, expectedRevision: 0, content: memory.content, enabled: false });
+    transport.response = ack;
+    await client.deleteMemory({ clientRequestId: requestId, memoryId, expectedRevision: 0 });
+    transport.response = {
+      requestId, memoryId, status: "rejected", rejectedAt: "2026-09-03T00:00:00.000Z",
+      contentDeleteAt: "2026-10-03T00:00:00.000Z", revision: 1,
+    };
+    await client.rejectMemoryProposal({ clientRequestId: requestId, memoryId, expectedRevision: 0 });
+    transport.response = {
+      profile: { displayName: "", companionStyle: "quiet_warm", initialPreferences: [], narrationDensity: "balanced", weatherLocation: null },
+      preferenceTrends: [{ kind: "like", label: "喜欢", direction: "up", sampleCount: 1, windowDays: 30 }], revision: 0,
+    };
+    await client.getProfileView();
+    transport.response = ack;
+    await client.updateProfile({ clientRequestId: requestId, expectedRevision: 0, patch: { narrationDensity: "quiet" } });
+    transport.response = { items: [{
+      summaryId, coveredFrom: "2026-09-03T00:00:00.000Z", coveredTo: "2026-09-03T00:01:00.000Z",
+      summary: "本机统计摘要。", generationKind: "deterministic", revision: 1,
+    }], nextCursor: null };
+    await client.listSessionSummaries({ cursor: null, limit: 20 });
+    transport.response = ack;
+    await client.deleteSessionSummary({ clientRequestId: requestId, summaryId, expectedRevision: 1 });
+
+    expect(transport.invocations.map(({ command }) => command)).toEqual([
+      "api_v1_submit_chat", "api_v1_submit_feedback", "api_v1_list_memories",
+      "api_v1_approve_memory", "api_v1_update_memory", "api_v1_delete_memory",
+      "api_v1_reject_memory_proposal", "api_v1_get_profile_view", "api_v1_update_profile",
+      "api_v1_list_session_summaries", "api_v1_delete_session_summary",
+    ]);
+    expect(transport.invocations[0]?.args).toEqual({ request: { clientRequestId: requestId, programId, text: "陪我聊聊" } });
+    expect(transport.invocations[7]?.args).toEqual({ request: {} });
+  });
+
+  // EVT-004/006; TASK-020/TASK-021.
+  it("accepts strict M4 chat and proposed-memory events", async () => {
+    const transport = new FakeIpcTransport();
+    const client = new CyberKindredIpcClient(transport);
+    const received: PublicEventName[] = [];
+    const stop = await client.subscribeToEvents({
+      onEvent: (name) => received.push(name),
+      refreshSnapshot: async () => undefined,
+    });
+    transport.emit("cyberkindred://v1/chat/message", {
+      ...event(1), operationId: OPERATION_A, programId: OPERATION_B,
+      role: "user", text: "你好", final: false,
+    });
+    const proposedMemory = {
+        schemaVersion: "1.0.0", memoryId: OPERATION_C, status: "proposed", kind: "preference",
+        content: "喜欢安静", confidence: 0.8, sourceSessionId: null,
+        createdAt: "2026-09-03T00:00:00.000Z", updatedAt: "2026-09-03T00:00:00.000Z",
+        approvedAt: null, lastUsedAt: null, enabled: false, revision: 0,
+    } as const;
+    expect(isMemoryRecord(proposedMemory)).toBe(true);
+    transport.emit("cyberkindred://v1/memory/proposed", { ...event(2), memory: proposedMemory });
+    expect(received).toEqual([
+      "cyberkindred://v1/chat/message",
+      "cyberkindred://v1/memory/proposed",
+    ]);
     stop();
   });
 
