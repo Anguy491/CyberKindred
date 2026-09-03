@@ -369,6 +369,7 @@ textarea,
 input[type="search"],
 input[type="text"],
 input[type="password"],
+input[type="time"],
 select {
   width: 100%;
   min-height: 44px;
@@ -496,6 +497,85 @@ input::placeholder {
 .weather-candidate-list small {
   color: var(--text-secondary);
   font-family: "Space Mono", Consolas, monospace;
+}
+
+.schedule-form,
+.schedule-due {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--border-visible);
+}
+
+.schedule-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.schedule-form > :nth-child(n + 3),
+.schedule-weekdays {
+  grid-column: 1 / -1;
+}
+
+.schedule-weekdays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--text-secondary);
+  font-family: "Space Mono", Consolas, monospace;
+  font-size: 12px;
+}
+
+.schedule-weekdays legend {
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.schedule-weekdays label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+
+.schedule-weekdays input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.schedule-due p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.schedule-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.schedule-list > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.schedule-list > li > div:first-child {
+  display: grid;
+  gap: 6px;
+}
+
+.schedule-list span,
+.schedule-list small {
+  color: var(--text-secondary);
 }
 
 .settings-page {

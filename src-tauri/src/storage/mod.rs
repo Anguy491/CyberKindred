@@ -17,6 +17,7 @@ mod provider_status;
 mod repository;
 mod retention;
 mod scanner;
+mod schedule;
 mod secret;
 pub(crate) mod track_catalog;
 mod understanding;
@@ -45,6 +46,7 @@ pub(crate) use scanner::{
     ScanOperationState, ScanProgress, ScanTerminalRecord, ScanTerminalState, ScanTrackAvailability,
     ScanTrackRecord,
 };
+pub(crate) use schedule::{StoredDueOccurrence, StoredNotificationAction, StoredSchedule};
 pub use secret::{
     CanonicalOrigin, CredentialTarget, SecretError, SecretValue, SecretVault,
     WindowsCredentialVault,

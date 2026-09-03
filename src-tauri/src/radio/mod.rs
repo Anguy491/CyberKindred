@@ -26,7 +26,7 @@ pub use store::{ProgramRunPhase, ProgramSegmentPhase, RadioProgramStore};
 pub use traits::{
     ConfirmedProgramStart, DomainProgramPlanner, ManualProgramStartAuthorizer,
     ProgramPlannerContextSource, ProgramPlayback, ProgramPlaybackSignal, ProgramRadioPlanner,
-    ProgramSpeech, ProgramSpeechOutcome, ProgramStartAuthorizer, RadioPlanningContext,
+    ProgramSpeech, ProgramSpeechOutcome, ProgramStartAuthorizer, RadioFuture, RadioPlanningContext,
 };
 
 #[cfg(test)]

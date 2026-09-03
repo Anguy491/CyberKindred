@@ -10,12 +10,14 @@ import {
   type IntegrationStatus,
   type LibraryRoot,
   type LibraryRootsResponse,
+  type ListSchedulesResponse,
   type MusicSourcesResponse,
   type MemoryRecord,
   type OnboardingProfile,
   type OnboardingState,
   type OnboardingStep,
   type OperationAccepted,
+  type NotificationActionResponse,
   type OriginSecretStatus,
   type PickLibraryRootResponse,
   type TrackTagView,
@@ -38,7 +40,10 @@ import {
   type WeatherLocation,
   type WeatherLocationCandidate,
   type SearchWeatherLocationsResponse,
+  type ScheduleRule,
+  type ScheduleView,
   type SelectWeatherLocationResponse,
+  type UpsertScheduleResponse,
   type SourceCapabilities,
   type SourceSummary,
 } from "./types";
@@ -210,6 +215,39 @@ export function parseSelectWeatherLocationResponse(
     throw new IpcResponseValidationError();
   }
   return value as unknown as SelectWeatherLocationResponse;
+}
+
+export function parseListSchedulesResponse(value: unknown): ListSchedulesResponse {
+  if (!isRecord(value) || !hasExactKeys(value, ["schedules", "revision"])
+    || !Array.isArray(value.schedules) || value.schedules.length > 256
+    || !value.schedules.every(isScheduleView)
+    || new Set(value.schedules.map((schedule) => schedule.rule.scheduleId)).size
+      !== value.schedules.length
+    || !isNonNegativeInteger(value.revision)) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as ListSchedulesResponse;
+}
+
+export function parseUpsertScheduleResponse(value: unknown): UpsertScheduleResponse {
+  if (!isRecord(value) || !hasExactKeys(value, ["requestId", "schedule", "revision"])
+    || !isUuid(value.requestId) || !isScheduleView(value.schedule)
+    || !isNonNegativeInteger(value.revision)) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as UpsertScheduleResponse;
+}
+
+export function parseNotificationActionResponse(value: unknown): NotificationActionResponse {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "requestId", "occurrenceId", "status", "nextNotificationAt", "revision",
+  ]) || !isUuid(value.requestId) || !isUuid(value.occurrenceId)
+    || !isNotificationActionStatus(value.status)
+    || (value.nextNotificationAt !== null && !isTimestamp(value.nextNotificationAt))
+    || !isNonNegativeInteger(value.revision)) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as NotificationActionResponse;
 }
 
 export function parseOperationAccepted(value: unknown): OperationAccepted {
@@ -649,6 +687,53 @@ function isWeatherLocationCandidate(value: unknown): value is WeatherLocationCan
   ]) || !isUuid(value.candidateId)) return false;
   const { candidateId: _candidateId, ...location } = value;
   return isWeatherLocation(location);
+}
+
+function isScheduleView(value: unknown): value is ScheduleView {
+  return isRecord(value) && hasExactKeys(value, ["rule", "nextOccurrenceAt"])
+    && isScheduleRule(value.rule)
+    && (value.nextOccurrenceAt === null || isTimestamp(value.nextOccurrenceAt));
+}
+
+function isScheduleRule(value: unknown): value is ScheduleRule {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "schemaVersion", "scheduleId", "name", "timezone", "daysOfWeek", "localTime",
+    "enabled", "notificationOnly", "createdAt", "updatedAt", "revision",
+  ])) return false;
+  const days = value.daysOfWeek;
+  return value.schemaVersion === IPC_SCHEMA_VERSION
+    && isUuid(value.scheduleId)
+    && isContractText(value.name, 1, 80)
+    && isIanaTimezone(value.timezone)
+    && Array.isArray(days) && days.length >= 1 && days.length <= 7
+    && days.every(isWeekday) && new Set(days).size === days.length
+    && typeof value.localTime === "string"
+    && /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/u.test(value.localTime)
+    && typeof value.enabled === "boolean"
+    && value.notificationOnly === true
+    && isTimestamp(value.createdAt) && isTimestamp(value.updatedAt)
+    && isNonNegativeInteger(value.revision);
+}
+
+function isIanaTimezone(value: unknown): value is string {
+  if (typeof value !== "string" || value.length < 3 || value.length > 64
+    || !/^[A-Za-z_+-]+(?:\/[A-Za-z0-9_+-]+)+$/u.test(value)) return false;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value }).format(0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isWeekday(value: unknown): boolean {
+  return value === "mon" || value === "tue" || value === "wed" || value === "thu"
+    || value === "fri" || value === "sat" || value === "sun";
+}
+
+function isNotificationActionStatus(value: unknown): boolean {
+  return value === "awaiting_user" || value === "snoozed"
+    || value === "starting" || value === "dismissed";
 }
 
 function isLibraryRoot(value: unknown): value is LibraryRoot {

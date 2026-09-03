@@ -100,19 +100,19 @@ fn weather_provider_forecast_request_contains_only_fixed_shape_and_rounded_locat
     let url = forecast_url(&location).expect("url");
     let pairs = url.query_pairs().collect::<HashMap<_, _>>();
     assert_eq!(
-        pairs.get("latitude").map(|value| value.as_ref()),
+        pairs.get("latitude").map(std::convert::AsRef::as_ref),
         Some("-33.8688")
     );
     assert_eq!(
-        pairs.get("longitude").map(|value| value.as_ref()),
+        pairs.get("longitude").map(std::convert::AsRef::as_ref),
         Some("151.2093")
     );
     assert_eq!(
-        pairs.get("timezone").map(|value| value.as_ref()),
+        pairs.get("timezone").map(std::convert::AsRef::as_ref),
         Some("Australia/Sydney")
     );
     assert_eq!(
-        pairs.get("current").map(|value| value.as_ref()),
+        pairs.get("current").map(std::convert::AsRef::as_ref),
         Some(CURRENT_VARIABLES)
     );
     assert_eq!(pairs.len(), 6);
@@ -240,7 +240,7 @@ fn weather_provider_rejects_mismatched_timezone_and_invalid_numbers() {
             is_day: 1,
         },
     };
-    let failure = validate_current_weather(response, "Australia/Sydney").expect_err("invalid");
+    let failure = validate_current_weather(&response, "Australia/Sydney").expect_err("invalid");
     assert_eq!(failure.category, ProviderFailureCategory::InvalidResponse);
 }
 

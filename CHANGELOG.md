@@ -14,6 +14,7 @@
 
 ### Changed
 
+- Product Owner 已解除 post-M4 stop 并仅授权 M5；Roadmap 将 M5 设为 Active，`TASK-023`–`TASK-024` 已按依赖完成，M5 checkpoint 后不自动激活 M6。
 - 明确 M4 对话降级契约：Provider 不可用时保留用户原文并保存带 `local/deterministic` provenance 的固定可用性提示；该提示不是 AI 生成内容，不产生 Memory Proposal，也不自动重放付费请求。
 - 修复 `MemoryRecord.lastUsedAt`、proposal `expectedRevision` 与 SQLite 数据模型的基线不一致：前向 `V0003` 迁移新增 `memories.last_used_at_ms` 和 `memory_proposals.revision`；使用时间只在 approved memory 实际进入 Context 后写入，proposal 决策保持乐观并发。
 - Product Owner 已解除 post-M3 stop 并仅授权 M4；Roadmap 将 M4 设为 Active，`TASK-020`–`TASK-022` 已按依赖完成，M4 checkpoint 后不自动激活 M5。
@@ -36,6 +37,8 @@
 
 ### Added
 
+- 完成 M5 Context and proactive scheduling 原型：设置页支持显式城市搜索/选择和天气状态；Forecast 仅接收经舍入坐标与固定参数，30 分钟新鲜天气可进入节目 Context，失败或过期时独立降级。
+- 增加持久化 weekly scheduler、API-032–035、EVT-007、IANA/DST occurrence、10/30/60 分钟 snooze、15 分钟 resume 边界与静音 Windows 通知；只有用户明确选择 `start` 后才授予一次 notification program start，其他路径零声音、零付费调用。
 - 完成 M4 Understanding and conversation 原型：Radio 支持有界文字对话、取消、喜欢/跳过/少说一点反馈与确定性降级；`YOU` 支持画像、偏好趋势、记忆提案审批/编辑/拒绝/停用/删除及摘要查看/删除。
 - 增加 approved-memory-only Context、严格 Structured Outputs/no-tools chat provider、创建后 30 天原文与拒绝提案清理、启动及每 24 小时维护、删除 tombstone，以及取消/保留/上下文/竞态的 hermetic 回归测试。
 - M4 prototype checkpoint 以 `Passed with known gaps` 关闭 `TASK-020`–`TASK-022`；所有 hard gates 通过，完整桌面 E2E、live provider/实机音频、AI 固定评估集、删除后 20 轮语义回归和完整无障碍矩阵递延至 M7。按 Product Owner 停止条件未激活 M5。

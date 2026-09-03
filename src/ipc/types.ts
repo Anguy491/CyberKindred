@@ -1,6 +1,6 @@
-import type { MemoryRecord, PlaybackState, ProgramPlan } from "../contracts";
+import type { MemoryRecord, PlaybackState, ProgramPlan, ScheduleRule } from "../contracts";
 
-export type { MemoryRecord, PlaybackEvent, PlaybackState, ProgramPlan } from "../contracts";
+export type { MemoryRecord, PlaybackEvent, PlaybackState, ProgramPlan, ScheduleRule } from "../contracts";
 
 export const IPC_SCHEMA_VERSION = "1.0.0" as const;
 
@@ -369,6 +369,50 @@ export interface SelectWeatherLocationResponse {
   readonly revision: number;
 }
 
+export interface ScheduleView {
+  readonly rule: ScheduleRule;
+  readonly nextOccurrenceAt: string | null;
+}
+
+export interface ListSchedulesResponse {
+  readonly schedules: ReadonlyArray<ScheduleView>;
+  readonly revision: number;
+}
+
+export interface UpsertScheduleRequest {
+  readonly clientRequestId: string;
+  readonly expectedRevision: number;
+  readonly schedule: ScheduleRule;
+}
+
+export interface UpsertScheduleResponse {
+  readonly requestId: string;
+  readonly schedule: ScheduleView;
+  readonly revision: number;
+}
+
+export interface DeleteScheduleRequest {
+  readonly clientRequestId: string;
+  readonly scheduleId: string;
+  readonly expectedRevision: number;
+}
+
+export interface NotificationActionRequest {
+  readonly clientRequestId: string;
+  readonly scheduleId: string;
+  readonly occurrenceId: string;
+  readonly action: "open" | "dismiss" | "start" | "snooze";
+  readonly snoozeMinutes: 10 | 30 | 60 | null;
+}
+
+export interface NotificationActionResponse {
+  readonly requestId: string;
+  readonly occurrenceId: string;
+  readonly status: "awaiting_user" | "snoozed" | "starting" | "dismissed";
+  readonly nextNotificationAt: string | null;
+  readonly revision: number;
+}
+
 export interface OriginSecretStatus {
   readonly origin: string;
   readonly openaiApiKeyConfigured: boolean;
@@ -543,6 +587,13 @@ export interface ChatMessageEvent extends EventEnvelope {
 
 export interface MemoryProposedEvent extends EventEnvelope {
   readonly memory: MemoryRecord;
+}
+
+export interface ScheduleDueEvent extends EventEnvelope {
+  readonly schemaVersion: typeof IPC_SCHEMA_VERSION;
+  readonly scheduleId: string;
+  readonly occurrenceId: string;
+  readonly notificationShown: boolean;
 }
 
 export interface OperationCancelledEvent extends EventEnvelope {

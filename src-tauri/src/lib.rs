@@ -16,6 +16,7 @@ pub mod radio;
 mod radio_repository;
 mod radio_speech_repository;
 pub mod scanner;
+mod schedule;
 pub mod speech;
 pub mod storage;
 mod understanding;
@@ -64,10 +65,9 @@ use providers::{
     events::{StartupVoicePreviewOutboxRecovery, TauriVoicePreviewEventSink},
 };
 use radio::{
-    DomainProgramPlanner, LocalProgramPlayback, ManualProgramStartAuthorizer, PlaybackEventHub,
-    ProgramPlannerContextSource, ProgramRadioPlanner, ProgramSpeech, RadioProgramStore,
-    RadioService, RadioServiceDependencies, SystemRadioClock, SystemRadioIdFactory,
-    TauriRadioEventSink,
+    DomainProgramPlanner, LocalProgramPlayback, PlaybackEventHub, ProgramPlannerContextSource,
+    ProgramRadioPlanner, ProgramSpeech, RadioProgramStore, RadioService, RadioServiceDependencies,
+    SystemRadioClock, SystemRadioIdFactory, TauriRadioEventSink,
     commands::{api_v1_start_program, api_v1_stop_program},
 };
 use radio_repository::RepositoryProgramContextSource;
@@ -75,6 +75,13 @@ use radio_speech_repository::RepositoryProgramSpeech;
 use scanner::{
     ScannerService, SystemScanClock, TauriScanEventSink,
     commands::{api_v1_cancel_library_scan, api_v1_start_library_scan},
+};
+use schedule::{
+    SchedulerRuntime, SchedulerService, TauriScheduleEventSink, TauriScheduleNotificationSink,
+    commands::{
+        api_v1_delete_schedule, api_v1_handle_notification_action, api_v1_list_schedules,
+        api_v1_upsert_schedule,
+    },
 };
 use speech::SpeechVoicePreviewer;
 use std::{
@@ -242,6 +249,17 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
         preview_events.clone(),
         clock.clone(),
     );
+    let scheduler_service = Arc::new(
+        SchedulerService::new(
+            repository.clone(),
+            clock.clone(),
+            Arc::new(TauriScheduleNotificationSink::new(app.handle().clone())),
+            Arc::new(TauriScheduleEventSink::new(app.handle().clone())),
+            process_sequence.clone(),
+        )
+        .map_err(|_| io::Error::other("scheduler runtime unavailable"))?,
+    );
+    let scheduler_runtime = SchedulerRuntime::new(scheduler_service.clone().start());
     let onboarding_service = OnboardingService::new(repository.clone());
     let library_root_service = LibraryRootService::new(
         repository.clone(),
@@ -307,7 +325,7 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     let radio_store: Arc<dyn RadioProgramStore> = Arc::new(repository.clone());
     let radio_service = RadioService::new(RadioServiceDependencies {
         planner: radio_planner,
-        authorizer: Arc::new(ManualProgramStartAuthorizer),
+        authorizer: scheduler_service.clone(),
         store: radio_store,
         playback: radio_playback,
         speech: radio_speech,
@@ -335,6 +353,8 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     app.manage(storage);
     app.manage(retention_maintenance);
     app.manage(provider_service);
+    app.manage(scheduler_service);
+    app.manage(scheduler_runtime);
     app.manage(weather_service);
     app.manage(onboarding_service);
     app.manage(library_root_service);
@@ -359,6 +379,7 @@ pub fn run() -> tauri::Result<()> {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(capabilities)
         .setup(setup_application)
         .invoke_handler(tauri::generate_handler![
@@ -389,6 +410,10 @@ pub fn run() -> tauri::Result<()> {
             api_v1_list_voices,
             api_v1_search_weather_locations,
             api_v1_select_weather_location,
+            api_v1_list_schedules,
+            api_v1_upsert_schedule,
+            api_v1_delete_schedule,
+            api_v1_handle_notification_action,
             api_v1_start_program,
             api_v1_stop_program,
             api_v1_submit_chat,

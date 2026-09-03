@@ -32,6 +32,15 @@ function fixture(): SettingsIpc {
     selectWeatherLocation: vi.fn(async (request) => ({
       requestId: request.clientRequestId, location, revision: 3,
     })),
+    listSchedules: vi.fn(async () => ({ schedules: [], revision: 0 })),
+    upsertSchedule: vi.fn(async () => { throw new Error("not used"); }),
+    deleteSchedule: vi.fn(async () => { throw new Error("not used"); }),
+    handleNotificationAction: vi.fn(async () => { throw new Error("not used"); }),
+    startProgram: vi.fn(async () => { throw new Error("not used"); }),
+    subscribeToEvents: vi.fn(async (handlers) => {
+      await handlers.refreshSnapshot("initial");
+      return () => undefined;
+    }),
   };
 }
 

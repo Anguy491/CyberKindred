@@ -22,6 +22,30 @@ export const desktopCases = [
       assertEqual(text, "AI & VOICE", "desktop settings heading");
     },
   },
+  {
+    name: "m5 weather stays behind explicit city search [FR-WEA-001] [NFR-PRIV-004]",
+    async run(session) {
+      await ensureSilentFallbackOnboarding(session);
+      await clickWhenReady(session, '[aria-label="设置"]');
+      await clickWhenReady(session, '[data-settings-group="context"]');
+      await session.waitForElement('[data-testid="weather-city-query"]');
+      await session.waitForElement('[data-testid="weather-search"]');
+      const heading = await session.waitForElement("#settings-title");
+      assertEqual(await session.elementText(heading), "CONTEXT", "weather settings heading");
+    },
+  },
+  {
+    name: "m5 schedule persists a notification-only rule [FR-SCH-001] [NFR-COST-001]",
+    async run(session) {
+      await ensureSilentFallbackOnboarding(session);
+      await clickWhenReady(session, '[aria-label="设置"]');
+      await clickWhenReady(session, '[data-settings-group="schedule"]');
+      await clickWhenReady(session, '[data-testid="schedule-create"]');
+      await session.waitForElement('[data-testid="schedule-rule"]');
+      const heading = await session.waitForElement("#settings-title");
+      assertEqual(await session.elementText(heading), "SCHEDULE", "schedule settings heading");
+    },
+  },
 ];
 
 async function ensureSilentFallbackOnboarding(session) {

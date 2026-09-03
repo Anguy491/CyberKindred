@@ -66,7 +66,7 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M5 — Context and proactive scheduling
 
-**Status:** Active — authorized by the Product Owner on 2026-09-03. Stop after the M5 checkpoint; do not activate M6 without further authorization.
+**Status:** Active — authorized by the Product Owner on 2026-09-03. `TASK-023`–`TASK-024` are implemented and self-checked; the M5 prototype checkpoint is being sealed. Stop after the M5 checkpoint and do not activate M6 without further authorization.
 
 **Goal:** 增加手动城市天气、日程与“通知后确认开播”；托盘和自启动随 M6 设置整合完成。
 

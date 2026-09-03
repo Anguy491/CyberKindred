@@ -30,6 +30,8 @@ M3 的最终实现证据由 [`M3 checkpoint`](checkpoints/M3.md) 及其 [`eviden
 
 M4 的最终实现证据由 [`M4 checkpoint`](checkpoints/M4.md) 及其 [`evidence manifest`](../../artifacts/test-evidence/milestones/M4/manifest.json) 聚合记录。Product Owner 于 2026-09-03 解除 post-M3 stop 并只授权 M4；`TASK-020`、`TASK-021`、`TASK-022` 已按依赖完成。文字请求/取消/反馈、确定性无付费降级、画像和趋势、提案审批/编辑/拒绝、记忆停用/启用/删除、摘要查看/删除、approved-memory-only Context、创建后 30 天原文清理及启动/每 24 小时维护均已集成。完整 Rust、TypeScript、契约、axe、视觉、依赖策略与精确 candidate 安全差异审查通过；完整 Tauri chat/memories E2E、live provider/实机音频、TEST-AI-001 固定评估集、删除后 20 轮语义级复活回归和 Narrator/分辨率矩阵保留为 M7 known gaps。M4 以 `Passed with known gaps` 关闭；按 Product Owner stop condition，M5 未激活。
 
+M5 `TASK-023`–`TASK-024` 已集成：API-048/049 只在显式点击后发送城市 query，Rust 签名候选与 revision 门控位置保存，Forecast 只发送经舍入坐标和固定参数，30 分钟新鲜缓存才可进入 Context；API-032–035/EVT-007、SQLite scheduler actor、IANA/DST occurrence、10/30/60 分钟单一 snooze、15 分钟 resume 边界和 Windows 静音通知已完成。通知或恢复不会自动调用 API-024；只有 API-035 `start` 产生的一次性授权能通过 notification trigger。Rust、React、严格 IPC、契约、axe 与依赖策略自检已通过；M5 checkpoint 与 immutable-candidate 安全差异审查正在封存，缺少 EdgeDriver 的桌面 smoke、live Open-Meteo、真实 Windows 通知动作/声音观察仍保持 `Not Run`。
+
 ## 2. Functional requirements
 
 ### 2.1 Onboarding

@@ -7,11 +7,15 @@ import type {
   CancelLibraryScanResponse,
   DeleteSecretRequest,
   DeleteSecretResponse,
+  DeleteScheduleRequest,
   LibraryRootsResponse,
   MusicSourcesResponse,
   ListTracksRequest,
+  ListSchedulesResponse,
   OnboardingState,
   OperationAccepted,
+  NotificationActionRequest,
+  NotificationActionResponse,
   PickLibraryRootResponse,
   SaveOnboardingStepRequest,
   SettingsView,
@@ -41,6 +45,8 @@ import type {
   SubmitChatRequest,
   SubmitFeedbackRequest,
   UpdateMemoryRequest,
+  UpsertScheduleRequest,
+  UpsertScheduleResponse,
   UpdateProfileRequest,
   StartLibraryScanRequest,
   TestProviderRequest,
@@ -58,10 +64,12 @@ import {
   parseCancelLibraryScanResponse,
   parseDeleteSecretResponse,
   parseLibraryRootsResponse,
+  parseListSchedulesResponse,
   parseMusicSourcesResponse,
   parseTracksPage,
   parseOnboardingState,
   parseOperationAccepted,
+  parseNotificationActionResponse,
   parsePickLibraryRootResponse,
   parseSettingsView,
   parseSearchWeatherLocationsResponse,
@@ -76,6 +84,7 @@ import {
   parseRejectMemoryResponse,
   parseSessionSummaryPage,
   parseTestProviderResponse,
+  parseUpsertScheduleResponse,
   parseValidateSecretResponse,
   parseVoicesResponse,
 } from "./validation";
@@ -184,6 +193,37 @@ export class CyberKindredIpcClient {
     return this.#invokeValidated(
       "api_v1_select_weather_location", { request }, STANDARD_TIMEOUT_MS,
       parseSelectWeatherLocationResponse,
+    );
+  }
+
+  /** API-032: reads the authoritative persistent weekly schedule collection. */
+  async listSchedules(): Promise<ListSchedulesResponse> {
+    return this.#invokeValidated(
+      "api_v1_list_schedules", { request: {} }, READ_FAST_TIMEOUT_MS, parseListSchedulesResponse,
+    );
+  }
+
+  /** API-033: creates or updates one notification-only schedule rule. */
+  async upsertSchedule(request: UpsertScheduleRequest): Promise<UpsertScheduleResponse> {
+    return this.#invokeValidated(
+      "api_v1_upsert_schedule", { request }, STANDARD_TIMEOUT_MS, parseUpsertScheduleResponse,
+    );
+  }
+
+  /** API-034: deletes one schedule at the advertised collection revision. */
+  async deleteSchedule(request: DeleteScheduleRequest): Promise<Ack> {
+    return this.#invokeValidated(
+      "api_v1_delete_schedule", { request }, STANDARD_TIMEOUT_MS, parseAck,
+    );
+  }
+
+  /** API-035: records an explicit action for one due notification occurrence. */
+  async handleNotificationAction(
+    request: NotificationActionRequest,
+  ): Promise<NotificationActionResponse> {
+    return this.#invokeValidated(
+      "api_v1_handle_notification_action", { request }, STANDARD_TIMEOUT_MS,
+      parseNotificationActionResponse,
     );
   }
 

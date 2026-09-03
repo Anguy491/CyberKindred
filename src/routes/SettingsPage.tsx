@@ -3,7 +3,13 @@ import { useEffect, useState } from "react";
 import { ControlButton } from "../components/ControlButton";
 import type { FontStatus, FoundationState } from "../design/foundation";
 import type { AppCapabilities } from "../ipc";
-import type { SettingsView, WeatherLocationCandidate } from "../ipc";
+import type {
+  ScheduleDueEvent,
+  ScheduleRule,
+  ScheduleView,
+  SettingsView,
+  WeatherLocationCandidate,
+} from "../ipc";
 import type { SettingsIpc } from "../features/settings";
 
 const SETTINGS_GROUPS = [
@@ -39,6 +45,7 @@ export function SettingsPage({ capabilities, fontStatus, shellState, ipc }: Sett
           <button
             key={group}
             type="button"
+            data-settings-group={group.toLocaleLowerCase("en-US").replaceAll(" ", "-").replaceAll("&", "and")}
             aria-current={activeGroup === group ? "page" : undefined}
             onClick={() => setActiveGroup(group)}
           >
@@ -125,12 +132,7 @@ function SettingsGroupContent({ group, capabilities, shellState, ipc }: Settings
     return <ContextSettings ipc={ipc} />;
   }
   if (group === "SCHEDULE") {
-    return (
-      <div className="setting-stack">
-        <SettingRow label="RULES" value="0" detail="到点只通知，确认后才播放。" />
-        <ControlButton disabledReason={unavailable}>创建日程</ControlButton>
-      </div>
-    );
+    return <ScheduleSettings ipc={ipc} />;
   }
   if (group === "APP") {
     return (
@@ -149,6 +151,297 @@ function SettingsGroupContent({ group, capabilities, shellState, ipc }: Settings
       <p className="non-impact-copy">全部重置不会删除你的音乐文件或主动保存的导出。</p>
     </div>
   );
+}
+
+const WEEKDAYS = [
+  ["mon", "一"], ["tue", "二"], ["wed", "三"], ["thu", "四"],
+  ["fri", "五"], ["sat", "六"], ["sun", "日"],
+] as const;
+type Weekday = ScheduleRule["daysOfWeek"][number];
+
+function ScheduleSettings({ ipc }: { readonly ipc: SettingsIpc }) {
+  const [schedules, setSchedules] = useState<ReadonlyArray<ScheduleView>>([]);
+  const [revision, setRevision] = useState<number | null>(null);
+  const [settings, setSettings] = useState<SettingsView | null>(null);
+  const [name, setName] = useState("Morning radio");
+  const [localTime, setLocalTime] = useState("07:00");
+  const [timezone, setTimezone] = useState(defaultTimezone);
+  const [days, setDays] = useState<ReadonlyArray<Weekday>>(["mon", "tue", "wed", "thu", "fri"]);
+  const [due, setDue] = useState<ScheduleDueEvent | null>(null);
+  const [status, setStatus] = useState("[LOADING…]");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let unlisten: (() => void) | undefined;
+    const refresh = async () => {
+      const response = await ipc.listSchedules();
+      if (active) {
+        setSchedules(response.schedules);
+        setRevision(response.revision);
+        setStatus(response.schedules.length === 0 ? "[NO RULES]" : "[READY]");
+      }
+    };
+    void ipc.getSettings().then(
+      (value) => { if (active) setSettings(value); },
+      () => { if (active) setStatus("[SETTINGS UNAVAILABLE]"); },
+    );
+    void ipc.subscribeToEvents({
+      onEvent(eventName, payload) {
+        if (!active || eventName !== "cyberkindred://v1/schedule/due") return;
+        const event = payload as unknown as ScheduleDueEvent;
+        if (event.notificationShown) {
+          setDue(event);
+          setStatus("[DUE · WAITING FOR YOU]");
+        } else {
+          setStatus("[MISSED · NO NOTIFICATION SHOWN]");
+        }
+      },
+      refreshSnapshot: async () => { await refresh(); },
+    }).then(
+      (stop) => { if (active) unlisten = stop; else stop(); },
+      () => { if (active) setStatus("[EVENTS UNAVAILABLE]"); },
+    );
+    return () => { active = false; unlisten?.(); };
+  }, [ipc]);
+
+  const validForm = name.trim().length >= 1 && Array.from(name.trim()).length <= 80
+    && days.length >= 1 && /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/u.test(localTime)
+    && isIanaTimezone(timezone);
+
+  function toggleDay(day: Weekday) {
+    setDays((current) => current.includes(day)
+      ? current.filter((value) => value !== day)
+      : WEEKDAYS.map(([value]) => value).filter((value) => current.includes(value) || value === day));
+  }
+
+  async function createSchedule() {
+    if (!validForm || revision === null || busy) return;
+    setBusy(true);
+    setStatus("[SAVING…]");
+    const now = new Date().toISOString();
+    try {
+      const response = await ipc.upsertSchedule({
+        clientRequestId: crypto.randomUUID(),
+        expectedRevision: revision,
+        schedule: {
+          schemaVersion: "1.0.0",
+          scheduleId: crypto.randomUUID(),
+          name: name.trim(),
+          timezone,
+          daysOfWeek: days,
+          localTime,
+          enabled: true,
+          notificationOnly: true,
+          createdAt: now,
+          updatedAt: now,
+          revision: 0,
+        },
+      });
+      setSchedules((current) => [...current, response.schedule]);
+      setRevision(response.revision);
+      setStatus("[SAVED · NOTIFICATION ONLY]");
+    } catch {
+      setStatus("[SAVE FAILED · REFRESH SCHEDULES]");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateSchedule(view: ScheduleView, enabled: boolean) {
+    if (revision === null || busy) return;
+    setBusy(true);
+    setStatus("[SAVING…]");
+    try {
+      const response = await ipc.upsertSchedule({
+        clientRequestId: crypto.randomUUID(), expectedRevision: revision,
+        schedule: { ...view.rule, enabled, updatedAt: new Date().toISOString() },
+      });
+      setSchedules((current) => current.map((item) => item.rule.scheduleId === view.rule.scheduleId
+        ? response.schedule : item));
+      setRevision(response.revision);
+      setStatus(enabled ? "[RULE ENABLED]" : "[RULE PAUSED]");
+    } catch {
+      setStatus("[SAVE FAILED · REFRESH SCHEDULES]");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeSchedule(view: ScheduleView) {
+    if (revision === null || busy) return;
+    setBusy(true);
+    setStatus("[DELETING…]");
+    try {
+      const response = await ipc.deleteSchedule({
+        clientRequestId: crypto.randomUUID(),
+        scheduleId: view.rule.scheduleId,
+        expectedRevision: revision,
+      });
+      setSchedules((current) => current.filter((item) => item.rule.scheduleId !== view.rule.scheduleId));
+      setRevision(response.revision);
+      setStatus("[RULE DELETED]");
+    } catch {
+      setStatus("[DELETE FAILED · REFRESH SCHEDULES]");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleNotifications() {
+    if (settings === null || busy) return;
+    setBusy(true);
+    setStatus("[SAVING…]");
+    try {
+      const next = !settings.notificationsEnabled;
+      const response = await ipc.updateSettings({
+        clientRequestId: crypto.randomUUID(), expectedRevision: settings.revision,
+        patch: { notificationsEnabled: next },
+      }, settings.llmModelId);
+      setSettings({ ...settings, notificationsEnabled: next, revision: response.revision });
+      setStatus(next ? "[NOTIFICATIONS ON · STILL SILENT]" : "[NOTIFICATIONS OFF]");
+    } catch {
+      setStatus("[SETTINGS SAVE FAILED]");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function actOnDue(
+    action: "open" | "dismiss" | "start" | "snooze",
+    snoozeMinutes: 10 | 30 | 60 | null,
+  ) {
+    if (due === null || busy) return;
+    setBusy(true);
+    setStatus("[RECORDING YOUR CHOICE…]");
+    try {
+      const response = await ipc.handleNotificationAction({
+        clientRequestId: crypto.randomUUID(),
+        scheduleId: due.scheduleId,
+        occurrenceId: due.occurrenceId,
+        action,
+        snoozeMinutes,
+      });
+      if (response.status === "starting") {
+        await ipc.startProgram({
+          clientRequestId: crypto.randomUUID(), sourceId: "local", trigger: "notification",
+        });
+        setStatus("[PROGRAM START REQUESTED]");
+        setDue(null);
+      } else if (response.status === "snoozed") {
+        setStatus(`[SNOOZED · ${String(snoozeMinutes)} MIN]`);
+        setDue(null);
+      } else if (response.status === "dismissed") {
+        setStatus("[DISMISSED · NO SOUND]");
+        setDue(null);
+      } else {
+        setStatus("[OPEN · WAITING FOR YOUR CHOICE]");
+      }
+    } catch {
+      setStatus("[ACTION FAILED]");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="setting-stack">
+      <SettingRow
+        label="RULES"
+        value={String(schedules.length)}
+        detail="重复规则使用 IANA 时区；到点只显示静音通知，绝不自动开播或调用付费服务。"
+      />
+      <div className="inline-action-row">
+        <ControlButton disabled={busy || settings === null} onClick={() => void toggleNotifications()}>
+          {settings?.notificationsEnabled ? "关闭系统通知" : "启用系统通知"}
+        </ControlButton>
+        <span className="inline-status" role="status">{status}</span>
+      </div>
+      {due === null ? null : (
+        <section className="schedule-due" aria-label="到点节目选择">
+          <strong>节目时间到了</strong>
+          <p>只有“开始节目”会确认开播；打开或稍后提醒不会播放声音。</p>
+          <div className="inline-action-row">
+            <ControlButton disabled={busy} onClick={() => void actOnDue("start", null)}>开始节目</ControlButton>
+            <ControlButton tone="ghost" disabled={busy} onClick={() => void actOnDue("open", null)}>保持打开</ControlButton>
+            <ControlButton tone="ghost" disabled={busy} onClick={() => void actOnDue("dismiss", null)}>忽略</ControlButton>
+          </div>
+          <div className="inline-action-row" aria-label="稍后提醒">
+            {([10, 30, 60] as const).map((minutes) => (
+              <ControlButton key={minutes} tone="ghost" disabled={busy}
+                onClick={() => void actOnDue("snooze", minutes)}>{minutes} 分钟后</ControlButton>
+            ))}
+          </div>
+        </section>
+      )}
+      <div className="schedule-form" aria-label="创建重复日程">
+        <label className="text-entry" htmlFor="schedule-name">名称
+          <input id="schedule-name" type="text" maxLength={80} value={name}
+            onChange={(event) => setName(event.target.value)} />
+        </label>
+        <label className="text-entry" htmlFor="schedule-time">本地时间
+          <input id="schedule-time" type="time" value={localTime}
+            onChange={(event) => setLocalTime(event.target.value)} />
+        </label>
+        <label className="text-entry" htmlFor="schedule-timezone">IANA 时区
+          <input id="schedule-timezone" type="text" maxLength={64} value={timezone}
+            onChange={(event) => setTimezone(event.target.value)} />
+        </label>
+        <fieldset className="schedule-weekdays">
+          <legend>星期</legend>
+          {WEEKDAYS.map(([day, label]) => (
+            <label key={day}><input type="checkbox" checked={days.includes(day)}
+              onChange={() => toggleDay(day)} />{label}</label>
+          ))}
+        </fieldset>
+        <ControlButton disabled={busy || revision === null || !validForm}
+          data-testid="schedule-create"
+          onClick={() => void createSchedule()}>创建日程</ControlButton>
+      </div>
+      {schedules.length === 0 ? <p className="secondary-copy">尚无重复日程。</p> : (
+        <ul className="schedule-list" aria-label="重复日程">
+          {schedules.map((view) => (
+            <li key={view.rule.scheduleId} data-testid="schedule-rule">
+              <div><strong>{view.rule.name}</strong><span>
+                {formatDays(view.rule.daysOfWeek)} · {view.rule.localTime} · {view.rule.timezone}
+              </span><small>下次：{formatTimestamp(view.nextOccurrenceAt)}</small></div>
+              <div className="inline-action-row">
+                <ControlButton tone="ghost" disabled={busy}
+                  onClick={() => void updateSchedule(view, !view.rule.enabled)}>
+                  {view.rule.enabled ? "暂停" : "启用"}
+                </ControlButton>
+                <ControlButton tone="danger" disabled={busy}
+                  onClick={() => void removeSchedule(view)}>删除</ControlButton>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function defaultTimezone(): string {
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return isIanaTimezone(timezone) ? timezone : "Etc/UTC";
+}
+
+function isIanaTimezone(value: string): boolean {
+  if (!/^[A-Za-z_+-]+(?:\/[A-Za-z0-9_+-]+)+$/u.test(value)) return false;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value }).format(0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function formatDays(days: ScheduleRule["daysOfWeek"]): string {
+  return days.map((day) => WEEKDAYS.find(([value]) => value === day)?.[1] ?? day).join("、");
+}
+
+function formatTimestamp(value: string | null): string {
+  return value === null ? "已暂停" : new Date(value).toLocaleString();
 }
 
 function ContextSettings({ ipc }: { readonly ipc: SettingsIpc }) {

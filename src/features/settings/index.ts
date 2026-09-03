@@ -1,11 +1,21 @@
 import { CyberKindredIpcClient } from "../../ipc";
 import type {
   Ack,
+  DeleteScheduleRequest,
+  EventSubscriptionHandlers,
+  IpcUnlisten,
+  ListSchedulesResponse,
+  NotificationActionRequest,
+  NotificationActionResponse,
   SearchWeatherLocationsRequest,
   SearchWeatherLocationsResponse,
   SelectWeatherLocationRequest,
   SelectWeatherLocationResponse,
   SettingsView,
+  StartProgramRequest,
+  StartProgramResponse,
+  UpsertScheduleRequest,
+  UpsertScheduleResponse,
   UpdateSettingsRequest,
 } from "../../ipc";
 
@@ -18,6 +28,14 @@ export interface SettingsIpc {
   selectWeatherLocation(
     request: SelectWeatherLocationRequest,
   ): Promise<SelectWeatherLocationResponse>;
+  listSchedules(): Promise<ListSchedulesResponse>;
+  upsertSchedule(request: UpsertScheduleRequest): Promise<UpsertScheduleResponse>;
+  deleteSchedule(request: DeleteScheduleRequest): Promise<Ack>;
+  handleNotificationAction(
+    request: NotificationActionRequest,
+  ): Promise<NotificationActionResponse>;
+  startProgram(request: StartProgramRequest): Promise<StartProgramResponse>;
+  subscribeToEvents(handlers: EventSubscriptionHandlers): Promise<IpcUnlisten>;
 }
 
 export function createSettingsIpc(): SettingsIpc {
@@ -55,5 +73,40 @@ export const BROWSER_SETTINGS_IPC: SettingsIpc = {
   },
   async selectWeatherLocation(request) {
     throw new Error(`Unknown browser candidate ${request.candidateId}`);
+  },
+  async listSchedules() {
+    return { schedules: [], revision: 0 };
+  },
+  async upsertSchedule(request) {
+    const now = new Date().toISOString();
+    return {
+      requestId: request.clientRequestId,
+      schedule: {
+        rule: { ...request.schedule, scheduleId: crypto.randomUUID(), createdAt: now, updatedAt: now, revision: 1 },
+        nextOccurrenceAt: null,
+      },
+      revision: request.expectedRevision + 1,
+    };
+  },
+  async deleteSchedule(request) {
+    return { requestId: request.clientRequestId, revision: request.expectedRevision + 1 };
+  },
+  async handleNotificationAction(request) {
+    return {
+      requestId: request.clientRequestId,
+      occurrenceId: request.occurrenceId,
+      status: request.action === "start" ? "starting"
+        : request.action === "snooze" ? "snoozed"
+          : request.action === "dismiss" ? "dismissed" : "awaiting_user",
+      nextNotificationAt: null,
+      revision: 0,
+    };
+  },
+  async startProgram(request) {
+    return { requestId: request.clientRequestId, programId: crypto.randomUUID(), plan: null };
+  },
+  async subscribeToEvents(handlers) {
+    await handlers.refreshSnapshot("initial");
+    return () => undefined;
   },
 };

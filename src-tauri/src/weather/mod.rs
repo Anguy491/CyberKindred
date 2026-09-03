@@ -148,7 +148,7 @@ impl OpenMeteoWeatherProvider {
             .timeout(timeout)
             .send()
             .await
-            .map_err(map_reqwest_error)?;
+            .map_err(|error| map_reqwest_error(&error))?;
         let status = response.status();
         if status.as_u16() == 429 {
             return Err(ProviderFailure::rate_limited(None));
@@ -157,7 +157,11 @@ impl OpenMeteoWeatherProvider {
             return Err(ProviderFailure::new(ProviderFailureCategory::Unavailable));
         }
         let mut body = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(map_reqwest_error)? {
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|error| map_reqwest_error(&error))?
+        {
             if body.len().saturating_add(chunk.len()) > MAX_RESPONSE_BYTES {
                 return Err(ProviderFailure::new(
                     ProviderFailureCategory::InvalidResponse,
@@ -202,7 +206,7 @@ impl WeatherProvider for OpenMeteoWeatherProvider {
             let (response, latency) = self
                 .get_json::<ForecastResponse>(url, FORECAST_TIMEOUT)
                 .await?;
-            let current = validate_current_weather(response, &location.timezone)?;
+            let current = validate_current_weather(&response, &location.timezone)?;
             Ok((current, latency))
         })
     }
@@ -282,7 +286,7 @@ fn validate_geocoding_result(
 }
 
 fn validate_current_weather(
-    response: ForecastResponse,
+    response: &ForecastResponse,
     expected_timezone: &str,
 ) -> Result<CurrentWeather, ProviderFailure> {
     if response.timezone != expected_timezone
@@ -815,7 +819,7 @@ fn outcome_status<T>(result: &Result<T, ProviderFailure>) -> ProviderOutcomeStat
     }
 }
 
-fn map_reqwest_error(error: reqwest::Error) -> ProviderFailure {
+fn map_reqwest_error(error: &reqwest::Error) -> ProviderFailure {
     if error.is_timeout() {
         ProviderFailure::new(ProviderFailureCategory::Timeout)
     } else {
