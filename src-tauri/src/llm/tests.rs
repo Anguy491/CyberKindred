@@ -95,7 +95,10 @@ impl ProgramCallContextFactory for FixedCallContextFactory {
             correlation_id: Uuid::now_v7(),
             locale: "zh-CN",
             deadline: if self.expired {
-                now - self.deadline_offset
+                match now.checked_sub(self.deadline_offset) {
+                    Some(deadline) => deadline,
+                    None => now,
+                }
             } else {
                 now + self.deadline_offset
             },

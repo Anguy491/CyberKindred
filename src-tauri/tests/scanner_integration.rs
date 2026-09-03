@@ -1,20 +1,31 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     fs,
+    future::Future,
     path::{Path, PathBuf},
+    pin::Pin,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant, SystemTime},
 };
 
 use chrono::{DateTime, TimeZone, Utc};
 use cyberkindred_lib::{
+    contracts::ProgramPlanSegmentsItem,
     ipc::ProcessSequence,
     library::{
         LibraryRootClock, LibraryRootPicker, LibraryRootPickerError, LibraryRootPickerFuture,
         LibraryRootService, PickAndAddLibraryRootRequest,
+    },
+    program::{ProgramPlanner, ProgramRepository, SystemProgramClock, SystemProgramIdFactory},
+    radio::{
+        ConfirmedProgramStart, DomainProgramPlanner, ManualProgramStartAuthorizer,
+        ProgramEventState, ProgramPlannerContextSource, ProgramPlayback, ProgramPlaybackSignal,
+        ProgramRadioPlanner, RadioClock, RadioEvent, RadioEventSink, RadioPlanningContext,
+        RadioProgramStore, RadioService, RadioServiceDependencies, StartProgramRequest,
+        StartProgramTrigger, StopProgramRequest, SystemRadioIdFactory, TextOnlyProgramSpeech,
     },
     scanner::{
         CancelLibraryScanRequest, CancelLibraryScanState, ScanClock, ScanEvent, ScanEventSink,
@@ -25,7 +36,7 @@ use cyberkindred_lib::{
 use sha2::{Digest, Sha256};
 use sqlx::{ConnectOptions, Connection, Row, sqlite::SqliteConnectOptions};
 use tempfile::TempDir;
-use tokio::sync::Notify;
+use tokio::sync::{Notify, mpsc, watch};
 use uuid::Uuid;
 
 const SUPPORTED_FIXTURES: [&str; 6] = [
@@ -55,6 +66,14 @@ impl ScanClock for FixedClock {
         Utc.timestamp_millis_opt(self.now_ms)
             .single()
             .unwrap_or_else(|| panic!("fixed scan clock must be valid"))
+    }
+}
+
+impl RadioClock for FixedClock {
+    fn now(&self) -> DateTime<Utc> {
+        Utc.timestamp_millis_opt(self.now_ms)
+            .single()
+            .unwrap_or_else(|| panic!("fixed radio clock must be valid"))
     }
 }
 
@@ -121,6 +140,175 @@ impl ScanEventSink for RecordingEvents {
             .push(event);
         self.changed.notify_one();
         Ok(())
+    }
+}
+
+#[derive(Default)]
+struct RecordingRadioEvents {
+    events: Mutex<Vec<RadioEvent>>,
+    changed: Notify,
+}
+
+impl RecordingRadioEvents {
+    fn snapshot(&self) -> Vec<RadioEvent> {
+        self.events
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    async fn wait_for_state(&self, program_id: Uuid, expected: ProgramEventState) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if self.snapshot().iter().any(|event| {
+                    matches!(event, RadioEvent::ProgramState(state)
+                        if state.program_id == program_id && state.state == expected)
+                }) {
+                    return;
+                }
+                self.changed.notified().await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("program {program_id} did not reach {expected:?}"));
+    }
+}
+
+impl RadioEventSink for RecordingRadioEvents {
+    fn publish(&self, event: RadioEvent) -> Result<(), cyberkindred_lib::ipc::ApiError> {
+        self.events
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(event);
+        self.changed.notify_waiters();
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct FixtureProgramContext;
+
+impl ProgramPlannerContextSource for FixtureProgramContext {
+    fn load_context(
+        &self,
+        program_id: Uuid,
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<RadioPlanningContext, cyberkindred_lib::ipc::ApiError>>
+                + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async move {
+            Ok(RadioPlanningContext {
+                local_hour: 21,
+                profile_tags: vec!["fixture".to_owned()],
+                approved_memory_tags: Vec::new(),
+                recently_played_track_ids: Vec::new(),
+                cooldown_ms: 30 * 24 * 60 * 60 * 1_000,
+                allow_cooldown_relaxation: true,
+                selection_seed: u64::from_be_bytes(
+                    program_id.as_bytes()[..8]
+                        .try_into()
+                        .unwrap_or_else(|_| panic!("UUID prefix is eight bytes")),
+                ),
+            })
+        })
+    }
+}
+
+struct LicensedFixturePlayback {
+    calls: AtomicUsize,
+    stop_calls: AtomicUsize,
+    signalled_tracks: AtomicUsize,
+    block_at_call: AtomicUsize,
+    played_track_ids: Mutex<Vec<String>>,
+}
+
+impl Default for LicensedFixturePlayback {
+    fn default() -> Self {
+        Self {
+            calls: AtomicUsize::new(0),
+            stop_calls: AtomicUsize::new(0),
+            signalled_tracks: AtomicUsize::new(0),
+            block_at_call: AtomicUsize::new(usize::MAX),
+            played_track_ids: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl LicensedFixturePlayback {
+    async fn wait_for_calls(&self, expected: usize) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while self.calls.load(Ordering::Acquire) < expected {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("playback did not reach {expected} batches"));
+    }
+
+    async fn wait_for_signalled_tracks(&self, expected: usize) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while self.signalled_tracks.load(Ordering::Acquire) < expected {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("playback did not signal {expected} tracks"));
+    }
+}
+
+impl ProgramPlayback for LicensedFixturePlayback {
+    fn play_batch<'a>(
+        &'a self,
+        _program_id: Uuid,
+        tracks: &'a [cyberkindred_lib::radio::ProgramTrack],
+        _authorization: ConfirmedProgramStart,
+        mut cancellation: watch::Receiver<bool>,
+        signals: mpsc::Sender<ProgramPlaybackSignal>,
+    ) -> Pin<Box<dyn Future<Output = Result<(), cyberkindred_lib::ipc::ApiError>> + Send + 'a>>
+    {
+        let call = self.calls.fetch_add(1, Ordering::AcqRel) + 1;
+        let segments = tracks
+            .iter()
+            .map(|track| track.segment_id)
+            .collect::<Vec<_>>();
+        self.played_track_ids
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .extend(tracks.iter().map(|track| track.track_id.clone()));
+        Box::pin(async move {
+            for segment in segments {
+                signals
+                    .send(ProgramPlaybackSignal::Started(segment))
+                    .await
+                    .map_err(|_| cyberkindred_lib::ipc::ApiError::unexpected())?;
+                signals
+                    .send(ProgramPlaybackSignal::Completed(segment))
+                    .await
+                    .map_err(|_| cyberkindred_lib::ipc::ApiError::unexpected())?;
+                self.signalled_tracks.fetch_add(1, Ordering::AcqRel);
+            }
+            if call >= self.block_at_call.load(Ordering::Acquire) {
+                while !*cancellation.borrow() {
+                    cancellation
+                        .changed()
+                        .await
+                        .map_err(|_| cyberkindred_lib::ipc::ApiError::unexpected())?;
+                }
+                return Err(cyberkindred_lib::ipc::ApiError::unexpected());
+            }
+            Ok(())
+        })
+    }
+
+    fn stop(
+        &self,
+    ) -> Pin<Box<dyn Future<Output = Result<(), cyberkindred_lib::ipc::ApiError>> + Send + '_>>
+    {
+        self.stop_calls.fetch_add(1, Ordering::AcqRel);
+        Box::pin(async { Ok(()) })
     }
 }
 
@@ -418,6 +606,142 @@ fn collect_json_strings<'a>(value: &'a serde_json::Value, output: &mut Vec<&'a s
         }
         serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {}
     }
+}
+
+fn assert_radio_fallback_evidence(events: &[RadioEvent], forbidden_root: &Path) {
+    let safe_messages = events
+        .iter()
+        .filter_map(|event| match event {
+            RadioEvent::ProgramState(state) => state.safe_message.as_deref(),
+            RadioEvent::ProgramSegment(_) => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        safe_messages
+            .iter()
+            .filter(|message| message.contains("确定性本地队列"))
+            .count(),
+        1
+    );
+    assert_eq!(
+        safe_messages
+            .iter()
+            .filter(|message| message.contains("语音不可用"))
+            .count(),
+        1
+    );
+    let event_json = events
+        .iter()
+        .map(|event| match event {
+            RadioEvent::ProgramState(state) => serde_json::to_string(state),
+            RadioEvent::ProgramSegment(segment) => serde_json::to_string(segment),
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap_or_else(|error| panic!("serialize radio evidence: {error}"))
+        .join("\n");
+    assert!(!event_json.contains(forbidden_root.to_string_lossy().as_ref()));
+    assert!(!event_json.contains("secret"));
+}
+
+// TEST-RAD-001/003/004; FR-LIB-001; FR-RAD-001/002/003/007; NFR-COST-002; NFR-PRIV-003.
+#[tokio::test]
+async fn m3_licensed_fixture_scans_plans_and_runs_six_tracks_with_text_fallback() {
+    let fixture = ScannerFixture::create().await;
+    let terminal = fixture.scan_to_terminal().await;
+    assert_eq!(terminal.state, ScanEventState::Completed);
+
+    let available = load_tracks(&fixture)
+        .await
+        .into_iter()
+        .filter(|track| track.availability == "available")
+        .collect::<Vec<_>>();
+    assert_eq!(available.len(), 6);
+    let licensed_ids = available
+        .iter()
+        .map(|track| track.id.to_string())
+        .collect::<BTreeSet<_>>();
+    let repository = fixture.storage.repository();
+    let program_repository: Arc<dyn ProgramRepository> = Arc::new(repository.clone());
+    let planner = Arc::new(ProgramPlanner::new(
+        program_repository,
+        None,
+        Arc::new(SystemProgramClock),
+        Arc::new(SystemProgramIdFactory),
+    ));
+    let planner: Arc<dyn ProgramRadioPlanner> = Arc::new(DomainProgramPlanner::new(
+        planner,
+        Arc::new(FixtureProgramContext),
+    ));
+    let playback = Arc::new(LicensedFixturePlayback::default());
+    playback.block_at_call.store(3, Ordering::Release);
+    let radio_events = Arc::new(RecordingRadioEvents::default());
+    let store: Arc<dyn RadioProgramStore> = Arc::new(repository);
+    let service = RadioService::new(RadioServiceDependencies {
+        planner,
+        authorizer: Arc::new(ManualProgramStartAuthorizer),
+        store,
+        playback: playback.clone(),
+        speech: Arc::new(TextOnlyProgramSpeech),
+        event_sink: radio_events.clone(),
+        clock: Arc::new(FixedClock {
+            now_ms: 1_780_000_000_000,
+        }),
+        sequence: Arc::new(ProcessSequence::default()),
+        id_factory: Arc::new(SystemRadioIdFactory),
+    });
+
+    let response = service
+        .start_local_program(StartProgramRequest {
+            client_request_id: Uuid::now_v7(),
+            source_id: "local".to_owned(),
+            trigger: StartProgramTrigger::Manual,
+        })
+        .await
+        .unwrap_or_else(|error| panic!("explicit fixture start failed: {error:?}"));
+    let plan = response
+        .plan
+        .unwrap_or_else(|| panic!("M3 local start must return its validated plan"));
+    let planned_track_ids = plan
+        .segments
+        .iter()
+        .filter_map(|segment| match segment {
+            ProgramPlanSegmentsItem::TrackSegment(track) => Some(track.track_id.clone()),
+            ProgramPlanSegmentsItem::VoiceSegment(_) => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(planned_track_ids.len(), 6);
+    assert_eq!(
+        planned_track_ids.iter().cloned().collect::<BTreeSet<_>>(),
+        licensed_ids
+    );
+
+    playback.wait_for_calls(3).await;
+    playback.wait_for_signalled_tracks(6).await;
+    service
+        .stop_program(StopProgramRequest {
+            client_request_id: Uuid::now_v7(),
+            program_id: response.program_id,
+        })
+        .await
+        .unwrap_or_else(|error| panic!("explicit fixture stop failed: {error:?}"));
+    radio_events
+        .wait_for_state(response.program_id, ProgramEventState::Completed)
+        .await;
+    assert_eq!(
+        *playback
+            .played_track_ids
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+        planned_track_ids
+    );
+
+    assert_radio_fallback_evidence(&radio_events.snapshot(), &fixture.library_root);
+    assert!(playback.stop_calls.load(Ordering::Acquire) >= 1);
+    assert!(radio_events.snapshot().iter().any(|event| {
+        matches!(event, RadioEvent::ProgramState(state)
+            if state.program_id == response.program_id
+                && state.state == ProgramEventState::Stopping)
+    }));
 }
 
 // FR-LIB-001; NFR-COMPAT-002 prototype subset; NFR-PERF-002 event subset.

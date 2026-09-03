@@ -398,17 +398,19 @@ mod tests {
             .expect("enable tts");
     }
 
-    fn source(
-        repository: Repository,
-        secret: Option<&str>,
-        blocked_playback: bool,
-    ) -> (
+    type SpeechFixture = (
         Arc<RepositoryProgramSpeech>,
         Arc<AtomicUsize>,
         Arc<AtomicUsize>,
         Arc<FakeTransport>,
         Arc<FakePlayback>,
-    ) {
+    );
+
+    fn source(
+        repository: Repository,
+        secret: Option<&str>,
+        blocked_playback: bool,
+    ) -> SpeechFixture {
         let vault_gets = Arc::new(AtomicUsize::new(0));
         let factory_calls = Arc::new(AtomicUsize::new(0));
         let transport = Arc::new(FakeTransport {

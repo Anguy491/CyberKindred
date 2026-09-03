@@ -20,6 +20,11 @@ import {
   createLibraryIpc,
   type LibraryIpc,
 } from "./features/library";
+import {
+  BROWSER_RADIO_IPC,
+  createRadioIpc,
+  type RadioIpc,
+} from "./features/radio";
 import type { AppCapabilities } from "./ipc";
 import { OnboardingFlow } from "./onboarding/OnboardingFlow";
 import {
@@ -43,6 +48,7 @@ export interface AppProps {
   readonly onboardingClient?: OnboardingClient;
   readonly onboardingLoader?: OnboardingLoader;
   readonly libraryIpc?: LibraryIpc;
+  readonly radioIpc?: RadioIpc;
   /** Deterministic visual scenario injection for hermetic UI tests. */
   readonly scenario?: FoundationState;
 }
@@ -54,6 +60,7 @@ export function App({
   onboardingClient,
   onboardingLoader = loadOnboardingState,
   libraryIpc,
+  radioIpc,
   scenario,
 }: AppProps) {
   const browserBypass = scenario !== undefined
@@ -68,12 +75,11 @@ export function App({
   const [capabilities, setCapabilities] = useState<AppCapabilities>(FOUNDATION_CAPABILITIES);
   const [fontStatus, setFontStatus] = useState<FontStatus>("checking");
   const [loadAttempt, setLoadAttempt] = useState(0);
-  const [radioDraft, setRadioDraft] = useState("");
-  const radioInputRef = useRef<HTMLTextAreaElement>(null);
   const librarySearchRef = useRef<HTMLInputElement>(null);
   const radioStartRef = useRef<HTMLButtonElement>(null);
   const onboardingIpc = useMemoOnboardingClient(onboardingClient);
   const libraryClient = useMemoLibraryIpc(libraryIpc);
+  const radioClient = useMemoRadioIpc(radioIpc);
 
   useEffect(() => {
     if (scenario !== undefined || browserBypass) return;
@@ -143,7 +149,7 @@ export function App({
       if (event.key.toLowerCase() === "l") {
         event.preventDefault();
         setActiveRoute("radio");
-        queueMicrotask(() => radioInputRef.current?.focus());
+        queueMicrotask(() => radioStartRef.current?.focus());
       } else if (event.key.toLowerCase() === "k") {
         event.preventDefault();
         setActiveRoute("library");
@@ -158,12 +164,6 @@ export function App({
   }, []);
 
   const operational = shellState !== "initializing" && shellState !== "error";
-  useEffect(() => {
-    if (focusAfterOnboarding && operational) {
-      radioStartRef.current?.focus();
-      setFocusAfterOnboarding(false);
-    }
-  }, [focusAfterOnboarding, operational]);
 
   if (onboarding === "loading") {
     return <div className="app-shell"><main className="state-page onboarding-gate" id="main-content">
@@ -201,11 +201,10 @@ export function App({
             <ShellNotice state={shellState} />
             <div hidden={activeRoute !== "radio"}>
               <RadioPage
-                capabilities={capabilities}
-                draft={radioDraft}
-                inputRef={radioInputRef}
+                ipc={radioClient}
                 startButtonRef={radioStartRef}
-                onDraftChange={setRadioDraft}
+                autoFocusStart={focusAfterOnboarding}
+                onStartFocused={() => setFocusAfterOnboarding(false)}
               />
             </div>
             <div hidden={activeRoute !== "library"}>
@@ -248,6 +247,15 @@ function useMemoLibraryIpc(ipc: LibraryIpc | undefined): LibraryIpc {
   if (ref.current === null) {
     const desktop = typeof window !== "undefined" && Reflect.has(window, "__TAURI_INTERNALS__");
     ref.current = ipc ?? (desktop ? createLibraryIpc() : BROWSER_LIBRARY_IPC);
+  }
+  return ref.current;
+}
+
+function useMemoRadioIpc(ipc: RadioIpc | undefined): RadioIpc {
+  const ref = useRef<RadioIpc | null>(null);
+  if (ref.current === null) {
+    const desktop = typeof window !== "undefined" && Reflect.has(window, "__TAURI_INTERNALS__");
+    ref.current = ipc ?? (desktop ? createRadioIpc() : BROWSER_RADIO_IPC);
   }
   return ref.current;
 }

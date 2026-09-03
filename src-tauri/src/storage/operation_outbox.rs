@@ -769,7 +769,7 @@ mod tests {
             ),
             cancellation_repository.cancel_voice_preview(operation_id, TERMINAL_AT.to_owned(),),
         );
-        let cancellation_won = cancellation.as_ref().map(|(won, _)| *won).unwrap_or(false);
+        let cancellation_won = cancellation.as_ref().is_ok_and(|(won, _)| *won);
         assert_eq!(completion.is_ok(), !cancellation_won);
         let pending = repository
             .load_pending_voice_preview_terminals(10)

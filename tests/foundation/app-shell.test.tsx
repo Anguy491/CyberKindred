@@ -38,7 +38,7 @@ describe("[TASK-009] application shell", () => {
   it("supports keyboard routes and preserves page-local text", async () => {
     const user = userEvent.setup();
     render(<App scenario="ready" fontStatusLoader={loadedFonts} />);
-    const radioInput = screen.getByRole("textbox", { name: /告诉 CyberKindred/u });
+    const radioInput = await screen.findByRole("textbox", { name: /告诉 CyberKindred/u });
     await user.type(radioInput, "安静一点");
     await user.click(screen.getByRole("button", { name: "曲库" }));
     const librarySearch = screen.getByRole("searchbox", { name: /搜索曲库/u });

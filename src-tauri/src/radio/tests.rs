@@ -254,7 +254,9 @@ impl ProgramSpeech for FakeSpeech {
         })
     }
 
-    fn cancel(&self, _segment_id: Uuid) {}
+    fn cancel(&self, _segment_id: Uuid) {
+        self.cancelled.store(true, Ordering::SeqCst);
+    }
 }
 
 struct FakePlayback {

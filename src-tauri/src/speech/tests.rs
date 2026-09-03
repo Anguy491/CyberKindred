@@ -226,7 +226,7 @@ fn mp3() -> SpeechTransportResponse {
 
 fn segment(text: &str) -> SpeechInput {
     SpeechInput::segment(
-        text.to_owned(),
+        text,
         "alloy".to_owned(),
         "gpt-4o-mini-tts".to_owned(),
         1.0,
@@ -265,7 +265,7 @@ fn tts_provider_input_bounds_preview_and_cache_key_are_deterministic() {
     assert_eq!(preview.provenance(), SpeechProvenance::VoicePreview);
     assert!(
         SpeechInput::segment(
-            "caller text".to_owned(),
+            "caller text",
             "alloy".to_owned(),
             "gpt-4o-mini-tts".to_owned(),
             1.0,
@@ -301,7 +301,7 @@ fn tts_provider_input_bounds_preview_and_cache_key_are_deterministic() {
     assert_ne!(
         normalized.cache_key(),
         SpeechInput::segment(
-            "hello world".to_owned(),
+            "hello world",
             "echo".to_owned(),
             "gpt-4o-mini-tts".to_owned(),
             1.0,

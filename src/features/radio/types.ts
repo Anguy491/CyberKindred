@@ -1,0 +1,36 @@
+import type {
+  Ack,
+  MusicSourcesResponse,
+  PlaybackEvent,
+  PlaybackState,
+  ProgramPlan,
+  ProgramSegmentEvent,
+  ProgramStateEvent,
+  SelectMusicSourceResponse,
+  StartProgramResponse,
+} from "../../ipc";
+
+export type RadioEvent =
+  | { readonly type: "playback"; readonly payload: PlaybackEvent }
+  | { readonly type: "program-state"; readonly payload: ProgramStateEvent }
+  | { readonly type: "program-segment"; readonly payload: ProgramSegmentEvent };
+
+/** Minimal, path-free command surface owned by the radio feature. */
+export interface RadioIpc {
+  listMusicSources(): Promise<MusicSourcesResponse>;
+  getPlaybackState(): Promise<PlaybackState>;
+  selectMusicSource(sourceId: string): Promise<SelectMusicSourceResponse>;
+  startProgram(sourceId: string): Promise<StartProgramResponse>;
+  stopProgram(programId: string): Promise<Ack>;
+  play(expectedStateRevision: number): Promise<PlaybackState>;
+  pause(expectedStateRevision: number): Promise<PlaybackState>;
+  seek(expectedStateRevision: number, positionMs: number): Promise<PlaybackState>;
+  next(expectedStateRevision: number): Promise<PlaybackState>;
+  previous(expectedStateRevision: number): Promise<PlaybackState>;
+  subscribeRadio(
+    handler: (event: RadioEvent) => void,
+    refreshSnapshot: () => Promise<void>,
+  ): Promise<() => void>;
+}
+
+export type { PlaybackState, ProgramPlan };

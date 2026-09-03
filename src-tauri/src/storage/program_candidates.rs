@@ -330,7 +330,10 @@ mod tests {
             .expect("planning facts");
         assert_eq!(profile_tags.len(), MAX_PROFILE_TAGS);
         assert_eq!(profile_tags[0], "preference-0");
-        assert_eq!(recent_track_ids.len(), MAX_RECENT_TRACKS as usize);
+        assert_eq!(
+            recent_track_ids.len(),
+            usize::try_from(MAX_RECENT_TRACKS).expect("bounded test constant")
+        );
         assert_eq!(
             recent_track_ids,
             played.into_iter().rev().take(20).collect::<Vec<_>>()
