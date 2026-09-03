@@ -38,6 +38,9 @@ url.workspace = true
 uuid = { workspace = true, features = ["v7", "serde"] }
 zeroize.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+notify-rust.workspace = true
+
 [dev-dependencies]
 tempfile = "=3.27.0"
 tokio = { workspace = true, features = ["test-util"] }

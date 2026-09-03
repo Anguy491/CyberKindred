@@ -8,8 +8,8 @@ use crate::{
     },
     providers::Clock,
     radio::{
-        ConfirmedProgramStart, ProgramStartAuthorizer, RadioFuture, StartProgramRequest,
-        StartProgramTrigger,
+        ConfirmedProgramStart, ProgramStartAuthorizer, RadioFuture, RadioService,
+        StartProgramRequest, StartProgramTrigger,
     },
     storage::{
         Repository, StorageError, StorageReason, StoredDueOccurrence, StoredNotificationAction,
@@ -21,10 +21,10 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, VecDeque},
     future::Future,
-    sync::{Arc, Mutex as StdMutex},
+    sync::{Arc, Mutex as StdMutex, OnceLock, Weak},
     time::{Duration, Instant},
 };
-use tauri::{Emitter, Runtime};
+use tauri::{Emitter, Manager, Runtime};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 use tokio::sync::{Mutex, Notify};
 use uuid::Uuid;
@@ -138,11 +138,21 @@ pub trait ScheduleEventSink: Send + Sync {
 
 pub struct TauriScheduleNotificationSink<R: Runtime> {
     app: tauri::AppHandle<R>,
+    scheduler: OnceLock<Weak<SchedulerService>>,
 }
 
 impl<R: Runtime> TauriScheduleNotificationSink<R> {
     pub fn new(app: tauri::AppHandle<R>) -> Self {
-        Self { app }
+        Self {
+            app,
+            scheduler: OnceLock::new(),
+        }
+    }
+
+    pub(crate) fn bind_scheduler(&self, scheduler: Weak<SchedulerService>) -> Result<(), ApiError> {
+        self.scheduler
+            .set(scheduler)
+            .map_err(|_| ApiError::from_reason(InternalReason::UnexpectedInternal))
     }
 }
 
@@ -163,20 +173,97 @@ impl<R: Runtime> ScheduleNotificationSink for TauriScheduleNotificationSink<R> {
         } else {
             "节目时间到了"
         };
-        // The desktop adapter receives no sound name. Its Windows backend emits
-        // an explicit silent audio element; `.silent()` is kept for platforms
-        // that also honor the public flag.
-        self.app
-            .notification()
-            .builder()
-            .title(format!("{prefix} · {}", notice.name))
-            .body("打开 CyberKindred 后选择：开始节目、稍后提醒或忽略。")
-            .extra("scheduleId", notice.schedule_id)
-            .extra("occurrenceId", notice.occurrence_id)
-            .silent()
-            .show()
-            .map_err(|_| ApiError::from_reason(InternalReason::UnexpectedInternal))?;
-        Ok(Some(notification_id))
+        #[cfg(windows)]
+        {
+            let scheduler = self
+                .scheduler
+                .get()
+                .cloned()
+                .ok_or_else(|| ApiError::from_reason(InternalReason::UnexpectedInternal))?;
+            let mut notification = notify_rust::Notification::new();
+            notification
+                .summary(&format!("{prefix} · {}", notice.name))
+                .body("选择开始、稍后提醒或忽略；点击通知正文只会打开 CyberKindred。")
+                .action("start", "开始节目")
+                .action("snooze_10", "10 分钟后")
+                .action("snooze_30", "30 分钟后")
+                .action("snooze_60", "60 分钟后")
+                .action("dismiss", "忽略");
+            if !tauri::is_dev() {
+                notification.app_id(&self.app.config().identifier);
+            }
+            let handle = notification
+                .show()
+                .map_err(|_| ApiError::from_reason(InternalReason::UnexpectedInternal))?;
+            let app = self.app.clone();
+            let schedule_id = notice.schedule_id;
+            let occurrence_id = notice.occurrence_id;
+            tauri::async_runtime::spawn_blocking(move || {
+                let _ = handle.wait_for_response(
+                    move |response: &notify_rust::NotificationResponse| {
+                        let action = match response {
+                            notify_rust::NotificationResponse::Default => {
+                                if let Some(window) = app.get_webview_window("main") {
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
+                                Some((NotificationAction::Open, None))
+                            }
+                            notify_rust::NotificationResponse::Action(identifier) => {
+                                native_action(identifier)
+                            }
+                            notify_rust::NotificationResponse::Reply(_)
+                            | notify_rust::NotificationResponse::Closed(_) => None,
+                        };
+                        if let Some((action, snooze_minutes)) = action
+                            && let Some(service) = scheduler.upgrade()
+                        {
+                            tauri::async_runtime::spawn(async move {
+                                let _ = service
+                                    .handle_native_notification_action(
+                                        schedule_id,
+                                        occurrence_id,
+                                        action,
+                                        snooze_minutes,
+                                    )
+                                    .await;
+                            });
+                        }
+                    },
+                );
+            });
+            Ok(Some(notification_id))
+        }
+
+        #[cfg(not(windows))]
+        {
+            // The desktop adapter receives no sound name. Its Windows backend emits
+            // an explicit silent audio element; `.silent()` is kept for platforms
+            // that also honor the public flag.
+            self.app
+                .notification()
+                .builder()
+                .title(format!("{prefix} · {}", notice.name))
+                .body("打开 CyberKindred 后选择：开始节目、稍后提醒或忽略。")
+                .extra("scheduleId", notice.schedule_id)
+                .extra("occurrenceId", notice.occurrence_id)
+                .silent()
+                .show()
+                .map_err(|_| ApiError::from_reason(InternalReason::UnexpectedInternal))?;
+            Ok(Some(notification_id))
+        }
+    }
+}
+
+#[cfg(windows)]
+fn native_action(identifier: &str) -> Option<(NotificationAction, Option<u8>)> {
+    match identifier {
+        "start" => Some((NotificationAction::Start, None)),
+        "snooze_10" => Some((NotificationAction::Snooze, Some(10))),
+        "snooze_30" => Some((NotificationAction::Snooze, Some(30))),
+        "snooze_60" => Some((NotificationAction::Snooze, Some(60))),
+        "dismiss" => Some((NotificationAction::Dismiss, None)),
+        _ => None,
     }
 }
 
@@ -289,6 +376,7 @@ pub struct SchedulerService {
     contracts: ContractRegistry,
     signal: Notify,
     start_grants: Mutex<VecDeque<StartGrant>>,
+    program_starter: OnceLock<Arc<dyn NotificationProgramStarter>>,
     upsert_requests: AsyncIdempotency<UpsertScheduleResponse>,
     delete_requests: AsyncIdempotency<crate::providers::Ack>,
     action_requests: AsyncIdempotency<NotificationActionResponse>,
@@ -312,10 +400,20 @@ impl SchedulerService {
                 .map_err(|_| ApiError::from_reason(InternalReason::UnexpectedInternal))?,
             signal: Notify::new(),
             start_grants: Mutex::new(VecDeque::with_capacity(START_GRANT_CAPACITY)),
+            program_starter: OnceLock::new(),
             upsert_requests: AsyncIdempotency::new(),
             delete_requests: AsyncIdempotency::new(),
             action_requests: AsyncIdempotency::new(),
         })
+    }
+
+    pub(crate) fn bind_program_starter(
+        &self,
+        starter: Arc<dyn NotificationProgramStarter>,
+    ) -> Result<(), ApiError> {
+        self.program_starter
+            .set(starter)
+            .map_err(|_| ApiError::from_reason(InternalReason::UnexpectedInternal))
     }
 
     pub async fn list_schedules(&self) -> Result<ListSchedulesResponse, ApiError> {
@@ -474,6 +572,38 @@ impl SchedulerService {
         })
     }
 
+    async fn handle_native_notification_action(
+        &self,
+        schedule_id: Uuid,
+        occurrence_id: Uuid,
+        action: NotificationAction,
+        snooze_minutes: Option<u8>,
+    ) -> Result<(), ApiError> {
+        let response = self
+            .handle_notification_action(NotificationActionRequest {
+                client_request_id: Uuid::now_v7(),
+                schedule_id,
+                occurrence_id,
+                action,
+                snooze_minutes,
+            })
+            .await?;
+        if response.status == NotificationActionStatus::Starting {
+            let starter = self
+                .program_starter
+                .get()
+                .ok_or_else(|| ApiError::from_reason(InternalReason::UnexpectedInternal))?;
+            starter
+                .start(StartProgramRequest {
+                    client_request_id: Uuid::now_v7(),
+                    source_id: "local".to_owned(),
+                    trigger: StartProgramTrigger::Notification,
+                })
+                .await?;
+        }
+        Ok(())
+    }
+
     pub fn start(self: Arc<Self>) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             loop {
@@ -614,6 +744,41 @@ impl ProgramStartAuthorizer for SchedulerService {
                 }
             }
         })
+    }
+}
+
+pub(crate) struct SchedulerStartAuthorizer {
+    service: Weak<SchedulerService>,
+}
+
+impl SchedulerStartAuthorizer {
+    pub(crate) fn new(service: Weak<SchedulerService>) -> Self {
+        Self { service }
+    }
+}
+
+impl ProgramStartAuthorizer for SchedulerStartAuthorizer {
+    fn authorize<'a>(
+        &'a self,
+        request: &'a StartProgramRequest,
+    ) -> RadioFuture<'a, Result<ConfirmedProgramStart, ApiError>> {
+        Box::pin(async move {
+            self.service
+                .upgrade()
+                .ok_or_else(|| ApiError::from_reason(InternalReason::UnexpectedInternal))?
+                .authorize(request)
+                .await
+        })
+    }
+}
+
+pub(crate) trait NotificationProgramStarter: Send + Sync {
+    fn start(&self, request: StartProgramRequest) -> RadioFuture<'_, Result<(), ApiError>>;
+}
+
+impl NotificationProgramStarter for RadioService {
+    fn start(&self, request: StartProgramRequest) -> RadioFuture<'_, Result<(), ApiError>> {
+        Box::pin(async move { self.start_local_program(request).await.map(|_| ()) })
     }
 }
 

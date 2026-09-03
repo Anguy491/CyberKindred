@@ -886,6 +886,7 @@ dependencies = [
  "infer 0.22.0",
  "jsonschema",
  "lofty",
+ "notify-rust",
  "reqwest",
  "rodio",
  "secrecy",

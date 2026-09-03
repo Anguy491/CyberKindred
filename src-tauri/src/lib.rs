@@ -77,7 +77,8 @@ use scanner::{
     commands::{api_v1_cancel_library_scan, api_v1_start_library_scan},
 };
 use schedule::{
-    SchedulerRuntime, SchedulerService, TauriScheduleEventSink, TauriScheduleNotificationSink,
+    NotificationProgramStarter, SchedulerRuntime, SchedulerService, SchedulerStartAuthorizer,
+    TauriScheduleEventSink, TauriScheduleNotificationSink,
     commands::{
         api_v1_delete_schedule, api_v1_handle_notification_action, api_v1_list_schedules,
         api_v1_upsert_schedule,
@@ -249,17 +250,20 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
         preview_events.clone(),
         clock.clone(),
     );
+    let schedule_notifications = Arc::new(TauriScheduleNotificationSink::new(app.handle().clone()));
     let scheduler_service = Arc::new(
         SchedulerService::new(
             repository.clone(),
             clock.clone(),
-            Arc::new(TauriScheduleNotificationSink::new(app.handle().clone())),
+            schedule_notifications.clone(),
             Arc::new(TauriScheduleEventSink::new(app.handle().clone())),
             process_sequence.clone(),
         )
         .map_err(|_| io::Error::other("scheduler runtime unavailable"))?,
     );
-    let scheduler_runtime = SchedulerRuntime::new(scheduler_service.clone().start());
+    schedule_notifications
+        .bind_scheduler(Arc::downgrade(&scheduler_service))
+        .map_err(|_| io::Error::other("scheduler notification binding unavailable"))?;
     let onboarding_service = OnboardingService::new(repository.clone());
     let library_root_service = LibraryRootService::new(
         repository.clone(),
@@ -325,7 +329,9 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     let radio_store: Arc<dyn RadioProgramStore> = Arc::new(repository.clone());
     let radio_service = RadioService::new(RadioServiceDependencies {
         planner: radio_planner,
-        authorizer: scheduler_service.clone(),
+        authorizer: Arc::new(SchedulerStartAuthorizer::new(Arc::downgrade(
+            &scheduler_service,
+        ))),
         store: radio_store,
         playback: radio_playback,
         speech: radio_speech,
@@ -334,6 +340,10 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
         sequence: process_sequence.clone(),
         id_factory: Arc::new(SystemRadioIdFactory),
     });
+    scheduler_service
+        .bind_program_starter(Arc::new(radio_service.clone()) as Arc<dyn NotificationProgramStarter>)
+        .map_err(|_| io::Error::other("scheduler program binding unavailable"))?;
+    let scheduler_runtime = SchedulerRuntime::new(scheduler_service.clone().start());
     let chat_provider = OpenAiChatProvider::new(program_credentials)
         .ok()
         .map(|provider| Arc::new(provider) as Arc<dyn understanding::ChatProvider>);

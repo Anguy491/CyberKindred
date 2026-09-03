@@ -50,6 +50,25 @@ impl ScheduleEventSink for FakeEvents {
     }
 }
 
+struct AuthorizingProgramStarter {
+    service: Weak<SchedulerService>,
+    requests: StdMutex<Vec<StartProgramRequest>>,
+}
+
+impl NotificationProgramStarter for AuthorizingProgramStarter {
+    fn start(&self, request: StartProgramRequest) -> RadioFuture<'_, Result<(), ApiError>> {
+        Box::pin(async move {
+            self.service
+                .upgrade()
+                .ok_or_else(|| ApiError::from_reason(InternalReason::UnexpectedInternal))?
+                .authorize(&request)
+                .await?;
+            self.requests.lock().expect("requests").push(request);
+            Ok(())
+        })
+    }
+}
+
 fn utc(value: &str) -> i64 {
     DateTime::parse_from_rfc3339(value)
         .expect("RFC3339")
@@ -232,6 +251,80 @@ async fn scheduler_due_is_silent_until_notification_start_grant_is_consumed_once
     );
     assert!(service.authorize(&start_request).await.is_err());
     storage.close().await;
+}
+
+#[tokio::test]
+async fn scheduler_native_start_routes_through_action_state_and_one_time_authority() {
+    let now_ms = utc("2026-09-06T00:00:00Z");
+    let (_temp, storage, clock, _notifications, events, service) = fixture(now_ms).await;
+    enable_notifications(&storage, now_ms).await;
+    let service = Arc::new(service);
+    let starter = Arc::new(AuthorizingProgramStarter {
+        service: Arc::downgrade(&service),
+        requests: StdMutex::new(Vec::new()),
+    });
+    service
+        .bind_program_starter(starter.clone())
+        .expect("bind starter");
+    let created = service
+        .upsert_schedule(UpsertScheduleRequest {
+            client_request_id: Uuid::now_v7(),
+            expected_revision: 0,
+            schedule: rule("Australia/Sydney", ScheduleRuleDaysOfWeekItem::Mon, "07:00"),
+        })
+        .await
+        .expect("create");
+    let due_at = DateTime::parse_from_rfc3339(
+        created
+            .schedule
+            .next_occurrence_at
+            .as_deref()
+            .expect("next"),
+    )
+    .expect("next timestamp")
+    .timestamp_millis();
+    clock.set(due_at);
+    service.process_due(due_at).await.expect("due");
+    let event = events.events.lock().expect("events")[0].clone();
+
+    service
+        .handle_native_notification_action(
+            event.schedule_id,
+            event.occurrence_id,
+            NotificationAction::Start,
+            None,
+        )
+        .await
+        .expect("native start");
+    {
+        let requests = starter.requests.lock().expect("requests");
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].trigger, StartProgramTrigger::Notification);
+    }
+    let replay = service
+        .handle_native_notification_action(
+            event.schedule_id,
+            event.occurrence_id,
+            NotificationAction::Start,
+            None,
+        )
+        .await;
+    assert!(replay.is_err());
+    storage.close().await;
+}
+
+#[cfg(windows)]
+#[test]
+fn scheduler_native_button_ids_map_only_to_bounded_actions() {
+    assert_eq!(
+        native_action("start"),
+        Some((NotificationAction::Start, None))
+    );
+    assert_eq!(
+        native_action("snooze_60"),
+        Some((NotificationAction::Snooze, Some(60)))
+    );
+    assert_eq!(native_action("unknown"), None);
 }
 
 #[tokio::test]
