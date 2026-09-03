@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ControlButton } from "../components/ControlButton";
 import type { FontStatus, FoundationState } from "../design/foundation";
 import type { AppCapabilities } from "../ipc";
+import type { SettingsView, WeatherLocationCandidate } from "../ipc";
+import type { SettingsIpc } from "../features/settings";
 
 const SETTINGS_GROUPS = [
   "AI & VOICE",
@@ -20,9 +22,10 @@ interface SettingsPageProps {
   readonly capabilities: AppCapabilities;
   readonly fontStatus: FontStatus;
   readonly shellState: FoundationState;
+  readonly ipc: SettingsIpc;
 }
 
-export function SettingsPage({ capabilities, fontStatus, shellState }: SettingsPageProps) {
+export function SettingsPage({ capabilities, fontStatus, shellState, ipc }: SettingsPageProps) {
   const [activeGroup, setActiveGroup] = useState<SettingsGroup>("AI & VOICE");
   return (
     <section className="page settings-page" aria-labelledby="settings-title">
@@ -49,6 +52,7 @@ export function SettingsPage({ capabilities, fontStatus, shellState }: SettingsP
           group={activeGroup}
           capabilities={capabilities}
           shellState={shellState}
+          ipc={ipc}
         />
       </div>
 
@@ -75,9 +79,10 @@ interface SettingsGroupContentProps {
   readonly group: SettingsGroup;
   readonly capabilities: AppCapabilities;
   readonly shellState: FoundationState;
+  readonly ipc: SettingsIpc;
 }
 
-function SettingsGroupContent({ group, capabilities, shellState }: SettingsGroupContentProps) {
+function SettingsGroupContent({ group, capabilities, shellState, ipc }: SettingsGroupContentProps) {
   const unavailable = "[UNAVAILABLE: SETTINGS SERVICE NOT READY]";
   if (group === "AI & VOICE") {
     const providerStatus = shellState === "offline"
@@ -117,14 +122,7 @@ function SettingsGroupContent({ group, capabilities, shellState }: SettingsGroup
     );
   }
   if (group === "CONTEXT") {
-    return (
-      <div className="setting-stack" id="context-attribution">
-        <SettingRow label="CITY" value="尚未配置" detail="不会请求设备定位或自动使用 IP 定位。" />
-        <span className="disabled-link" role="link" aria-disabled="true" tabIndex={0}>
-          Location data by GeoNames via Open-Meteo
-        </span>
-      </div>
-    );
+    return <ContextSettings ipc={ipc} />;
   }
   if (group === "SCHEDULE") {
     return (
@@ -149,6 +147,163 @@ function SettingsGroupContent({ group, capabilities, shellState }: SettingsGroup
       <ControlButton disabledReason={unavailable}>导出数据</ControlButton>
       <ControlButton tone="danger" disabledReason={unavailable}>删除所选数据</ControlButton>
       <p className="non-impact-copy">全部重置不会删除你的音乐文件或主动保存的导出。</p>
+    </div>
+  );
+}
+
+function ContextSettings({ ipc }: { readonly ipc: SettingsIpc }) {
+  const [settings, setSettings] = useState<SettingsView | null>(null);
+  const [query, setQuery] = useState("");
+  const [candidates, setCandidates] = useState<ReadonlyArray<WeatherLocationCandidate>>([]);
+  const [status, setStatus] = useState("[LOADING…]");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void ipc.getSettings().then(
+      (value) => {
+        if (active) {
+          setSettings(value);
+          setStatus(value.weatherLocation === null ? "[NOT CONFIGURED]" : "[READY]");
+        }
+      },
+      () => { if (active) setStatus("[UNAVAILABLE]"); },
+    );
+    return () => { active = false; };
+  }, [ipc]);
+
+  const locationLabel = settings?.weatherLocation === null || settings === null
+    ? "尚未配置"
+    : [settings.weatherLocation.city, settings.weatherLocation.region, settings.weatherLocation.country]
+      .filter(Boolean).join(" · ");
+  const queryLength = Array.from(query.trim()).length;
+
+  async function search() {
+    if (queryLength < 2 || queryLength > 100 || busy) return;
+    setBusy(true);
+    setStatus("[SEARCHING…]");
+    try {
+      const response = await ipc.searchWeatherLocations({
+        clientRequestId: crypto.randomUUID(), query: query.trim(), limit: 8,
+      });
+      setCandidates(response.candidates);
+      setStatus(response.candidates.length === 0 ? "[NO MATCHES]" : "[SELECT A CITY]");
+    } catch {
+      setCandidates([]);
+      setStatus("[WEATHER UNAVAILABLE]");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function select(candidate: WeatherLocationCandidate) {
+    if (settings === null || busy) return;
+    setBusy(true);
+    setStatus("[SAVING…]");
+    try {
+      const selected = await ipc.selectWeatherLocation({
+        clientRequestId: crypto.randomUUID(),
+        candidateId: candidate.candidateId,
+        expectedRevision: settings.revision,
+      });
+      let revision = selected.revision;
+      if (!settings.weatherEnabled) {
+        const ack = await ipc.updateSettings({
+          clientRequestId: crypto.randomUUID(), expectedRevision: revision,
+          patch: { weatherEnabled: true },
+        }, settings.llmModelId);
+        revision = ack.revision;
+      }
+      setSettings({
+        ...settings,
+        weatherLocation: selected.location,
+        weatherEnabled: true,
+        revision,
+      });
+      setCandidates([]);
+      setStatus("[SAVED · WEATHER CONTEXT ON]");
+    } catch {
+      setStatus("[SAVE FAILED · REFRESH SETTINGS]");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clearLocation() {
+    if (settings?.weatherLocation === null || settings === null || busy) return;
+    setBusy(true);
+    setStatus("[CLEARING…]");
+    try {
+      const ack = await ipc.updateSettings({
+        clientRequestId: crypto.randomUUID(), expectedRevision: settings.revision,
+        patch: { weatherEnabled: false, weatherLocationAction: "clear" },
+      }, settings.llmModelId);
+      setSettings({ ...settings, weatherLocation: null, weatherEnabled: false, revision: ack.revision });
+      setCandidates([]);
+      setStatus("[NOT CONFIGURED]");
+    } catch {
+      setStatus("[CLEAR FAILED · REFRESH SETTINGS]");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="setting-stack" id="context-attribution">
+      <SettingRow
+        label="CITY"
+        value={locationLabel}
+        detail="只在你点击搜索时发送城市词；不会请求设备定位或自动使用 IP 定位。"
+      />
+      <label className="text-entry" htmlFor="weather-city-query">
+        手动搜索城市
+        <input
+          id="weather-city-query"
+          data-testid="weather-city-query"
+          value={query}
+          maxLength={100}
+          autoComplete="off"
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void search();
+            }
+          }}
+        />
+      </label>
+      <div className="inline-action-row">
+        <ControlButton
+          disabled={busy || queryLength < 2 || queryLength > 100}
+          onClick={() => void search()}
+          data-testid="weather-search"
+        >搜索城市</ControlButton>
+        <ControlButton
+          tone="ghost"
+          disabled={busy || settings?.weatherLocation === null || settings === null}
+          onClick={() => void clearLocation()}
+        >清除城市</ControlButton>
+        <span className="inline-status" role="status">{status}</span>
+      </div>
+      {candidates.length > 0 ? (
+        <ul className="weather-candidate-list" aria-label="城市搜索结果">
+          {candidates.map((candidate) => (
+            <li key={candidate.candidateId}>
+              <button type="button" disabled={busy} onClick={() => void select(candidate)}>
+                <strong>{candidate.city}</strong>
+                <span>{[candidate.region, candidate.country].filter(Boolean).join(" · ")}</span>
+                <small>{candidate.timezone}</small>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <a
+        className="disabled-link"
+        href="https://open-meteo.com/"
+        target="_blank"
+        rel="noreferrer"
+      >Geocoding data © GeoNames, weather data by Open-Meteo</a>
     </div>
   );
 }

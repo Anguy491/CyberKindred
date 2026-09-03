@@ -26,6 +26,11 @@ import {
   type RadioIpc,
 } from "./features/radio";
 import { BROWSER_YOU_IPC, createYouIpc, type YouIpc } from "./features/you";
+import {
+  BROWSER_SETTINGS_IPC,
+  createSettingsIpc,
+  type SettingsIpc,
+} from "./features/settings";
 import type { AppCapabilities } from "./ipc";
 import { OnboardingFlow } from "./onboarding/OnboardingFlow";
 import {
@@ -51,6 +56,7 @@ export interface AppProps {
   readonly libraryIpc?: LibraryIpc;
   readonly radioIpc?: RadioIpc;
   readonly youIpc?: YouIpc;
+  readonly settingsIpc?: SettingsIpc;
   /** Deterministic visual scenario injection for hermetic UI tests. */
   readonly scenario?: FoundationState;
 }
@@ -64,6 +70,7 @@ export function App({
   libraryIpc,
   radioIpc,
   youIpc,
+  settingsIpc,
   scenario,
 }: AppProps) {
   const browserBypass = scenario !== undefined
@@ -84,6 +91,7 @@ export function App({
   const libraryClient = useMemoLibraryIpc(libraryIpc);
   const radioClient = useMemoRadioIpc(radioIpc);
   const youClient = useMemoYouIpc(youIpc);
+  const settingsClient = useMemoSettingsIpc(settingsIpc);
 
   useEffect(() => {
     if (scenario !== undefined || browserBypass) return;
@@ -231,6 +239,7 @@ export function App({
                 capabilities={capabilities}
                 fontStatus={fontStatus}
                 shellState={shellState}
+                ipc={settingsClient}
               />
             </div>
           </>
@@ -269,6 +278,15 @@ function useMemoYouIpc(ipc: YouIpc | undefined): YouIpc {
   if (ref.current === null) {
     const desktop = typeof window !== "undefined" && Reflect.has(window, "__TAURI_INTERNALS__");
     ref.current = ipc ?? (desktop ? createYouIpc() : BROWSER_YOU_IPC);
+  }
+  return ref.current;
+}
+
+function useMemoSettingsIpc(ipc: SettingsIpc | undefined): SettingsIpc {
+  const ref = useRef<SettingsIpc | null>(null);
+  if (ref.current === null) {
+    const desktop = typeof window !== "undefined" && Reflect.has(window, "__TAURI_INTERNALS__");
+    ref.current = ipc ?? (desktop ? createSettingsIpc() : BROWSER_SETTINGS_IPC);
   }
   return ref.current;
 }

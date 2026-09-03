@@ -36,6 +36,9 @@ import {
   type VoiceView,
   type VoicesResponse,
   type WeatherLocation,
+  type WeatherLocationCandidate,
+  type SearchWeatherLocationsResponse,
+  type SelectWeatherLocationResponse,
   type SourceCapabilities,
   type SourceSummary,
 } from "./types";
@@ -182,6 +185,31 @@ export function parseSettingsView(value: unknown): SettingsView {
     || !isNonNegativeInteger(value.revision)
   ) throw new IpcResponseValidationError();
   return value as unknown as SettingsView;
+}
+
+export function parseSearchWeatherLocationsResponse(
+  value: unknown,
+): SearchWeatherLocationsResponse {
+  if (!isRecord(value) || !hasExactKeys(value, ["requestId", "candidates", "expiresAt"])
+    || !isUuid(value.requestId) || !Array.isArray(value.candidates)
+    || value.candidates.length > 10 || !value.candidates.every(isWeatherLocationCandidate)
+    || new Set(value.candidates.map((candidate) => candidate.candidateId)).size
+      !== value.candidates.length
+    || !isTimestamp(value.expiresAt)) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as SearchWeatherLocationsResponse;
+}
+
+export function parseSelectWeatherLocationResponse(
+  value: unknown,
+): SelectWeatherLocationResponse {
+  if (!isRecord(value) || !hasExactKeys(value, ["requestId", "location", "revision"])
+    || !isUuid(value.requestId) || !isWeatherLocation(value.location)
+    || !isNonNegativeInteger(value.revision)) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as SelectWeatherLocationResponse;
 }
 
 export function parseOperationAccepted(value: unknown): OperationAccepted {
@@ -613,6 +641,14 @@ function isWeatherLocation(value: unknown): value is WeatherLocation {
     && typeof value.timezone === "string"
     && /^[A-Za-z0-9._+-]+(?:\/[A-Za-z0-9._+-]+)+$/u.test(value.timezone)
     && value.timezone.length <= 100;
+}
+
+function isWeatherLocationCandidate(value: unknown): value is WeatherLocationCandidate {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "candidateId", "city", "region", "country", "countryCode", "latitude", "longitude", "timezone",
+  ]) || !isUuid(value.candidateId)) return false;
+  const { candidateId: _candidateId, ...location } = value;
+  return isWeatherLocation(location);
 }
 
 function isLibraryRoot(value: unknown): value is LibraryRoot {

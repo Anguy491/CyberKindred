@@ -247,6 +247,11 @@ impl ProviderService {
     /// credential status cannot be read.
     pub async fn get_settings(&self) -> Result<SettingsView, ApiError> {
         self.ensure_registry_hydrated().await?;
+        let snapshots = self
+            .repository
+            .load_provider_statuses()
+            .await
+            .map_err(|error| map_storage_error(&error))?;
         let settings = self
             .repository
             .load_provider_settings()
@@ -262,6 +267,7 @@ impl ProviderService {
             .map_err(map_secret_operation_error)?;
 
         let mut registry = self.registry.lock().await;
+        hydrate_registry(&mut registry, &snapshots)?;
         registry.set_enabled(Integration::Musicbrainz, settings.metadata_enabled);
         registry.set_enabled(Integration::Weather, settings.weather_enabled);
         if configured {

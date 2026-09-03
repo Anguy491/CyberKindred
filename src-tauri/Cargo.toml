@@ -15,6 +15,7 @@ tauri-build = { workspace = true, features = [] }
 
 [dependencies]
 chrono.workspace = true
+chrono-tz.workspace = true
 cyberkindred-windows-credential.workspace = true
 hex.workspace = true
 infer.workspace = true

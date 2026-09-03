@@ -131,6 +131,10 @@ impl Repository {
             .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))?;
         }
         if clear_weather_location {
+            sqlx::query("DELETE FROM weather_cache")
+                .execute(&mut *transaction)
+                .await
+                .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))?;
             sqlx::query(
                 "UPDATE user_profile SET city = NULL, region = NULL, country = NULL, country_code = NULL, city_lat = NULL, city_lon = NULL, updated_at_ms = ? WHERE id = 'current'",
             )

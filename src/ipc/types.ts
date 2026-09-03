@@ -341,6 +341,34 @@ export interface WeatherLocation {
   readonly timezone: string;
 }
 
+export interface WeatherLocationCandidate extends WeatherLocation {
+  readonly candidateId: string;
+}
+
+export interface SearchWeatherLocationsRequest {
+  readonly clientRequestId: string;
+  readonly query: string;
+  readonly limit: number;
+}
+
+export interface SearchWeatherLocationsResponse {
+  readonly requestId: string;
+  readonly candidates: ReadonlyArray<WeatherLocationCandidate>;
+  readonly expiresAt: string;
+}
+
+export interface SelectWeatherLocationRequest {
+  readonly clientRequestId: string;
+  readonly candidateId: string;
+  readonly expectedRevision: number;
+}
+
+export interface SelectWeatherLocationResponse {
+  readonly requestId: string;
+  readonly location: WeatherLocation;
+  readonly revision: number;
+}
+
 export interface OriginSecretStatus {
   readonly origin: string;
   readonly openaiApiKeyConfigured: boolean;

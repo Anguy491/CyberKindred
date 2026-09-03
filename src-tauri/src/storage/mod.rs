@@ -20,6 +20,7 @@ mod scanner;
 mod secret;
 pub(crate) mod track_catalog;
 mod understanding;
+mod weather;
 
 pub use database::{APPLICATION_ID, LATEST_SCHEMA_VERSION, Storage};
 pub use error::{StorageError, StorageReason};
@@ -53,3 +54,4 @@ pub(crate) use understanding::{
 };
 #[cfg(test)]
 pub(crate) use understanding::{ContextMemory, ContextTurn};
+pub(crate) use weather::StoredWeatherCache;

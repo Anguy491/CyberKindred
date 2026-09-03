@@ -68,6 +68,7 @@ pub struct RetentionResult {
     pub rejected_proposal_content_cleared: u64,
     pub delivered_outbox_deleted: u64,
     pub expired_undelivered_outbox_deleted: u64,
+    pub weather_cache_deleted: u64,
 }
 
 /// Parameterized, transactional application repository.

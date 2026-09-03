@@ -128,6 +128,28 @@ impl Repository {
         let (delivered_outbox_deleted, expired_undelivered_outbox_deleted) =
             delete_expired_outbox(&mut transaction, now_ms, remaining).await?;
 
+        let processed = processed
+            .saturating_add(delivered_outbox_deleted)
+            .saturating_add(expired_undelivered_outbox_deleted);
+        let remaining = u64::from(limit)
+            .saturating_sub(processed)
+            .min(u64::from(u32::MAX));
+        let remaining = i64::try_from(remaining)
+            .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))?;
+        let weather_cache_deleted = if remaining == 0 {
+            0
+        } else {
+            sqlx::query(
+                "DELETE FROM weather_cache WHERE cache_key IN (SELECT cache_key FROM weather_cache WHERE delete_after_ms <= ? ORDER BY delete_after_ms, cache_key LIMIT ?)",
+            )
+            .bind(now_ms)
+            .bind(remaining)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| StorageError::new(StorageReason::StorageWriteFailed))?
+            .rows_affected()
+        };
+
         transaction
             .commit()
             .await
@@ -139,6 +161,7 @@ impl Repository {
             rejected_proposal_content_cleared,
             delivered_outbox_deleted,
             expired_undelivered_outbox_deleted,
+            weather_cache_deleted,
         })
     }
 }

@@ -19,6 +19,7 @@ pub mod scanner;
 pub mod speech;
 pub mod storage;
 mod understanding;
+mod weather;
 
 use chrono::Utc;
 use diagnostics::{DiagnosticEvent, DiagnosticLog, ValidatedLogDirectory};
@@ -33,10 +34,7 @@ use library::{
         api_v1_remove_library_root,
     },
 };
-use llm::{
-    EmptyProgramContextSource, OpenAiChatProvider, OpenAiProgramPlanProvider,
-    SystemProgramCallContextFactory,
-};
+use llm::{OpenAiChatProvider, OpenAiProgramPlanProvider, SystemProgramCallContextFactory};
 use llm_repository::RepositoryProgramCredentialSource;
 use onboarding::{
     OnboardingService,
@@ -96,6 +94,10 @@ use understanding::{
     },
 };
 use uuid::Uuid;
+use weather::{
+    CompositeProviderHealthProbe, OpenMeteoWeatherProvider, WeatherProvider, WeatherService,
+    commands::{api_v1_search_weather_locations, api_v1_select_weather_location},
+};
 
 struct RetentionMaintenance(tauri::async_runtime::JoinHandle<()>);
 
@@ -128,6 +130,7 @@ const fn retention_item_count(retention: &RetentionResult) -> u64 {
         .saturating_add(retention.rejected_proposal_content_cleared)
         .saturating_add(retention.delivered_outbox_deleted)
         .saturating_add(retention.expired_undelivered_outbox_deleted)
+        .saturating_add(retention.weather_cache_deleted)
 }
 
 #[tauri::command]
@@ -210,7 +213,6 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
         ProviderRuntime::new().map_err(|_| io::Error::other("provider runtime unavailable"))?,
     );
     let validator: Arc<dyn CandidateSecretValidator> = provider_runtime.clone();
-    let health_probe: Arc<dyn ProviderHealthProbe> = provider_runtime.clone();
     let voice_previewer: Arc<dyn VoicePreviewer> = Arc::new(SpeechVoicePreviewer::production());
     let process_sequence = Arc::new(ProcessSequence::default());
     let preview_events: Arc<dyn VoicePreviewEventSink> = Arc::new(TauriVoicePreviewEventSink::new(
@@ -218,6 +220,19 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
         process_sequence.clone(),
     ));
     let clock = Arc::new(SystemClock);
+    let weather_provider: Arc<dyn WeatherProvider> = Arc::new(
+        OpenMeteoWeatherProvider::new()
+            .map_err(|_| io::Error::other("weather runtime unavailable"))?,
+    );
+    let weather_service = Arc::new(WeatherService::new(
+        repository.clone(),
+        weather_provider,
+        clock.clone(),
+    ));
+    let health_probe: Arc<dyn ProviderHealthProbe> = Arc::new(CompositeProviderHealthProbe::new(
+        provider_runtime.clone(),
+        weather_service.clone(),
+    ));
     let provider_service = ProviderService::new(
         repository.clone(),
         Box::new(WindowsCredentialVault::new()?),
@@ -264,7 +279,7 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     ));
     let program_provider = OpenAiProgramPlanProvider::new(
         program_credentials.clone(),
-        Arc::new(EmptyProgramContextSource),
+        weather_service.clone(),
         Arc::new(SystemProgramCallContextFactory),
     )
     .ok()
@@ -320,6 +335,7 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     app.manage(storage);
     app.manage(retention_maintenance);
     app.manage(provider_service);
+    app.manage(weather_service);
     app.manage(onboarding_service);
     app.manage(library_root_service);
     app.manage(track_catalog_service);
@@ -371,6 +387,8 @@ pub fn run() -> tauri::Result<()> {
             api_v1_preview_voice,
             api_v1_cancel_operation,
             api_v1_list_voices,
+            api_v1_search_weather_locations,
+            api_v1_select_weather_location,
             api_v1_start_program,
             api_v1_stop_program,
             api_v1_submit_chat,

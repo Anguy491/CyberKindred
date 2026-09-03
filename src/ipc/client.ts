@@ -15,6 +15,10 @@ import type {
   PickLibraryRootResponse,
   SaveOnboardingStepRequest,
   SettingsView,
+  SearchWeatherLocationsRequest,
+  SearchWeatherLocationsResponse,
+  SelectWeatherLocationRequest,
+  SelectWeatherLocationResponse,
   SelectMusicSourceRequest,
   SelectMusicSourceResponse,
   PlaybackControlRequest,
@@ -60,6 +64,8 @@ import {
   parseOperationAccepted,
   parsePickLibraryRootResponse,
   parseSettingsView,
+  parseSearchWeatherLocationsResponse,
+  parseSelectWeatherLocationResponse,
   parseSelectMusicSourceResponse,
   parsePlaybackState,
   parseStartProgramResponse,
@@ -159,6 +165,26 @@ export class CyberKindredIpcClient {
       ? PROVIDER_TIMEOUT_MS
       : STANDARD_TIMEOUT_MS;
     return this.#invokeValidated("api_v1_update_settings", { request }, timeout, parseAck);
+  }
+
+  /** API-048: sends a city query only after an explicit user search action. */
+  async searchWeatherLocations(
+    request: SearchWeatherLocationsRequest,
+  ): Promise<SearchWeatherLocationsResponse> {
+    return this.#invokeValidated(
+      "api_v1_search_weather_locations", { request }, 10_000,
+      parseSearchWeatherLocationsResponse,
+    );
+  }
+
+  /** API-049: persists only a live Rust-signed search candidate. */
+  async selectWeatherLocation(
+    request: SelectWeatherLocationRequest,
+  ): Promise<SelectWeatherLocationResponse> {
+    return this.#invokeValidated(
+      "api_v1_select_weather_location", { request }, STANDARD_TIMEOUT_MS,
+      parseSelectWeatherLocationResponse,
+    );
   }
 
   /** API-009: accepts one explicit voice-preview operation. */

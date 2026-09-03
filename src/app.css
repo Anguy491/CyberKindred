@@ -471,6 +471,33 @@ input::placeholder {
   line-height: 21px;
 }
 
+.weather-candidate-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.weather-candidate-list button {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(180px, 2fr) minmax(140px, 1fr);
+  gap: 16px;
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-visible);
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.weather-candidate-list small {
+  color: var(--text-secondary);
+  font-family: "Space Mono", Consolas, monospace;
+}
+
 .settings-page {
   grid-template-rows: auto auto 1fr;
 }
