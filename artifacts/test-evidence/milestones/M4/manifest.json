@@ -1,0 +1,189 @@
+{
+  "schemaVersion": "1.0.0",
+  "milestone": "M4",
+  "candidateCommit": "7759fe3a06ce3296c2696389cbc31488ba7b671c",
+  "capturedAt": "2026-09-03",
+  "environment": {
+    "cohort": "windows-11-x64",
+    "osVersionBuild": "10.0.26200",
+    "rust": "1.98.0",
+    "node": "24.19.0",
+    "pnpm": "11.16.0",
+    "containsUserIdentifiers": false,
+    "liveProvidersUsed": false,
+    "physicalAudioUsed": false
+  },
+  "completedTasks": ["TASK-020", "TASK-021", "TASK-022"],
+  "milestoneSmokes": [
+    {
+      "id": "chat-feedback-cancel-fallback",
+      "status": "passed",
+      "evidence": "src-tauri/src/understanding/tests.rs; tests/ui/radio-view.test.tsx",
+      "summary": "Bounded chat, deterministic zero-call fallback, immediate feedback, cancellation and final-before-accept UI ordering passed"
+    },
+    {
+      "id": "memory-profile-context-lifecycle",
+      "status": "passed",
+      "evidence": "src-tauri/src/storage/understanding.rs; src-tauri/src/understanding/tests.rs; tests/ui/you-view.test.tsx",
+      "summary": "Proposal provenance, approval/edit/reject, disable/enable/delete, profile revision and approved-only bounded next-context behavior passed"
+    },
+    {
+      "id": "summary-and-retention",
+      "status": "passed",
+      "evidence": "src-tauri/src/storage/retention.rs; src-tauri/src/lib.rs",
+      "summary": "29d23:59/30d boundaries, capped cleanup, deleted-summary tombstone, startup retry and virtual 24-hour scheduling passed"
+    },
+    {
+      "id": "rust-workspace",
+      "status": "passed_after_remediation",
+      "summary": "250 tests passed, 2 explicit live credential canaries ignored, 0 final failures; fmt, strict clippy and check passed"
+    },
+    {
+      "id": "frontend-contracts-and-docs",
+      "status": "passed",
+      "summary": "92 frontend tests, 6 axe, 2 visual and 9 E2E harness self-tests passed; contracts, lint, typecheck, build and docs passed"
+    },
+    {
+      "id": "security-diff-scan",
+      "status": "passed",
+      "summary": "Exact immutable candidate review completed 42/42 items over 9 attack surfaces with zero findings"
+    }
+  ],
+  "coverage": {
+    "frontend": {
+      "statementsPercent": 76.41,
+      "branchesPercent": 68.41,
+      "functionsPercent": 72.55,
+      "linesPercent": 78.33
+    },
+    "contractDigest": "c54de738993a231bdf15fdf158ec8821e4a667fc716cce0902ef28e01c3f26ad"
+  },
+  "acceptanceInventory": [
+    { "id": "TEST-CHAT-001", "status": "passed_with_known_gaps" },
+    { "id": "TEST-CHAT-002", "status": "passed_with_known_gaps" },
+    { "id": "TEST-CHAT-003", "status": "passed" },
+    { "id": "TEST-MEM-001", "status": "passed_with_known_gaps" },
+    { "id": "TEST-MEM-002", "status": "passed_with_known_gaps" },
+    { "id": "TEST-MEM-003", "status": "passed_with_known_gaps" },
+    { "id": "TEST-MEM-004", "status": "passed_with_known_gaps" },
+    { "id": "TEST-RAD-002-m4-subset", "status": "passed_with_known_gaps" },
+    { "id": "TEST-COST-001-m4-subset", "status": "passed" },
+    { "id": "TEST-A11Y-001-m4-subset", "status": "passed_with_known_gaps" },
+    { "id": "TEST-AI-001", "status": "not_run" }
+  ],
+  "hardGates": [
+    { "id": "secret-boundary", "status": "passed" },
+    { "id": "file-network-permission-scope", "status": "passed" },
+    { "id": "logging-redaction", "status": "passed" },
+    { "id": "explicit-sound-paid-action", "status": "passed" },
+    { "id": "public-contract-validity", "status": "passed" },
+    { "id": "data-integrity-retention", "status": "passed" },
+    { "id": "critical-high-security-findings", "status": "passed" }
+  ],
+  "actualFailures": [
+    {
+      "id": "retention-virtual-clock-pool-init",
+      "originalStatus": "failed",
+      "attempt": "1/3",
+      "resolutionStatus": "resolved",
+      "resolution": "Initialized SQLx before pausing virtual time and resumed before reopen; focused and full suites passed"
+    },
+    {
+      "id": "cargo-audit-unsupported-locked",
+      "originalStatus": "failed",
+      "attempt": "1/3",
+      "resolutionStatus": "resolved",
+      "resolution": "Used the installed CLI's supported cargo audit invocation; zero vulnerability advisories"
+    },
+    {
+      "id": "context-completed-transcript-regression",
+      "originalStatus": "failed",
+      "attempt": "1/3",
+      "resolutionStatus": "resolved",
+      "resolution": "Only a pending final user row remains current; completed rows are bounded historical context; 250-test rerun passed"
+    },
+    {
+      "id": "clippy-transaction-line-count",
+      "originalStatus": "failed",
+      "attempt": "1/3",
+      "resolutionStatus": "resolved",
+      "resolution": "Added a narrow documented lint allowance to retain one atomic transaction; strict clippy passed"
+    },
+    {
+      "id": "security-stale-working-tree-head",
+      "originalStatus": "failed",
+      "attempt": "2/3",
+      "resolutionStatus": "resolved",
+      "resolution": "Established a valid bounded snapshot, then superseded it with the final exact immutable candidate range scan"
+    }
+  ],
+  "securityReview": {
+    "scanId": "dd7629b7-0578-4c0b-bf9e-1337c99e1236",
+    "baseCommit": "9e63367d27cda10b49ebb4a9c8ca8296c1b3466d",
+    "candidateCommit": "7759fe3a06ce3296c2696389cbc31488ba7b671c",
+    "snapshotDigest": "codex-security-snapshot/v1:sha256:579a3c5042b9424ce6b364665fc1dec49edcea5e7df6548bf57ed31b08b92c2f",
+    "coverage": "complete",
+    "reviewItemsCompleted": 42,
+    "reviewItemsTotal": 42,
+    "attackSurfaces": 9,
+    "findings": { "critical": 0, "high": 0, "medium": 0, "low": 0 },
+    "reportSizeBytes": 7812,
+    "reportSha256": "8246bcc8737c4a38eadcf7793685bee73c9aa2001a6c83de09180843f580b48a",
+    "usage": {
+      "totalTokens": 835713,
+      "inputTokens": 832250,
+      "cachedInputTokens": 824832,
+      "outputTokens": 3463,
+      "reasoningOutputTokens": 347,
+      "threadCount": 1
+    }
+  },
+  "knownGaps": [
+    {
+      "id": "full-tauri-m4-e2e",
+      "status": "not_run",
+      "mitigation": "strict contracts, full Rust service/storage tests, IPC tests and React integration tests passed",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "live-provider-physical-audio",
+      "status": "not_run",
+      "mitigation": "bounded cancellable fakes, zero-call fallback and unchanged playback authority passed",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "full-ai-persona-safety-evaluation",
+      "status": "not_run",
+      "mitigation": "no-tools, strict output, limitation prompt and sensitive-proposal guards passed",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "deleted-memory-20-round-semantic-regression",
+      "status": "not_run",
+      "mitigation": "exact hash suppression, text clearing, approved-only context and summary tombstone tests passed",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "narrator-resolution-real-time-matrix",
+      "status": "not_run",
+      "mitigation": "representative axe, keyboard, visual and virtual-time scheduling checks passed",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "allowed-transitive-maintenance-warnings",
+      "status": "known_warning",
+      "mitigation": "cargo deny and vulnerability audit pass with no unallowed advisory",
+      "targetMilestone": "M7 dependency stewardship"
+    },
+    {
+      "id": "inherited-m3-known-gaps",
+      "status": "unchanged",
+      "mitigation": "M3 checkpoint mitigations remain in force and were not prerequisites for M4",
+      "targetMilestone": "M7"
+    }
+  ],
+  "checkpointConclusion": "passed_with_known_gaps",
+  "targetMilestone": null,
+  "stopAfterMilestone": true,
+  "m5Activated": false
+}

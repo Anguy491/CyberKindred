@@ -38,6 +38,7 @@
 
 - 完成 M4 Understanding and conversation 原型：Radio 支持有界文字对话、取消、喜欢/跳过/少说一点反馈与确定性降级；`YOU` 支持画像、偏好趋势、记忆提案审批/编辑/拒绝/停用/删除及摘要查看/删除。
 - 增加 approved-memory-only Context、严格 Structured Outputs/no-tools chat provider、创建后 30 天原文与拒绝提案清理、启动及每 24 小时维护、删除 tombstone，以及取消/保留/上下文/竞态的 hermetic 回归测试。
+- M4 prototype checkpoint 以 `Passed with known gaps` 关闭 `TASK-020`–`TASK-022`；所有 hard gates 通过，完整桌面 E2E、live provider/实机音频、AI 固定评估集、删除后 20 轮语义回归和完整无障碍矩阵递延至 M7。按 Product Owner 停止条件未激活 M5。
 
 - 完成 M3 首个可用本地电台原型：代表性许可六格式 fixture 可扫描/标签、生成确定性或 provider 计划，并在用户显式点击后连续执行六曲节目，支持权威 Now Playing、播放控制、停止与陈旧事件隔离。
 - 增加有界 TTS provider/actor/cache 与节目 runner；OpenAI 或 TTS 不可用时保留文字并降级为确定性本地队列，TTS 关闭时保持零请求，任何启动/恢复路径均不自行出声或触发付费调用。

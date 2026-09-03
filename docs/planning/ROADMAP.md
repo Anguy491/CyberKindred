@@ -58,7 +58,7 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M4 — Understanding and conversation
 
-**Status:** Active — authorized by the Product Owner on 2026-09-03. `TASK-020`–`TASK-022` are implemented and self-checked; the M4 prototype checkpoint is being sealed. M5 remains explicitly out of scope.
+**Status:** Complete — `Passed with known gaps` on 2026-09-03; see [`M4 checkpoint`](../testing/checkpoints/M4.md). Per Product Owner direction, M5 remains explicitly inactive.
 
 **Goal:** 建立可解释、可控的用户画像、文字对话、摘要与记忆提案闭环。
 
