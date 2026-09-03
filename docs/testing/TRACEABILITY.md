@@ -26,6 +26,8 @@ M3 `TASK-015` 已集成最多 200 个 path-free 真实候选的确定性评分�
 
 M3 `TASK-016` 已集成 stateless OpenAI Responses ProgramPlan provider：请求固定 HTTPS `/v1/responses`、`store:false`、空 tools/`tool_choice:none`、strict `json_schema`、24k/4k 预算和 60 秒 deadline；上下文按 policy、画像、approved memory、可选天气、摘要、近期轮次、当前请求与 path-free candidates 排序并过滤 secret/路径。Hermetic tests 覆盖封闭请求、结构化失败恰好一次修复、取消/超时、provider 分类和候选外 ID 交回领域校验；真实联网调用保持 `Not Run`，不作为默认测试副作用。
 
+M3 的最终实现证据由 [`M3 checkpoint`](checkpoints/M3.md) 及其 [`evidence manifest`](../../artifacts/test-evidence/milestones/M3/manifest.json) 聚合记录。`TASK-011`–`TASK-019` 已集成：代表性许可六格式 fixture 完成扫描/标签、确定性计划、六曲连续本地节目、显式停止和 OpenAI/TTS 不可用时的文字 fallback；Radio UI 只在用户点击“开始节目”后调用 API-024，并以 `programId`/revision 丢弃陈旧事件。Rust、TypeScript、契约、axe、视觉、E2E harness、自检和安全差异审查均通过；实机出声、完整 Tauri Radio E2E、10,000 首、200 次控制采样、100×30 分钟 soak、Narrator/跨平台矩阵保持 `Not Run`，按 checkpoint 记录为 M7 known gaps。M3 以 `Passed with known gaps` 关闭；依 Product Owner 停止条件未激活 M4。
+
 ## 2. Functional requirements
 
 ### 2.1 Onboarding

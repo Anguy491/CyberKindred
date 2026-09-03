@@ -1,0 +1,210 @@
+{
+  "schemaVersion": "1.0.0",
+  "milestone": "M3",
+  "candidateCommit": "701e147944db619834c21c409329e08bd756dbc0",
+  "capturedAt": "2026-09-03",
+  "environment": {
+    "cohort": "windows-11-x64",
+    "osVersionBuild": "10.0.26200",
+    "rust": "1.98.0",
+    "node": "24.19.0",
+    "pnpm": "11.16.0",
+    "containsUserIdentifiers": false,
+    "liveProvidersUsed": false,
+    "physicalAudioUsed": false
+  },
+  "completedTasks": [
+    "TASK-011",
+    "TASK-012",
+    "TASK-013",
+    "TASK-014",
+    "TASK-015",
+    "TASK-016",
+    "TASK-017",
+    "TASK-018",
+    "TASK-019"
+  ],
+  "milestoneSmokes": [
+    {
+      "id": "licensed-six-format-local-radio",
+      "status": "passed",
+      "evidence": "src-tauri/tests/scanner_integration.rs",
+      "summary": "Scanned/tagged one CC0 fixture in each supported format, generated the exact six-track deterministic plan, ran all tracks in order, retained degradation text and explicitly stopped with terminal completion"
+    },
+    {
+      "id": "radio-explicit-start-ui",
+      "status": "passed",
+      "evidence": "tests/ui/radio-view.test.tsx",
+      "summary": "Only the user Start action invokes API-024; authoritative snapshot/events, controls, stop, text fallback and stale program/revision rejection passed"
+    },
+    {
+      "id": "rust-workspace",
+      "status": "passed_after_remediation",
+      "summary": "232 tests passed, 2 explicit live canaries ignored, 0 final failures; strict fmt, clippy and check passed"
+    },
+    {
+      "id": "frontend-and-contracts",
+      "status": "passed",
+      "summary": "85 frontend tests, 23 contracts, 6 axe, 2 visual and 9 E2E harness self-tests passed; lint, typecheck and build passed"
+    },
+    {
+      "id": "dependency-policy",
+      "status": "passed_with_warnings",
+      "summary": "pnpm production audit and cargo deny pass; cargo audit has no vulnerability advisory and retains 18 policy-allowed maintenance/unsound warnings"
+    },
+    {
+      "id": "security-diff-scan",
+      "status": "passed",
+      "summary": "Complete 101/101 source review over 8 attack surfaces found zero findings at every severity"
+    }
+  ],
+  "coverage": {
+    "frontend": {
+      "statementsPercent": 76.67,
+      "branchesPercent": 64.62,
+      "functionsPercent": 73.74,
+      "linesPercent": 78.3
+    },
+    "contractDigest": "c54de738993a231bdf15fdf158ec8821e4a667fc716cce0902ef28e01c3f26ad"
+  },
+  "acceptanceInventory": [
+    { "id": "TEST-LIB-001", "status": "passed_with_known_gaps" },
+    { "id": "TEST-LIB-002", "status": "not_run" },
+    { "id": "TEST-LIB-003", "status": "passed" },
+    { "id": "TEST-LIB-004", "status": "passed" },
+    { "id": "TEST-RAD-001", "status": "passed_with_known_gaps" },
+    { "id": "TEST-RAD-002-m3-subset", "status": "passed_with_known_gaps" },
+    { "id": "TEST-RAD-003-m3-local-subset", "status": "passed_with_known_gaps" },
+    { "id": "TEST-RAD-004", "status": "passed" },
+    { "id": "TEST-RAD-005", "status": "not_run" },
+    { "id": "TEST-ONB-003-m3-subset", "status": "passed_with_known_gaps" },
+    { "id": "TEST-SET-002-m3-subset", "status": "passed_with_known_gaps" },
+    { "id": "TEST-COST-001", "status": "passed_with_known_gaps" },
+    { "id": "TEST-PRIV-001-m3-subset", "status": "passed_with_known_gaps" },
+    { "id": "TEST-A11Y-001-m3-subset", "status": "passed_with_known_gaps" }
+  ],
+  "hardGates": [
+    { "id": "secret-boundary", "status": "passed" },
+    { "id": "file-network-permission-scope", "status": "passed" },
+    { "id": "logging-redaction", "status": "passed" },
+    { "id": "explicit-sound-paid-action", "status": "passed" },
+    { "id": "public-contract-validity", "status": "passed" },
+    { "id": "data-integrity", "status": "passed" },
+    { "id": "critical-high-security-findings", "status": "passed" }
+  ],
+  "actualFailures": [
+    {
+      "id": "rust-speech-cancel-fake-bookkeeping",
+      "originalStatus": "failed",
+      "attempt": "1/3",
+      "resolutionStatus": "resolved",
+      "resolution": "Corrected fake cancellation bookkeeping; focused and full workspace reruns passed"
+    },
+    {
+      "id": "security-config-preflight-path",
+      "originalStatus": "failed",
+      "attempt": "1/3",
+      "resolutionStatus": "resolved",
+      "resolution": "Located the installed plugin-root script; second preflight passed 3/3 checks"
+    },
+    {
+      "id": "security-progress-schema",
+      "originalStatus": "failed",
+      "attempt": "1/3",
+      "resolutionStatus": "resolved",
+      "resolution": "Removed the unsupported derived field and completed the same sealed scan scope"
+    },
+    {
+      "id": "stale-status-query-false-positive",
+      "originalStatus": "failed",
+      "attempt": "1/3",
+      "resolutionStatus": "resolved",
+      "resolution": "Anchored the query to the TASK-017 through TASK-019 rows; corrected consistency check passed"
+    }
+  ],
+  "securityReview": {
+    "scanId": "67a5cc09-7de4-422b-a089-d8a2c41b5690",
+    "baseCommit": "0c73fae72c68d6cb752a376c947aba69e81b8f6f",
+    "candidateCommit": "701e147944db619834c21c409329e08bd756dbc0",
+    "coverage": "complete",
+    "reviewItemsCompleted": 101,
+    "reviewItemsTotal": 101,
+    "attackSurfaces": 8,
+    "findings": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0
+    },
+    "reportSizeBytes": 32880,
+    "reportSha256": "8b428834df50ab8976d290d2c3e64c589af382cebb65d4902b9708c7d4d83847",
+    "usage": {
+      "totalTokens": 5527236,
+      "inputTokens": 5514141,
+      "cachedInputTokens": 5379200,
+      "outputTokens": 13095,
+      "reasoningOutputTokens": 4371,
+      "threadCount": 1
+    }
+  },
+  "knownGaps": [
+    {
+      "id": "physical-audio-desktop-path",
+      "status": "not_run",
+      "mitigation": "six-format decoder/playback actor, explicit-authority and licensed hermetic vertical tests passed",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "full-tauri-radio-e2e",
+      "status": "not_run",
+      "mitigation": "strict shared contracts, Rust vertical integration, React UI integration and harness self-tests passed",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "full-library-scale-matrix",
+      "status": "not_run",
+      "mitigation": "representative six formats plus incremental, corrupt, unsupported and cancellation paths passed",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "control-latency-and-feedback",
+      "status": "not_run",
+      "mitigation": "deterministic controls and candidate inputs passed; feedback UI is outside M3",
+      "targetMilestone": "M4/M7 if work resumes"
+    },
+    {
+      "id": "long-soak",
+      "status": "not_run",
+      "mitigation": "cancellation, no-orphan, recovery and terminal-state tests passed",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "live-provider-canaries",
+      "status": "not_run",
+      "mitigation": "bounded hermetic fakes and deterministic local queue/text fallback passed",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "windows10-nsis-narrator-matrix",
+      "status": "not_run",
+      "mitigation": "development build plus representative keyboard, axe and visual checks passed",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "allowed-transitive-maintenance-warnings",
+      "status": "known_warning",
+      "mitigation": "Windows-target cargo deny policy passes and no unallowed vulnerability is present",
+      "targetMilestone": "M7 dependency stewardship"
+    },
+    {
+      "id": "handle-level-file-race-stress",
+      "status": "not_run",
+      "mitigation": "canonical containment, reparse, ancestor-redirection and time-of-use authorization tests passed",
+      "targetMilestone": "M7"
+    }
+  ],
+  "checkpointConclusion": "passed_with_known_gaps",
+  "targetMilestone": null,
+  "stopAfterMilestone": true,
+  "m4Activated": false
+}

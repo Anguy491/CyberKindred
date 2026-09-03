@@ -50,13 +50,15 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M3 — Local radio vertical slice
 
-**Status:** Active implementation — `TASK-011`–`TASK-016` complete; `TASK-017` and `TASK-018` active on 2026-09-03.
+**Status:** Complete — `Passed with known gaps` on 2026-09-03; see [`M3 checkpoint`](../testing/checkpoints/M3.md). Per the Product Owner stop condition, no later milestone is activated.
 
 **Goal:** 从导入曲库到生成并连续播放一次完整本地节目。
 
 **Checkpoint criteria:** 交付首个可用原型：在代表性许可 fixture 上完成“扫描/标签 → 计划 → 用户点击开始 → 连续播放一次本地节目 → 控制/停止”的主路径；OpenAI/TTS 不可用时能明确降级到确定性本地队列与文字。完整格式矩阵、10,000 首压力、200 次延迟采样和 30 分钟 soak 可递延到 M7。
 
 ## M4 — Understanding and conversation
+
+**Status:** Not active — intentionally not entered after the M3 checkpoint.
 
 **Goal:** 建立可解释、可控的用户画像、文字对话、摘要与记忆提案闭环。
 

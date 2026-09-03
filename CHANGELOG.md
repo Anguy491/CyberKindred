@@ -33,6 +33,11 @@
 
 ### Added
 
+- 完成 M3 首个可用本地电台原型：代表性许可六格式 fixture 可扫描/标签、生成确定性或 provider 计划，并在用户显式点击后连续执行六曲节目，支持权威 Now Playing、播放控制、停止与陈旧事件隔离。
+- 增加有界 TTS provider/actor/cache 与节目 runner；OpenAI 或 TTS 不可用时保留文字并降级为确定性本地队列，TTS 关闭时保持零请求，任何启动/恢复路径均不自行出声或触发付费调用。
+- 增加 path-free Radio IPC/UI、严格事件校验、键盘可操作的状态/计划/来源/降级展示，以及代表性 UI、axe、视觉和 Rust 垂直集成测试。
+- M3 prototype checkpoint 以 `Passed with known gaps` 关闭 `TASK-011`–`TASK-019`；按 Product Owner 停止条件未激活 M4，完整实机音频、压力、长稳、Narrator 与兼容性矩阵保留到 M7。
+
 - `TASK-016` 交付 OpenAI Responses ProgramPlan provider、按当前 origin 精确读取的 BYOK adapter、strict structured output、无 tools/不存储请求、24k/4k 预算、有序脱敏 context、60 秒取消/deadline 与结构化无效恰好一次修复；无 credential 或 provider 不可用时由 `TASK-015` 确定性计划降级。
 - `TASK-015` 交付 path-free 本地候选评分、重复冷却与明确 scarcity degradation、最多 200 个真实 UUIDv7 候选、双层 ProgramPlan 校验和确定性文字/六首队列 fallback；节目计划及 segment 以事务写入 SQLite，崩溃恢复不会留下可误恢复的活跃节目。
 - `TASK-012`–`TASK-014` 交付 path-free 分页曲库与扫描 UI、严格 MusicBrainz/CAA 最小披露/限流/缓存 provider，以及 API-016–API-023/EVT-001 本地播放 actor；生产解码保持 direct Symphonia 0.6 → rodio output 边界，队列预置与启动恢复默认静音，只有明确用户动作才打开设备并播放。
