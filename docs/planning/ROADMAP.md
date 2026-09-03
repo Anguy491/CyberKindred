@@ -66,13 +66,15 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M5 — Context and proactive scheduling
 
-**Status:** Active — authorized by the Product Owner on 2026-09-03. `TASK-023`–`TASK-024` are implemented and self-checked; the M5 prototype checkpoint is being sealed. Stop after the M5 checkpoint and do not activate M6 without further authorization.
+**Status:** Complete — `Passed with known gaps` on 2026-09-03; see [`M5 checkpoint`](../testing/checkpoints/M5.md). Per Product Owner direction, stop after M5 and do not activate M6 without further authorization.
 
 **Goal:** 增加手动城市天气、日程与“通知后确认开播”；托盘和自启动随 M6 设置整合完成。
 
 **Checkpoint criteria:** 演示手动选城市、天气状态、创建一次日程通知以及用户确认后才启动；无人确认时无声音、无付费调用。完整 DST、休眠、重复通知和离线恢复矩阵可递延到 M7。
 
 ## M6 — Apple Music companion mode
+
+**Status:** Inactive — not authorized. M5 completion does not activate M6 under the Product Owner's explicit stop condition.
 
 **Goal:** 在 capability 边界内连接 Apple Music Windows 系统媒体会话并插入安全串场。
 

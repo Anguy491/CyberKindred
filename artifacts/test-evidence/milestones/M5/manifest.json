@@ -1,0 +1,288 @@
+{
+  "schemaVersion": "1.0.0",
+  "milestone": "M5",
+  "candidateCommit": "f207583b4eaa6ec2eeaeb5dc2c15323de7c1072a",
+  "baselineCheckpointCommit": "59ca9e8fc4e0d6cee330bea6dfdd0786bac76b99",
+  "capturedAt": "2026-09-03",
+  "environment": {
+    "cohort": "windows-11-x64",
+    "osVersionBuild": "10.0.26200",
+    "rust": "1.98.0",
+    "node": "24.19.0",
+    "pnpm": "11.16.0",
+    "containsUserIdentifiers": false,
+    "liveProvidersUsed": false,
+    "physicalAudioUsed": false,
+    "deviceLocationUsed": false,
+    "notificationPermissionChanged": false
+  },
+  "completedTasks": ["TASK-023", "TASK-024"],
+  "milestoneSmokes": [
+    {
+      "id": "explicit-weather-context",
+      "status": "passed_with_known_gaps",
+      "evidence": "src-tauri/src/weather/mod.rs; src-tauri/src/storage/weather.rs; tests/ipc/weather-client.test.ts; tests/ui/settings-weather.test.tsx",
+      "summary": "Explicit search, signed selection, minimized forecast, fresh-cache context and independent stale/failure state passed; live desktop provider flow was not run"
+    },
+    {
+      "id": "persistent-scheduler",
+      "status": "passed_with_known_gaps",
+      "evidence": "src-tauri/src/schedule/mod.rs; src-tauri/src/storage/schedule.rs; tests/ipc/schedule-client.test.ts; tests/ui/settings-schedule.test.tsx",
+      "summary": "Persistent CRUD, IANA/DST occurrence, single snooze, duplicate/restart handling and long-sleep no-backfill passed; full real-clock matrix was not run"
+    },
+    {
+      "id": "notification-explicit-start",
+      "status": "passed_with_known_gaps",
+      "evidence": "src-tauri/src/schedule/mod.rs; src-tauri/src/schedule/tests.rs; src-tauri/src/radio/mod.rs",
+      "summary": "Silent fixed native actions reuse API-035 and grant exactly one API-024 start only after explicit Start; real Windows interaction was not run"
+    },
+    {
+      "id": "rust-workspace",
+      "status": "passed",
+      "summary": "263 tests passed, 2 explicit live credential canaries ignored, 0 failures; fmt and strict clippy passed"
+    },
+    {
+      "id": "frontend-contracts-and-docs",
+      "status": "passed",
+      "summary": "98 frontend tests, 6 axe, 2 visual and 9 E2E harness self-tests passed; contracts, lint, typecheck, build and docs passed"
+    },
+    {
+      "id": "security-diff-scan",
+      "status": "passed",
+      "summary": "Exact immutable candidate review completed 23/23 production items over 7 attack surfaces with zero findings"
+    }
+  ],
+  "coverage": {
+    "frontend": {
+      "statementsPercent": 74.8,
+      "branchesPercent": 69.84,
+      "functionsPercent": 71.03,
+      "linesPercent": 77.1
+    },
+    "contractDigest": "c54de738993a231bdf15fdf158ec8821e4a667fc716cce0902ef28e01c3f26ad"
+  },
+  "acceptanceInventory": [
+    { "id": "TEST-WEA-001", "status": "passed_with_known_gaps" },
+    { "id": "TEST-WEA-002", "status": "passed_with_known_gaps" },
+    { "id": "TEST-SCH-001", "status": "passed_with_known_gaps" },
+    { "id": "TEST-SCH-002", "status": "passed_with_known_gaps" },
+    { "id": "TEST-SCH-003", "status": "passed" },
+    { "id": "TEST-PRIV-001-m5-subset", "status": "passed" },
+    { "id": "TEST-SEC-001-m5-subset", "status": "passed" },
+    { "id": "TEST-SEC-003", "status": "passed_with_known_warnings" },
+    { "id": "TEST-MAINT-001-m5-subset", "status": "passed" },
+    { "id": "TEST-A11Y-001-m5-subset", "status": "passed_with_known_gaps" },
+    { "id": "TEST-MAINT-002", "status": "not_run" }
+  ],
+  "hardGates": [
+    { "id": "secret-boundary", "status": "passed" },
+    { "id": "file-network-permission-scope", "status": "passed" },
+    { "id": "logging-redaction", "status": "passed" },
+    { "id": "explicit-sound-paid-action", "status": "passed" },
+    { "id": "public-contract-validity", "status": "passed" },
+    { "id": "data-integrity-retention", "status": "passed" },
+    { "id": "critical-high-security-findings", "status": "passed" },
+    { "id": "dependency-policy", "status": "passed_with_known_warnings" }
+  ],
+  "actualFailures": [
+    {
+      "id": "weather-lib-patch-context",
+      "originalStatus": "failed",
+      "resolutionStatus": "resolved",
+      "resolution": "No partial edit; smaller scoped patches applied"
+    },
+    {
+      "id": "weather-timezone-assertion-false-positive",
+      "originalStatus": "failed",
+      "attempt": "1/3",
+      "resolutionStatus": "resolved",
+      "resolution": "Assert forbidden query keys instead of matching a valid Australia/Sydney timezone value; 6/6 passed"
+    },
+    {
+      "id": "combined-cargo-test-filter",
+      "originalStatus": "failed_before_test",
+      "resolutionStatus": "resolved",
+      "resolution": "Split unsupported multiple filter arguments into independent focused suites"
+    },
+    {
+      "id": "read-only-path-inspection",
+      "originalStatus": "failed",
+      "resolutionStatus": "resolved",
+      "resolution": "Replaced unsupported globs and stale/nonexistent paths with explicit repository paths"
+    },
+    {
+      "id": "scheduler-first-compile",
+      "originalStatus": "failed",
+      "attempt": "1/3",
+      "resolutionStatus": "resolved",
+      "resolution": "Exported RadioFuture, corrected imports and formatted tests; full build passed"
+    },
+    {
+      "id": "frontend-public-event-payload-cast",
+      "originalStatus": "failed",
+      "attempt": "1/3",
+      "resolutionStatus": "resolved",
+      "resolution": "Converted through unknown at the strict validation boundary; typecheck passed"
+    },
+    {
+      "id": "scheduler-formatting",
+      "originalStatus": "failed",
+      "resolutionStatus": "resolved",
+      "resolution": "Applied cargo fmt mechanical wrapping; final formatting gate passed"
+    },
+    {
+      "id": "scheduler-strict-clippy",
+      "originalStatus": "failed",
+      "attempt": "3/3",
+      "resolutionStatus": "resolved",
+      "resolution": "Eight initial issues and one remaining borrowed test call were fixed; third bounded run passed"
+    },
+    {
+      "id": "desktop-e2e-edgedriver",
+      "originalStatus": "failed_before_app_start",
+      "attempt": "1/1-user-prerequisite",
+      "resolutionStatus": "waiting_for_user",
+      "resolution": "Matching msedgedriver.exe is absent; no retry per user-only system prerequisite rule"
+    },
+    {
+      "id": "cargo-audit-registry-timeout",
+      "originalStatus": "transient_warning",
+      "resolutionStatus": "resolved",
+      "resolution": "Final exact-candidate audit refreshed successfully with no vulnerability and 18 allowed warnings"
+    },
+    {
+      "id": "scheduler-native-large-patch-context",
+      "originalStatus": "failed",
+      "resolutionStatus": "resolved",
+      "resolution": "No partial edit; smaller single-owner hunks applied and verified"
+    },
+    {
+      "id": "security-invalid-guessed-sha",
+      "originalStatus": "failed_before_scan",
+      "attempt": "1/3",
+      "resolutionStatus": "resolved",
+      "resolution": "Resolved the exact immutable candidate with git rev-parse"
+    },
+    {
+      "id": "security-superseded-candidate",
+      "originalStatus": "canceled",
+      "resolutionStatus": "resolved",
+      "resolution": "Canceled the prior scan after fixing startup binding order; final exact range scan is authoritative"
+    },
+    {
+      "id": "native-action-formatting",
+      "originalStatus": "failed",
+      "attempt": "3/3",
+      "resolutionStatus": "resolved",
+      "resolution": "Two wrapping-only failures were formatted; third run passed"
+    },
+    {
+      "id": "native-action-clippy",
+      "originalStatus": "failed",
+      "attempt": "2/3",
+      "resolutionStatus": "resolved",
+      "resolution": "Removed needless return/lifetimes and released a test MutexGuard before await; second run passed"
+    },
+    {
+      "id": "superseded-security-draft-exclusion-schema",
+      "originalStatus": "failed",
+      "resolutionStatus": "resolved",
+      "resolution": "Added required exclusion pattern fields before the superseded scan was abandoned"
+    },
+    {
+      "id": "final-security-preflight-progress-sync",
+      "originalStatus": "failed",
+      "attempt": "3/3",
+      "resolutionStatus": "closed_with_evidence_elsewhere",
+      "resolution": "Stopped after derived-field and phase-transition rejections; independent preflight evidence is recorded in checkpoint/coverage and final scan completed"
+    },
+    {
+      "id": "final-security-draft-schema",
+      "originalStatus": "failed",
+      "attempt": "1/3",
+      "resolutionStatus": "resolved",
+      "resolution": "Removed obsolete optional coverage fields and used current surface labels/dispositions; second submission sealed"
+    }
+  ],
+  "securityReview": {
+    "scanId": "719e0a36-9fa3-42e0-81c3-a09fa9a87dc1",
+    "baseCommit": "59ca9e8fc4e0d6cee330bea6dfdd0786bac76b99",
+    "candidateCommit": "f207583b4eaa6ec2eeaeb5dc2c15323de7c1072a",
+    "coverage": "complete",
+    "reviewItemsCompleted": 23,
+    "reviewItemsTotal": 23,
+    "attackSurfaces": 7,
+    "findings": { "critical": 0, "high": 0, "medium": 0, "low": 0 },
+    "reportSizeBytes": 5709,
+    "reportSha256": "6983f438188c6c9a47fded33fe8e07588ab14287ed4892480102cbea3bad26dd",
+    "tacStatus": "unavailable_optional_connector_not_signed_in",
+    "usage": {
+      "totalTokens": 974477,
+      "inputTokens": 966652,
+      "cachedInputTokens": 885632,
+      "outputTokens": 7825,
+      "reasoningOutputTokens": 1281,
+      "threadCount": 1
+    }
+  },
+  "knownGaps": [
+    {
+      "id": "desktop-weather-schedule-e2e-edgedriver",
+      "status": "waiting_for_user",
+      "mitigation": "Strict contracts, IPC/UI tests and full Rust service/storage tests passed; matching EdgeDriver is required only for M7 desktop execution",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "real-windows-notification-interaction",
+      "status": "waiting_for_user",
+      "mitigation": "Silent native configuration, exact action allowlist and one-time start routing pass hermetic tests; no permission was changed",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "full-dst-sleep-repeat-offline-matrix",
+      "status": "not_run",
+      "mitigation": "Deterministic DST, resume, snooze, duplicate occurrence and no-backfill tests cover all M5 hard properties",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "live-providers-and-physical-audio",
+      "status": "not_run",
+      "mitigation": "Bounded fake transports and side-effect counters prove request minimization and zero unconfirmed calls/sound",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "delivered-toast-proactive-removal",
+      "status": "known_gap",
+      "mitigation": "Deleted rules cascade-delete occurrences so any stale callback fails closed with no start grant",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "expired-geocoding-candidate-lazy-purge",
+      "status": "known_gap",
+      "mitigation": "Candidate authority expires after ten minutes, fails closed and is never persisted",
+      "targetMilestone": "M7 privacy hardening"
+    },
+    {
+      "id": "narrator-resolution-and-beta-coverage-matrix",
+      "status": "not_run",
+      "mitigation": "Representative axe, keyboard/component, visual-policy and measured prototype coverage evidence passed",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "allowed-transitive-maintenance-warnings",
+      "status": "known_warning",
+      "mitigation": "cargo deny and vulnerability audit pass with no unallowed advisory",
+      "targetMilestone": "M7 dependency stewardship"
+    },
+    {
+      "id": "inherited-m3-m4-known-gaps",
+      "status": "unchanged",
+      "mitigation": "M3/M4 checkpoint mitigations remain in force and were explicitly not prerequisites for M5",
+      "targetMilestone": "M7"
+    }
+  ],
+  "checkpointConclusion": "passed_with_known_gaps",
+  "targetMilestone": null,
+  "stopAfterMilestone": true,
+  "m6Activated": false
+}

@@ -62,3 +62,5 @@ M1–M6 以 milestone checkpoint 为转场单位。全部计划内任务达到 `
 M1–M6 使用 prototype gate：主开发机上能启动或完成该 milestone 的主路径；改动过的 schema/公共契约有效；没有已知数据损坏、secret 泄露、越权文件/网络访问、未经确认的声音或付费调用、Critical/High 安全问题。逐行覆盖率、完整 Win10/Win11 与缩放矩阵、全状态截图、Narrator 全流程、10,000 首性能和长时间 soak 可作为 known gaps 递延到 M7，除非某项本身就是该 milestone 要消除的技术风险。M7 beta/release 不自动放行，仍需用户批准。
 
 技术探针可以推翻某个实现选择，但不能静默改变用户行为。`TASK-002` 的 `Manual-TASK-002` 与其他 M1 探针证据在 M1 checkpoint 一次性汇总，不再作为单独任务签字点。若 TASK-001/002/003 触发 `RISK-001`、`RISK-002` 或新的系统权限，先更新 ADR、需求、威胁模型、契约和本 Backlog，再请求用户批准。M7 完成只产生内测候选；签名、发布、上传或向外部用户分发仍需单独授权。
+
+M5 `TASK-023` 与 `TASK-024` 已完成并由 [`M5 checkpoint`](../testing/checkpoints/M5.md) 和 [`evidence manifest`](../../artifacts/test-evidence/milestones/M5/manifest.json) 聚合。最终 candidate 为 `f207583b4eaa6ec2eeaeb5dc2c15323de7c1072a`；全部 M5 hard gates 通过，真实 Windows 通知交互、缺少 EdgeDriver 的桌面 E2E、完整 DST/休眠/重复/离线矩阵及其他非硬门槛项如实递延至 M7。M5 以 `Passed with known gaps` 关闭；Product Owner 明确要求在 checkpoint 后停止，因此 M6 任务仍为 `Blocked`，未被认领或实施。
