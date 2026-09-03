@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0.0",
   "milestone": "M5",
-  "candidateCommit": "f207583b4eaa6ec2eeaeb5dc2c15323de7c1072a",
+  "candidateCommit": "f33f417a8d34983f4682105380967301c8122503",
   "baselineCheckpointCommit": "59ca9e8fc4e0d6cee330bea6dfdd0786bac76b99",
   "capturedAt": "2026-09-03",
   "environment": {
@@ -14,7 +14,9 @@
     "liveProvidersUsed": false,
     "physicalAudioUsed": false,
     "deviceLocationUsed": false,
-    "notificationPermissionChanged": false
+    "notificationPermissionChanged": false,
+    "desktopDriver": "Microsoft EdgeDriver 152.0.4191.62",
+    "desktopE2eUsedIsolatedAppData": true
   },
   "completedTasks": ["TASK-023", "TASK-024"],
   "milestoneSmokes": [
@@ -22,13 +24,13 @@
       "id": "explicit-weather-context",
       "status": "passed_with_known_gaps",
       "evidence": "src-tauri/src/weather/mod.rs; src-tauri/src/storage/weather.rs; tests/ipc/weather-client.test.ts; tests/ui/settings-weather.test.tsx",
-      "summary": "Explicit search, signed selection, minimized forecast, fresh-cache context and independent stale/failure state passed; live desktop provider flow was not run"
+      "summary": "Explicit search, signed selection, minimized forecast, fresh-cache context and independent stale/failure state passed; the Windows desktop Context smoke passed without provider work, while live Open-Meteo was not run"
     },
     {
       "id": "persistent-scheduler",
       "status": "passed_with_known_gaps",
       "evidence": "src-tauri/src/schedule/mod.rs; src-tauri/src/storage/schedule.rs; tests/ipc/schedule-client.test.ts; tests/ui/settings-schedule.test.tsx",
-      "summary": "Persistent CRUD, IANA/DST occurrence, single snooze, duplicate/restart handling and long-sleep no-backfill passed; full real-clock matrix was not run"
+      "summary": "Persistent CRUD, Windows desktop notification-only rule save, IANA/DST occurrence, single snooze, duplicate/restart handling and long-sleep no-backfill passed; full real-clock matrix was not run"
     },
     {
       "id": "notification-explicit-start",
@@ -39,17 +41,17 @@
     {
       "id": "rust-workspace",
       "status": "passed",
-      "summary": "263 tests passed, 2 explicit live credential canaries ignored, 0 failures; fmt and strict clippy passed"
+      "summary": "264 tests passed, 2 explicit live credential canaries ignored, 0 failures; scheduler synchronous-start regression, fmt and strict clippy passed"
     },
     {
       "id": "frontend-contracts-and-docs",
       "status": "passed",
-      "summary": "98 frontend tests, 6 axe, 2 visual and 9 E2E harness self-tests passed; contracts, lint, typecheck, build and docs passed"
+      "summary": "98 frontend tests, 6 axe, 2 visual, 9 E2E harness self-tests and 2 Windows desktop M5 cases passed; contracts, lint, typecheck, build and docs passed"
     },
     {
       "id": "security-diff-scan",
       "status": "passed",
-      "summary": "Exact immutable candidate review completed 23/23 production items over 7 attack surfaces with zero findings"
+      "summary": "Exact immutable candidate review completed 24/24 items over 8 attack surfaces with zero findings"
     }
   ],
   "coverage": {
@@ -141,8 +143,22 @@
       "id": "desktop-e2e-edgedriver",
       "originalStatus": "failed_before_app_start",
       "attempt": "1/1-user-prerequisite",
-      "resolutionStatus": "waiting_for_user",
-      "resolution": "Matching msedgedriver.exe is absent; no retry per user-only system prerequisite rule"
+      "resolutionStatus": "resolved",
+      "resolution": "User supplied host-visible EdgeDriver 152.0.4191.62; version/hash checks and both M5 desktop cases passed after the application startup fix"
+    },
+    {
+      "id": "desktop-e2e-appdata-reparse-guard",
+      "originalStatus": "failed_before_app_start",
+      "attempt": "1/3",
+      "resolutionStatus": "resolved",
+      "resolution": "AppContainer path virtualization made the lexical and resolved dedicated test roots differ; exact test directories were renamed recoverably and final runs used repository-ignored isolated app-data roots"
+    },
+    {
+      "id": "scheduler-sync-setup-runtime-panic",
+      "originalStatus": "failed",
+      "attempt": "1/3",
+      "resolutionStatus": "resolved",
+      "resolution": "Raw W3C diagnostics exposed tokio::spawn without an entered reactor during Tauri setup; scheduler actor/handle moved to tauri::async_runtime and the synchronous-start regression plus both desktop E2E cases passed"
     },
     {
       "id": "cargo-audit-registry-timeout",
@@ -205,33 +221,27 @@
     }
   ],
   "securityReview": {
-    "scanId": "719e0a36-9fa3-42e0-81c3-a09fa9a87dc1",
+    "scanId": "f870c7a2-746d-43a6-ab6c-c60de8041d76",
     "baseCommit": "59ca9e8fc4e0d6cee330bea6dfdd0786bac76b99",
-    "candidateCommit": "f207583b4eaa6ec2eeaeb5dc2c15323de7c1072a",
+    "candidateCommit": "f33f417a8d34983f4682105380967301c8122503",
     "coverage": "complete",
-    "reviewItemsCompleted": 23,
-    "reviewItemsTotal": 23,
-    "attackSurfaces": 7,
+    "reviewItemsCompleted": 24,
+    "reviewItemsTotal": 24,
+    "attackSurfaces": 8,
     "findings": { "critical": 0, "high": 0, "medium": 0, "low": 0 },
-    "reportSizeBytes": 5709,
-    "reportSha256": "6983f438188c6c9a47fded33fe8e07588ab14287ed4892480102cbea3bad26dd",
+    "reportSizeBytes": 33980,
+    "reportSha256": "318c595f00de778a4b784e7a96c434194aad76b03afa54e29073f1aab0911841",
     "tacStatus": "unavailable_optional_connector_not_signed_in",
     "usage": {
-      "totalTokens": 974477,
-      "inputTokens": 966652,
-      "cachedInputTokens": 885632,
-      "outputTokens": 7825,
-      "reasoningOutputTokens": 1281,
-      "threadCount": 1
+      "totalTokens": 6325230,
+      "inputTokens": 6297231,
+      "cachedInputTokens": 6032384,
+      "outputTokens": 27999,
+      "reasoningOutputTokens": 13609,
+      "threadCount": 3
     }
   },
   "knownGaps": [
-    {
-      "id": "desktop-weather-schedule-e2e-edgedriver",
-      "status": "waiting_for_user",
-      "mitigation": "Strict contracts, IPC/UI tests and full Rust service/storage tests passed; matching EdgeDriver is required only for M7 desktop execution",
-      "targetMilestone": "M7"
-    },
     {
       "id": "real-windows-notification-interaction",
       "status": "waiting_for_user",

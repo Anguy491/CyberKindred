@@ -66,7 +66,7 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M5 — Context and proactive scheduling
 
-**Status:** Complete — `Passed with known gaps` on 2026-09-03; see [`M5 checkpoint`](../testing/checkpoints/M5.md). Per Product Owner direction, stop after M5 and do not activate M6 without further authorization.
+**Status:** Complete — `Passed with known gaps` on 2026-09-03; see [`M5 checkpoint`](../testing/checkpoints/M5.md). The revised candidate also passes the weather/schedule Windows desktop E2E after fixing scheduler runtime startup. Per Product Owner direction, stop after M5 and do not activate M6 without further authorization.
 
 **Goal:** 增加手动城市天气、日程与“通知后确认开播”；托盘和自启动随 M6 设置整合完成。
 

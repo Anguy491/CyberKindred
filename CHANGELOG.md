@@ -40,7 +40,8 @@
 - 完成 M5 Context and proactive scheduling 原型：设置页支持显式城市搜索/选择和天气状态；Forecast 仅接收经舍入坐标与固定参数，30 分钟新鲜天气可进入节目 Context，失败或过期时独立降级。
 - 增加持久化 weekly scheduler、API-032–035、EVT-007、IANA/DST occurrence、10/30/60 分钟 snooze、15 分钟 resume 边界与静音 Windows 通知；只有用户明确选择 `start` 后才授予一次 notification program start，其他路径零声音、零付费调用。
 - Windows 通知现提供固定 allowlist 的开始、稍后 10/30/60 分钟、忽略及打开应用动作；回调复用 API-035 状态转换，删除后陈旧通知 fail closed，scheduler actor 在通知和节目启动依赖完成绑定后才启动。
-- M5 prototype checkpoint 以 `Passed with known gaps` 关闭 `TASK-023`–`TASK-024`；最终 candidate 的 hard gates 与 23/23 项安全差异审查通过且零发现，真实通知、缺少 EdgeDriver 的桌面 E2E 和完整 DST/休眠/离线矩阵递延 M7，未激活 M6。
+- 修复 M5 scheduler 在 Tauri 同步 setup 阶段直接 `tokio::spawn` 导致桌面进程启动崩溃的问题；actor 改由 Tauri async runtime 托管并保留关闭时取消，新增无 Tokio 上下文回归测试，weather/schedule Windows desktop E2E 均通过。
+- M5 prototype checkpoint 以 `Passed with known gaps` 关闭 `TASK-023`–`TASK-024`；最终 candidate 的 hard gates 与 24/24 项安全差异审查通过且零发现，真实 Windows toast 人工交互和完整 DST/休眠/离线矩阵递延 M7，未激活 M6。
 - 完成 M4 Understanding and conversation 原型：Radio 支持有界文字对话、取消、喜欢/跳过/少说一点反馈与确定性降级；`YOU` 支持画像、偏好趋势、记忆提案审批/编辑/拒绝/停用/删除及摘要查看/删除。
 - 增加 approved-memory-only Context、严格 Structured Outputs/no-tools chat provider、创建后 30 天原文与拒绝提案清理、启动及每 24 小时维护、删除 tombstone，以及取消/保留/上下文/竞态的 hermetic 回归测试。
 - M4 prototype checkpoint 以 `Passed with known gaps` 关闭 `TASK-020`–`TASK-022`；所有 hard gates 通过，完整桌面 E2E、live provider/实机音频、AI 固定评估集、删除后 20 轮语义回归和完整无障碍矩阵递延至 M7。按 Product Owner 停止条件未激活 M5。
