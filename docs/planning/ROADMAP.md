@@ -58,7 +58,7 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M4 — Understanding and conversation
 
-**Status:** Complete — `Passed with known gaps` on 2026-09-03; see [`M4 checkpoint`](../testing/checkpoints/M4.md). Per Product Owner direction, M5 remains explicitly inactive.
+**Status:** Complete — `Passed with known gaps` on 2026-09-03; see [`M4 checkpoint`](../testing/checkpoints/M4.md). The Product Owner lifted the post-M4 stop condition on 2026-09-03 and authorized M5 only.
 
 **Goal:** 建立可解释、可控的用户画像、文字对话、摘要与记忆提案闭环。
 
@@ -66,7 +66,7 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M5 — Context and proactive scheduling
 
-**Status:** Not active — the Product Owner directed this run to stop after the M4 checkpoint even if M4 passes.
+**Status:** Active — authorized by the Product Owner on 2026-09-03. Stop after the M5 checkpoint; do not activate M6 without further authorization.
 
 **Goal:** 增加手动城市天气、日程与“通知后确认开播”；托盘和自启动随 M6 设置整合完成。
 
