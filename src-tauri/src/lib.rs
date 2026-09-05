@@ -321,6 +321,9 @@ fn setup_application(
         artwork_assets,
     )
     .map_err(|_| io::Error::other("playback runtime unavailable"))?;
+    playback_service
+        .apply_initial_source(stored_settings.default_source_id.as_deref())
+        .map_err(|_| io::Error::other("default playback source unavailable"))?;
     let data_control_service = DataControlService::new(DataControlServiceDependencies {
         repository: repository.clone(),
         storage: Arc::clone(&storage),

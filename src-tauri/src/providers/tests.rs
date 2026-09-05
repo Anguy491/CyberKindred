@@ -1105,6 +1105,21 @@ async fn provider_settings_patch_is_strict_nullable_and_revision_guarded() {
         .expect_err("empty patch");
     assert_eq!(empty_error.error_id, ErrorId::RequestInvalid);
 
+    let unknown_source: SettingsPatch = serde_json::from_value(serde_json::json!({
+        "defaultSourceId": "untrusted-player"
+    }))
+    .expect("shape-valid source patch");
+    let source_error = fixture
+        .service
+        .update_settings(UpdateSettingsRequest {
+            client_request_id: Uuid::now_v7(),
+            expected_revision: 0,
+            patch: unknown_source,
+        })
+        .await
+        .expect_err("only v1 source adapters may be persisted");
+    assert_eq!(source_error.error_id, ErrorId::RequestInvalid);
+
     let patch: SettingsPatch = serde_json::from_value(serde_json::json!({
         "metadataEnabled": true,
         "narrationDensity": "frequent"

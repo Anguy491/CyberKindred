@@ -14,6 +14,7 @@
 
 ### Changed
 
+- 修复播放设置中的默认音乐源只保存但不生效：应用启动时静音选择已保存的 `local` 或 `apple_music` adapter；Apple 会话不可用时保留 disconnected 状态而不静默回退，并拒绝持久化未知来源 ID。
 - Product Owner 于 2026-09-05 解除 post-M5 stop condition 并授权完成 M6；Roadmap 已将 M6 设为 Active，`TASK-025`–`TASK-028` 依次实施。
 - Product Owner 已解除 post-M4 stop 并仅授权 M5；`TASK-023`–`TASK-024` 已按依赖完成，M5 checkpoint 以 `Passed with known gaps` 关闭，M6 按明确停止条件保持未激活。
 - 明确 M4 对话降级契约：Provider 不可用时保留用户原文并保存带 `local/deterministic` provenance 的固定可用性提示；该提示不是 AI 生成内容，不产生 Memory Proposal，也不自动重放付费请求。

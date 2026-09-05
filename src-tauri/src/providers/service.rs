@@ -818,6 +818,9 @@ impl ProviderService {
         if let Value(value) = patch.default_source_id {
             if let Some(candidate) = &value {
                 validate_setting_text(candidate)?;
+                if !matches!(candidate.as_str(), "local" | "apple_music") {
+                    return Err(ApiError::from_reason(InternalReason::InvalidCandidate));
+                }
             }
             settings.default_source_id = value;
         }

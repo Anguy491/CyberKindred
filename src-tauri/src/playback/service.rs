@@ -208,6 +208,25 @@ impl PlaybackService {
         apple_music_app_installed()
     }
 
+    /// Applies the persisted v1 default without issuing a media command or
+    /// starting audio. An unavailable Apple session remains the selected,
+    /// disconnected source so the UI can show the recovery guidance instead
+    /// of silently falling back to local playback.
+    ///
+    /// # Errors
+    ///
+    /// Returns a storage-integrity error for a persisted source outside the
+    /// two v1 adapters.
+    pub(crate) fn apply_initial_source(&self, source_id: Option<&str>) -> Result<(), ApiError> {
+        match source_id {
+            None | Some(LOCAL_SOURCE_ID) => self.set_active(ActiveSource::Local),
+            Some(APPLE_SOURCE_ID) => self.set_active(ActiveSource::System),
+            Some(_) => Err(ApiError::from_reason(
+                InternalReason::StorageIntegrityFailed,
+            )),
+        }
+    }
+
     /// API-016. This is a pure in-memory read.
     #[must_use]
     pub fn list_music_sources(&self, _request: EmptyRequest) -> ListMusicSourcesResponse {

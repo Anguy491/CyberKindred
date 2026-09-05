@@ -736,6 +736,36 @@ async fn system_media_source_publishes_coalesced_position_state_for_ui_and_compa
 }
 
 #[tokio::test]
+async fn persisted_apple_default_selects_the_disconnected_system_source_without_control() {
+    let (harness, system) = system_harness();
+    system.lock().expect("system state").available = false;
+
+    harness
+        .service
+        .apply_initial_source(Some("apple_music"))
+        .expect("known default source");
+    let state = harness
+        .service
+        .get_playback_state(EmptyRequest {})
+        .await
+        .expect("disconnected Apple projection");
+
+    assert_eq!(state.source_id, "apple_music");
+    assert_eq!(state.status, PlaybackStateStatus::Disconnected);
+    assert!(system.lock().expect("system state").controls.is_empty());
+}
+
+#[test]
+fn persisted_unknown_default_source_is_rejected_as_storage_corruption() {
+    let (harness, _system) = system_harness();
+    let error = harness
+        .service
+        .apply_initial_source(Some("untrusted-player"))
+        .expect_err("unknown persisted source must fail closed");
+    assert_eq!(error.error_id, ErrorId::StorageFailed);
+}
+
+#[tokio::test]
 async fn system_media_source_rechecks_capability_before_control_and_refreshes_failure_state() {
     let (harness, system) = system_harness();
     let selected = harness
