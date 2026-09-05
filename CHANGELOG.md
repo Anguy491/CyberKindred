@@ -14,6 +14,7 @@
 
 ### Changed
 
+- Apple Music 系统媒体读取改为显式选择门控：应用保持本地来源时不再启动 GSMTC discovery/轮询；只有用户点击 Apple 来源或“连接 / 重新检查会话”（以及恢复已保存的 Apple 默认来源）后才在本机绑定并监控，且仍不发送播放命令。
 - Apple 陪伴节目现在把会话失联持久化为 `paused`，可在该状态安全停止；只有原 Apple 会话重新出现且用户/外部 App 已使其进入播放状态后，陪伴监听才恢复为运行，过程中不发送播放命令。
 - 修复播放设置中的默认音乐源只保存但不生效：应用启动时静音选择已保存的 `local` 或 `apple_music` adapter；Apple 会话不可用时保留 disconnected 状态而不静默回退，并拒绝持久化未知来源 ID。
 - Product Owner 于 2026-09-05 解除 post-M5 stop condition 并授权完成 M6；Roadmap 已将 M6 设为 Active，`TASK-025`–`TASK-028` 依次实施。

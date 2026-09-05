@@ -146,6 +146,8 @@ Canonical machine DTOs are `program-plan.schema.json`, `playback-state.schema.js
 | API-027 `api_v1_submit_feedback` | `{ clientRequestId; programId; trackId: string | null; kind: "like" | "skip" | "less_talk" }` | `Ack` | 5 s | 10-minute key |
 | API-038 `api_v1_cancel_operation` | `{ clientRequestId; operationId; expectedKind: "chat" | "voice_preview" | "library_scan" | "data_export" }` | `{ requestId; operationId; state: "cancelled" | "already_terminal" }` | 2 s | Idempotent cancel |
 
+API-016 只返回内存中的来源摘要，不枚举、读取或绑定系统媒体会话。只有用户通过 API-017 明确选择 `apple_music`，或应用启动时恢复用户已保存的 Apple 默认来源后读取其权威播放状态，才开始本机 GSMTC discovery/monitoring；这两条路径都不发送媒体命令、不开启音频。未连接的 `system_session` 仍可由 UI 发起 API-017 连接尝试，失败时返回安全的 source-unavailable 状态而不回退到其他媒体 App。
+
 All playback mutation commands enforce the currently advertised capability; unsupported actions return `ERR-1201`. A stale `expectedStateRevision` returns `ERR-1003` and the current revision. Local sources may return a full `ProgramPlan`; a `system_session` source returns `plan: null`。Apple/GSMTC metadata、timeline 与 playback event 永不进入 Responses 或 Speech：track-aware 反应只由本机 deterministic 模板产生可见文字；只有完全不含 GSMTC 派生字段的通用段才可送 TTS。The app never chooses an arbitrary Apple Music catalog track.
 
 ### 3.4 Memory, schedule and data control

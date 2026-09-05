@@ -375,6 +375,7 @@ function AppleMusicSettings({ ipc, supported }: { readonly ipc: SettingsIpc; rea
   const [source, setSource] = useState<SourceSummary | null>(null);
   const [integration, setIntegration] = useState<IntegrationStatus | null>(null);
   const [status, setStatus] = useState("[LOADING…]");
+  const [busy, setBusy] = useState(false);
 
   async function refresh() {
     const [catalog, settings] = await Promise.all([ipc.listMusicSources(), ipc.getSettings()]);
@@ -391,6 +392,22 @@ function AppleMusicSettings({ ipc, supported }: { readonly ipc: SettingsIpc; rea
     return () => { active = false; };
   }, [ipc]);
 
+  async function connect() {
+    if (!supported || busy) return;
+    setBusy(true);
+    setStatus("[CONNECTING…]");
+    try {
+      await ipc.selectMusicSource({
+        clientRequestId: crypto.randomUUID(), sourceId: "apple_music",
+      });
+      await refresh();
+    } catch {
+      setStatus("[NO APP SESSION]");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const controls = source === null ? [] : Object.entries(source.capabilities)
     .filter(([name, enabled]) => name !== "setQueue" && enabled)
     .map(([name]) => name.toUpperCase());
@@ -403,7 +420,9 @@ function AppleMusicSettings({ ipc, supported }: { readonly ipc: SettingsIpc; rea
       <p className="secondary-copy">未安装 App：请先从 Microsoft Store 安装 Apple Music Windows App。</p>
       <p className="secondary-copy">已安装但无会话：打开 App 并开始播放一首曲目。</p>
       <p className="non-impact-copy">只连接 Windows App 的 GSMTC 会话；不登录 MusicKit、不读取账户，也不控制网页。</p>
-      <ControlButton tone="ghost" onClick={() => void refresh()}>重新检查会话</ControlButton>
+      <ControlButton tone="ghost" disabled={!supported || busy} onClick={() => void connect()}>
+        连接 / 重新检查会话
+      </ControlButton>
     </div>
   );
 }

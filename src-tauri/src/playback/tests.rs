@@ -153,6 +153,7 @@ struct FakeSystemState {
     available: bool,
     snapshot: SystemMediaSnapshot,
     controls: Vec<SystemMediaControl>,
+    refreshes: u64,
     sink: Option<Arc<dyn SystemMediaEventSink>>,
 }
 
@@ -166,7 +167,8 @@ impl SystemMediaBackend for FakeSystemBackend {
     }
 
     fn refresh(&mut self) -> Result<SystemMediaSnapshot, SystemMediaError> {
-        let state = self.0.lock().map_err(|_| SystemMediaError::Unavailable)?;
+        let mut state = self.0.lock().map_err(|_| SystemMediaError::Unavailable)?;
+        state.refreshes = state.refreshes.saturating_add(1);
         if state.available {
             Ok(state.snapshot.clone())
         } else {
@@ -277,6 +279,7 @@ fn system_harness() -> (Harness, Arc<Mutex<FakeSystemState>>) {
         available: true,
         snapshot: system_snapshot(),
         controls: Vec::new(),
+        refreshes: 0,
         sink: None,
     }));
     let service = PlaybackService::new_with_system_backend(
@@ -298,6 +301,29 @@ fn system_harness() -> (Harness, Arc<Mutex<FakeSystemState>>) {
         },
         system,
     )
+}
+
+#[tokio::test]
+async fn system_media_source_waits_for_explicit_selection_before_reading_the_session() {
+    let (harness, system) = system_harness();
+
+    let sources = harness.service.list_music_sources(EmptyRequest {}).sources;
+    let apple = sources
+        .iter()
+        .find(|source| source.source_id == "apple_music")
+        .expect("Apple source summary");
+    assert!(!apple.connected);
+    assert_eq!(system.lock().expect("system state").refreshes, 0);
+
+    harness
+        .service
+        .select_music_source(SelectMusicSourceRequest {
+            client_request_id: Uuid::now_v7(),
+            source_id: "apple_music".to_owned(),
+        })
+        .await
+        .expect("explicit Apple selection reads the session");
+    assert!(system.lock().expect("system state").refreshes >= 1);
 }
 
 fn track(path: PathBuf, id: &str, title: &str, duration_ms: u64) -> LocalTrack {

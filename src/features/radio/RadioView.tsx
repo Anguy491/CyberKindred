@@ -268,7 +268,7 @@ export function RadioView({
         <legend className="instrument-label">音乐来源</legend>
         {sources.length === 0 ? <p className="secondary-copy">没有可用来源。</p> : sources.map((source) =>
           <ControlButton key={source.sourceId} aria-pressed={playback?.sourceId === source.sourceId}
-            {...disabledWhen(!source.connected, "[DISCONNECTED]")}
+            {...disabledWhen(source.kind === "local" && !source.connected, "[DISCONNECTED]")}
             onClick={() => void run("source", async () => (await ipc.selectMusicSource(source.sourceId)).state)}>
             {source.displayName}
           </ControlButton>)}

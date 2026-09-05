@@ -21,6 +21,8 @@ import type {
   TestProviderResponse,
   SearchWeatherLocationsRequest,
   SearchWeatherLocationsResponse,
+  SelectMusicSourceRequest,
+  SelectMusicSourceResponse,
   SelectWeatherLocationRequest,
   SelectWeatherLocationResponse,
   SettingsView,
@@ -41,6 +43,7 @@ export interface SettingsIpc {
   testProvider(request: TestProviderRequest): Promise<TestProviderResponse>;
   listVoices(): Promise<VoicesResponse>;
   listMusicSources(): Promise<MusicSourcesResponse>;
+  selectMusicSource(request: SelectMusicSourceRequest): Promise<SelectMusicSourceResponse>;
   updateSettings(request: UpdateSettingsRequest, currentModelId: string): Promise<Ack>;
   searchWeatherLocations(
     request: SearchWeatherLocationsRequest,
@@ -92,6 +95,9 @@ export const BROWSER_SETTINGS_IPC: SettingsIpc = {
           connected: false, capabilities: { play: false, pause: false, seek: false, next: false, previous: false, setQueue: false } },
       ],
     };
+  },
+  async selectMusicSource() {
+    throw new Error("Apple Music connection requires the desktop runtime.");
   },
   async getSettings() {
     return {

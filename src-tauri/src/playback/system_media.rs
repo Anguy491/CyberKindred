@@ -163,6 +163,7 @@ impl SystemMediaSource {
             shared_state: Arc::clone(&state),
             state: state.read().map_err(|_| ApiError::unexpected())?.clone(),
             identity: None,
+            monitoring: false,
         };
         std::thread::Builder::new()
             .name("cyberkindred-system-media".to_owned())
@@ -253,14 +254,15 @@ struct SystemMediaActor {
     shared_state: Arc<RwLock<PlaybackState>>,
     state: PlaybackState,
     identity: Option<String>,
+    monitoring: bool,
 }
 
 impl SystemMediaActor {
     fn run(&mut self, receiver: &mpsc::Receiver<SystemMessage>) {
-        self.refresh(PlaybackEventReason::AdapterUpdate);
         loop {
             match receiver.recv_timeout(REFRESH_INTERVAL) {
                 Ok(SystemMessage::Select { response }) => {
+                    self.monitoring = true;
                     self.refresh(PlaybackEventReason::AdapterUpdate);
                     let result = if self.identity.is_some() {
                         Ok(self.state.clone())
@@ -270,6 +272,7 @@ impl SystemMediaActor {
                     let _ = response.send(result);
                 }
                 Ok(SystemMessage::GetState { response }) => {
+                    self.monitoring = true;
                     self.refresh(PlaybackEventReason::AdapterUpdate);
                     let _ = response.send(Ok(self.state.clone()));
                 }
@@ -278,19 +281,27 @@ impl SystemMediaActor {
                     action,
                     response,
                 }) => {
+                    if !self.monitoring {
+                        self.monitoring = true;
+                        self.refresh(PlaybackEventReason::AdapterUpdate);
+                    }
                     let result = self.control(expected_revision, action);
                     let _ = response.send(result);
                 }
                 Ok(SystemMessage::BeginInterruption { response }) => {
+                    self.monitoring = true;
                     let result = self.begin_interruption();
                     let _ = response.send(result);
                 }
                 Ok(SystemMessage::FinishInterruption { token, response }) => {
+                    self.monitoring = true;
                     let state = self.finish_interruption(&token);
                     let _ = response.send(Ok(state));
                 }
                 Ok(SystemMessage::Refresh) | Err(mpsc::RecvTimeoutError::Timeout) => {
-                    self.refresh(PlaybackEventReason::AdapterUpdate);
+                    if self.monitoring {
+                        self.refresh(PlaybackEventReason::AdapterUpdate);
+                    }
                 }
                 Ok(SystemMessage::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => return,
             }

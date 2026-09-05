@@ -244,6 +244,24 @@ describe("[TASK-019] local radio view", () => {
 });
 
 describe("[TASK-025] system media source events", () => {
+  // FR-APL-001; user selection is the privacy gate for GSMTC discovery.
+  it("allows an explicit connection attempt while the Apple session is disconnected", async () => {
+    const apple: SourceSummary = {
+      sourceId: "apple_music", kind: "system_session", displayName: "Apple Music Windows App",
+      connected: false,
+      capabilities: { play: false, pause: false, seek: false, next: false, previous: false, setQueue: false },
+    };
+    const test = fixture(source(), [apple]);
+    const user = userEvent.setup();
+    render(<RadioView ipc={test.ipc} />);
+
+    const appleButton = await screen.findByRole("button", { name: "Apple Music Windows App" });
+    expect(appleButton.getAttribute("aria-disabled")).not.toBe("true");
+    expect(test.ipc.selectMusicSource).not.toHaveBeenCalled();
+    await user.click(appleButton);
+    await waitFor(() => expect(test.ipc.selectMusicSource).toHaveBeenCalledWith("apple_music"));
+  });
+
   // FR-APL-001/002; NFR-REL-004.
   it("updates source availability without replacing the active source snapshot", async () => {
     const apple: SourceSummary = {

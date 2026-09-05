@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { FOUNDATION_CAPABILITIES } from "../../src/design/foundation";
 import { BROWSER_SETTINGS_IPC, type SettingsIpc } from "../../src/features/settings";
-import type { SettingsView } from "../../src/ipc";
+import type { PlaybackState, SettingsView } from "../../src/ipc";
 import { SettingsPage } from "../../src/routes/SettingsPage";
 
 const SETTINGS: SettingsView = {
@@ -40,6 +40,21 @@ const SETTINGS: SettingsView = {
 };
 
 function fixture(): SettingsIpc {
+  const appleState: PlaybackState = {
+    schemaVersion: "1.0.0",
+    sourceId: "apple_music",
+    sourceKind: "system_session",
+    status: "paused",
+    capabilities: {
+      play: true, pause: true, seek: false, next: true, previous: false, setQueue: false,
+    },
+    currentTrack: null,
+    positionMs: 0,
+    durationMs: null,
+    revision: 1,
+    updatedAt: "2026-09-05T00:01:00.000Z",
+    lastError: null,
+  };
   return {
     ...BROWSER_SETTINGS_IPC,
     getSettings: vi.fn(async () => SETTINGS),
@@ -61,6 +76,9 @@ function fixture(): SettingsIpc {
           capabilities: { play: true, pause: true, seek: false, next: true, previous: false, setQueue: false },
         },
       ],
+    })),
+    selectMusicSource: vi.fn(async (request) => ({
+      requestId: request.clientRequestId, state: appleState,
     })),
     validateAndSetSecret: vi.fn(async (request) => ({
       requestId: request.clientRequestId, configured: true, verifiedAt: "2026-09-05T00:00:00.000Z",
@@ -162,5 +180,11 @@ describe("[TASK-028] settings controls", () => {
     expect(screen.getByText("[CONNECTED]")).not.toBeNull();
     expect(screen.getByText(/不登录 MusicKit、不读取账户，也不控制网页/u)).not.toBeNull();
     expect(screen.getByText(/不建立精确 Apple 队列/u)).not.toBeNull();
+    expect(ipc.selectMusicSource).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "连接 / 重新检查会话" }));
+    await waitFor(() => expect(ipc.selectMusicSource).toHaveBeenCalledWith(expect.objectContaining({
+      sourceId: "apple_music",
+    })));
   });
 });
