@@ -8,6 +8,14 @@
   gap: 16px;
 }
 
+.radio-artwork {
+  width: min(220px, 50vw);
+  aspect-ratio: 1;
+  border: 1px solid var(--border-visible);
+  background: var(--surface);
+  object-fit: cover;
+}
+
 .radio-readout {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

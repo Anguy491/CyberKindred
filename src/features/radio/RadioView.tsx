@@ -1,7 +1,7 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 
 import { ControlButton } from "../../components/ControlButton";
-import { IpcInvocationError, type SourceSummary } from "../../ipc";
+import { IpcInvocationError, resolveAssetUri, type SourceSummary } from "../../ipc";
 import type { PlaybackState, ProgramPlan, RadioEvent, RadioIpc } from "./types";
 import "./radio.css";
 
@@ -241,6 +241,9 @@ export function RadioView({
   return <section className="page radio-page" aria-labelledby="radio-title">
     <div className="page-primary radio-now" aria-live="polite">
       <p className="instrument-label">RADIO / {programState.toUpperCase()}</p>
+      {playback?.currentTrack?.artworkUri ?
+        <img className="radio-artwork" src={resolveAssetUri(playback.currentTrack.artworkUri)}
+          alt={`${playback.currentTrack.title} 封面`} /> : null}
       <h1 id="radio-title" className="hero-title">
         {playback?.currentTrack?.title ?? "今天想听什么状态？"}
       </h1>

@@ -16,6 +16,7 @@ use crate::{
 
 use super::{
     actor::{ActorMessage, spawn_actor},
+    artwork::ArtworkAssetStore,
     dto::{
         ListMusicSourcesResponse, PlaybackControlRequest, SeekPlaybackRequest,
         SelectMusicSourceRequest, SelectMusicSourceResponse,
@@ -104,11 +105,13 @@ impl PlaybackService {
         clock: Arc<dyn PlaybackClock>,
         sequence: Arc<ProcessSequence>,
         capabilities: SourceCapabilities,
+        artwork: ArtworkAssetStore,
     ) -> Result<Self, ApiError> {
         let system_source = SystemMediaSource::production(
             Arc::clone(&events),
             Arc::clone(&clock),
             Arc::clone(&sequence),
+            artwork,
         )?;
         Self::new_with_system_source(
             resolver,

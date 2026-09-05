@@ -50,7 +50,7 @@ use onboarding::{
 };
 use os_integration::AppIntegrationService;
 use playback::{
-    PlaybackEventSink, PlaybackService, RodioAudioEngine, SystemPlaybackClock,
+    ArtworkAssetStore, PlaybackEventSink, PlaybackService, RodioAudioEngine, SystemPlaybackClock,
     TauriPlaybackEventSink,
     commands::{
         api_v1_get_playback_state, api_v1_list_music_sources, api_v1_next, api_v1_pause,
@@ -161,7 +161,10 @@ fn api_v1_get_capabilities(
 }
 
 #[allow(clippy::too_many_lines)] // Composition stays explicit so managed state ownership is auditable.
-fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
+fn setup_application(
+    app: &mut tauri::App,
+    artwork_assets: ArtworkAssetStore,
+) -> Result<(), Box<dyn Error>> {
     let now_ms = Utc::now().timestamp_millis();
     let paths = AppPaths::create(
         app.path().app_data_dir()?,
@@ -315,6 +318,7 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
         Arc::new(SystemPlaybackClock),
         process_sequence.clone(),
         PlaybackService::local_capabilities(),
+        artwork_assets,
     )
     .map_err(|_| io::Error::other("playback runtime unavailable"))?;
     let data_control_service = DataControlService::new(DataControlServiceDependencies {
@@ -469,8 +473,13 @@ fn static_capabilities() -> Result<CapabilitiesService, io::Error> {
 /// Returns a Tauri error when the desktop runtime cannot be initialized.
 pub fn run() -> tauri::Result<()> {
     let capabilities = static_capabilities()?;
+    let artwork_assets = ArtworkAssetStore::default();
+    let protocol_artwork_assets = artwork_assets.clone();
 
     tauri::Builder::default()
+        .register_uri_scheme_protocol("asset", move |_context, request| {
+            protocol_artwork_assets.protocol_response(&request)
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(
@@ -479,7 +488,7 @@ pub fn run() -> tauri::Result<()> {
                 .build(),
         )
         .manage(capabilities)
-        .setup(setup_application)
+        .setup(move |app| setup_application(app, artwork_assets.clone()))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event
                 && let Some(integrations) = window.try_state::<Arc<AppIntegrationService>>()

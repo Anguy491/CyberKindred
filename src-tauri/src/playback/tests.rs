@@ -231,6 +231,7 @@ fn harness(capabilities: SourceCapabilities) -> Harness {
         Arc::new(FixedClock),
         Arc::new(ProcessSequence::default()),
         capabilities,
+        ArtworkAssetStore::default(),
     )
     .expect("valid playback service");
     Harness {
@@ -256,6 +257,10 @@ fn system_snapshot() -> SystemMediaSnapshot {
         title: Some("真实标题".to_owned()),
         artist: Some("真实艺术家".to_owned()),
         album: None,
+        artwork_uri: Some(
+            "asset://artwork/system/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                .to_owned(),
+        ),
         position_ms: 7_000,
         duration_ms: Some(180_000),
     }
@@ -638,7 +643,12 @@ async fn system_media_source_maps_only_observed_fields_and_never_advertises_queu
     assert_eq!(track.title, "真实标题");
     assert_eq!(track.artist.as_deref(), Some("真实艺术家"));
     assert!(track.album.is_none());
-    assert!(track.artwork_uri.is_none());
+    assert_eq!(
+        track.artwork_uri.as_deref(),
+        Some(
+            "asset://artwork/system/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        )
+    );
     assert!(track.track_id.starts_with("system:"));
     assert!(!track.track_id.contains("真实标题"));
 

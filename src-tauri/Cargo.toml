@@ -47,6 +47,7 @@ windows = { workspace = true, features = [
     "ApplicationModel",
     "Management_Deployment",
     "Media_Control",
+    "Storage_Streams",
 ] }
 
 [dev-dependencies]

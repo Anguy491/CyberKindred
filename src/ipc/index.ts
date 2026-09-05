@@ -6,7 +6,7 @@ export {
   type PublicEventName,
   type ResyncReason,
 } from "./events";
-export type { IpcTransport, IpcUnlisten } from "./transport";
+export { resolveAssetUri, type IpcTransport, type IpcUnlisten } from "./transport";
 export type {
   ApiError,
   ApiErrorDetails,

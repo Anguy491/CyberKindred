@@ -19,7 +19,7 @@ use crate::{
     },
 };
 
-use super::{events::SharedPlaybackEventSink, service::PlaybackClock};
+use super::{artwork::ArtworkAssetStore, events::SharedPlaybackEventSink, service::PlaybackClock};
 
 pub(super) const APPLE_SOURCE_ID: &str = "apple_music";
 const APPLE_SOURCE_NAME: &str = "Apple Music Windows App";
@@ -53,6 +53,7 @@ pub struct SystemMediaSnapshot {
     pub title: Option<String>,
     pub artist: Option<String>,
     pub album: Option<String>,
+    pub artwork_uri: Option<String>,
     pub position_ms: u64,
     pub duration_ms: Option<u64>,
 }
@@ -140,8 +141,9 @@ impl SystemMediaSource {
         events: SharedPlaybackEventSink,
         clock: Arc<dyn PlaybackClock>,
         sequence: Arc<ProcessSequence>,
+        artwork: ArtworkAssetStore,
     ) -> Result<Self, ApiError> {
-        Self::new(production_backend(), events, clock, sequence)
+        Self::new(production_backend(artwork), events, clock, sequence)
     }
 
     pub(super) fn new(
@@ -590,9 +592,19 @@ fn track_from_snapshot(snapshot: &SystemMediaSnapshot) -> Option<PlaybackStateTr
         title: title.clone(),
         artist: snapshot.artist.clone(),
         album: snapshot.album.clone(),
-        artwork_uri: None,
+        artwork_uri: snapshot
+            .artwork_uri
+            .as_ref()
+            .filter(|uri| safe_artwork_uri(uri))
+            .cloned(),
         origin: PlaybackStateTrackOrigin::SystemSession,
     })
+}
+
+fn safe_artwork_uri(value: &str) -> bool {
+    value
+        .strip_prefix("asset://artwork/system/")
+        .is_some_and(|key| key.len() == 64 && key.bytes().all(|byte| byte.is_ascii_hexdigit()))
 }
 
 fn semantic_event_type(
@@ -625,12 +637,12 @@ fn map_error(error: SystemMediaError) -> ApiError {
 }
 
 #[cfg(windows)]
-fn production_backend() -> Box<dyn SystemMediaBackend> {
-    Box::new(windows_backend::WindowsSystemMediaBackend::new())
+fn production_backend(artwork: ArtworkAssetStore) -> Box<dyn SystemMediaBackend> {
+    Box::new(windows_backend::WindowsSystemMediaBackend::new(artwork))
 }
 
 #[cfg(not(windows))]
-fn production_backend() -> Box<dyn SystemMediaBackend> {
+fn production_backend(_artwork: ArtworkAssetStore) -> Box<dyn SystemMediaBackend> {
     Box::new(UnavailableSystemMediaBackend)
 }
 
@@ -659,9 +671,9 @@ mod windows_backend {
     use std::time::{Duration, Instant};
 
     use super::{
-        Arc, CapabilityName, PlaybackStateStatus, SourceCapabilities, SystemMediaBackend,
-        SystemMediaControl, SystemMediaError, SystemMediaEventSink, SystemMediaSnapshot, Uuid,
-        capability_for,
+        Arc, ArtworkAssetStore, CapabilityName, PlaybackStateStatus, SourceCapabilities,
+        SystemMediaBackend, SystemMediaControl, SystemMediaError, SystemMediaEventSink,
+        SystemMediaSnapshot, Uuid, capability_for,
     };
     use windows::{
         Foundation::TypedEventHandler,
@@ -673,6 +685,7 @@ mod windows_backend {
             MediaPropertiesChangedEventArgs, PlaybackInfoChangedEventArgs,
             SessionsChangedEventArgs, TimelinePropertiesChangedEventArgs,
         },
+        Storage::Streams::DataReader,
     };
 
     const APPLE_AUMID_PREFIX: &str = "AppleInc.AppleMusicWin_";
@@ -705,15 +718,17 @@ mod windows_backend {
         manager_token: Option<i64>,
         bound: Option<BoundSession>,
         sink: Option<Arc<dyn SystemMediaEventSink>>,
+        artwork: ArtworkAssetStore,
     }
 
     impl WindowsSystemMediaBackend {
-        pub(super) const fn new() -> Self {
+        pub(super) const fn new(artwork: ArtworkAssetStore) -> Self {
             Self {
                 manager: None,
                 manager_token: None,
                 bound: None,
                 sink: None,
+                artwork,
             }
         }
 
@@ -826,6 +841,7 @@ mod windows_backend {
                     .session
                     .RemoveTimelinePropertiesChanged(bound.timeline_token);
             }
+            self.artwork.clear();
         }
 
         fn reset_manager(&mut self) {
@@ -838,7 +854,7 @@ mod windows_backend {
 
         fn read_bound(&self) -> Result<SystemMediaSnapshot, SystemMediaError> {
             let bound = self.bound.as_ref().ok_or(SystemMediaError::Unavailable)?;
-            read_snapshot(&bound.session, &bound.identity)
+            read_snapshot(&bound.session, &bound.identity, &self.artwork)
         }
     }
 
@@ -874,7 +890,7 @@ mod windows_backend {
             if bound.identity != expected_identity || bound.session != session {
                 return Err(SystemMediaError::SessionChanged);
             }
-            let before = read_snapshot(&bound.session, &bound.identity)?;
+            let before = read_snapshot(&bound.session, &bound.identity, &self.artwork)?;
             let capability = capability_for(action);
             if !source_capability_enabled(before.capabilities, capability) {
                 return Err(SystemMediaError::CapabilityAbsent(capability));
@@ -919,6 +935,7 @@ mod windows_backend {
     fn read_snapshot(
         session: &Session,
         identity: &str,
+        artwork: &ArtworkAssetStore,
     ) -> Result<SystemMediaSnapshot, SystemMediaError> {
         let playback = session
             .GetPlaybackInfo()
@@ -961,6 +978,12 @@ mod windows_backend {
             .as_ref()
             .and_then(|value| value.AlbumTitle().ok())
             .and_then(|value| clean_text(&value.to_string_lossy()));
+        let artwork_uri = media
+            .as_ref()
+            .and_then(|value| read_artwork(value, artwork));
+        if artwork_uri.is_none() {
+            artwork.clear();
+        }
         let timeline = session.GetTimelineProperties().ok();
         let position_ms = timeline
             .as_ref()
@@ -978,9 +1001,29 @@ mod windows_backend {
             title,
             artist,
             album,
+            artwork_uri,
             position_ms,
             duration_ms,
         })
+    }
+
+    fn read_artwork(
+        media: &windows::Media::Control::GlobalSystemMediaTransportControlsSessionMediaProperties,
+        artwork: &ArtworkAssetStore,
+    ) -> Option<String> {
+        let stream = media.Thumbnail().ok()?.OpenReadAsync().ok()?.join().ok()?;
+        let size = usize::try_from(stream.Size().ok()?).ok()?;
+        if size == 0 || size > 5 * 1024 * 1024 {
+            return None;
+        }
+        let count = u32::try_from(size).ok()?;
+        let reader = DataReader::CreateDataReader(&stream).ok()?;
+        if reader.LoadAsync(count).ok()?.join().ok()? != count {
+            return None;
+        }
+        let mut bytes = vec![0; size];
+        reader.ReadBytes(&mut bytes).ok()?;
+        artwork.replace(bytes)
     }
 
     fn clean_text(value: &str) -> Option<String> {

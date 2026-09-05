@@ -1,6 +1,7 @@
 //! Serialized local playback and the API-016..023 command surface.
 
 mod actor;
+mod artwork;
 pub mod commands;
 mod dto;
 mod engine;
@@ -10,6 +11,7 @@ mod output;
 mod service;
 mod system_media;
 
+pub use artwork::ArtworkAssetStore;
 pub use dto::{
     ListMusicSourcesResponse, PlaybackControlRequest, SeekPlaybackRequest,
     SelectMusicSourceRequest, SelectMusicSourceResponse,

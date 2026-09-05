@@ -286,7 +286,9 @@ describe("[TASK-025] system media source events", () => {
       capabilities: apple.capabilities,
       currentTrack: {
         trackId: "system:0123456789abcdef0123456789abcdef", title: "Apple 测试曲目",
-        artist: null, album: null, artworkUri: null, origin: "system_session",
+        artist: null, album: null,
+        artworkUri: "asset://artwork/system/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        origin: "system_session",
       },
       positionMs: 1_000, durationMs: 10_000, revision: 1,
       updatedAt: "2026-09-03T01:00:01.000Z", lastError: null,
@@ -300,6 +302,8 @@ describe("[TASK-025] system media source events", () => {
     render(<RadioView ipc={test.ipc} />);
     await user.click(await screen.findByRole("button", { name: "Apple Music Windows App" }));
     expect(await screen.findByText(/COMPANION MODE/u)).not.toBeNull();
+    expect(screen.getByRole("img", { name: "Apple 测试曲目 封面" })
+      .getAttribute("src")).toBe(state.currentTrack?.artworkUri);
     await user.click(screen.getByRole("button", { name: "开始节目" }));
     expect(test.ipc.startProgram).toHaveBeenCalledWith("apple_music");
     expect(screen.queryByRole("heading", { name: /节目计划/u })).toBeNull();
