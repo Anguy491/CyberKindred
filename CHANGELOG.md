@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Release Steward |
-| Last Verified | 2026-09-03 |
+| Last Verified | 2026-09-05 |
 | Source of Truth For | 用户可感知变更与破坏性契约变更历史 |
 | Related Documents | `docs/operations/BUILD-RELEASE.md`, `docs/planning/BACKLOG.md` |
 
@@ -14,6 +14,7 @@
 
 ### Changed
 
+- Product Owner 于 2026-09-05 解除 post-M5 stop condition 并授权完成 M6；Roadmap 已将 M6 设为 Active，`TASK-025` 开始实施，`TASK-027`、`TASK-028` 进入 Ready。
 - Product Owner 已解除 post-M4 stop 并仅授权 M5；`TASK-023`–`TASK-024` 已按依赖完成，M5 checkpoint 以 `Passed with known gaps` 关闭，M6 按明确停止条件保持未激活。
 - 明确 M4 对话降级契约：Provider 不可用时保留用户原文并保存带 `local/deterministic` provenance 的固定可用性提示；该提示不是 AI 生成内容，不产生 Memory Proposal，也不自动重放付费请求。
 - 修复 `MemoryRecord.lastUsedAt`、proposal `expectedRevision` 与 SQLite 数据模型的基线不一致：前向 `V0003` 迁移新增 `memories.last_used_at_ms` 和 `memory_proposals.revision`；使用时间只在 approved memory 实际进入 Context 后写入，proposal 决策保持乐观并发。

@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Documentation Steward |
-| Last Verified | 2026-09-02 |
+| Last Verified | 2026-09-05 |
 | Source of Truth For | 项目入口与文档导航 |
 | Related Documents | `docs/INDEX.md`, `docs/product/PRD.md` |
 
@@ -14,7 +14,7 @@ CyberKindred 以本地曲库为可精确编排的主播放源，并可连接 App
 
 ## Current status
 
-**Documentation Baseline v1** 已于 2026-09-02 获用户批准。当前进入 M1 技术探针阶段，从 `TASK-001` 验证 Apple Music Windows App 的 GSMTC 会话能力；尚未创建产品运行代码。
+**Documentation Baseline v1** 已于 2026-09-02 获用户批准。M1–M5 已以 checkpoint 完成；Product Owner 于 2026-09-05 授权开启 M6 Apple Music companion mode。当前产品代码已包含 Windows Tauri 桌面外壳、本地曲库与电台、文字对话/记忆、手动城市天气和通知后确认开播的日程。
 
 ## Target
 

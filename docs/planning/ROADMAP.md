@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Product Owner / Lead Agent |
-| Last Verified | 2026-09-03 |
+| Last Verified | 2026-09-05 |
 | Source of Truth For | 里程碑顺序、依赖与阶段退出条件 |
 | Related Documents | `../product/PRD.md`, `BACKLOG.md`, `RISK-REGISTER.md`, `../testing/TEST-STRATEGY.md`, `../architecture/adr/ADR-0007-milestone-prototype-delivery.md` |
 
@@ -66,7 +66,7 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M5 — Context and proactive scheduling
 
-**Status:** Complete — `Passed with known gaps` on 2026-09-03; see [`M5 checkpoint`](../testing/checkpoints/M5.md). The revised candidate also passes the weather/schedule Windows desktop E2E after fixing scheduler runtime startup. Per Product Owner direction, stop after M5 and do not activate M6 without further authorization.
+**Status:** Complete — `Passed with known gaps` on 2026-09-03; see [`M5 checkpoint`](../testing/checkpoints/M5.md). The revised candidate also passes the weather/schedule Windows desktop E2E after fixing scheduler runtime startup. The Product Owner lifted the post-M5 stop condition and authorized M6 on 2026-09-05.
 
 **Goal:** 增加手动城市天气、日程与“通知后确认开播”；托盘和自启动随 M6 设置整合完成。
 
@@ -74,7 +74,7 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M6 — Apple Music companion mode
 
-**Status:** Inactive — not authorized. M5 completion does not activate M6 under the Product Owner's explicit stop condition.
+**Status:** Active — authorized by the Product Owner on 2026-09-05. `TASK-025` is claimed as `In Progress`; `TASK-027` and `TASK-028` are `Ready`, while `TASK-026` remains dependency-blocked until `TASK-025` completes.
 
 **Goal:** 在 capability 边界内连接 Apple Music Windows 系统媒体会话并插入安全串场。
 
