@@ -14,6 +14,7 @@
 
 ### Changed
 
+- M6 当前 checkpoint 如实记录为 `Blocked`：精确 candidate 的自动化构建/契约/Rust/React 检查通过，最终安全差异审查为 6 Medium、3 Low、零 Critical/High；真实 Apple Music Windows App 主路径仍待用户准备，且 Apple 切源授权、分类删除、Library Index 数据完整性与全部重置 quiescence 必须在 M6 修复，未自动激活 M7。
 - Apple Music 系统媒体读取改为显式选择门控：应用保持本地来源时不再启动 GSMTC discovery/轮询；只有用户点击 Apple 来源或“连接 / 重新检查会话”（以及恢复已保存的 Apple 默认来源）后才在本机绑定并监控，且仍不发送播放命令。
 - Apple 陪伴节目现在把会话失联持久化为 `paused`，可在该状态安全停止；只有原 Apple 会话重新出现且用户/外部 App 已使其进入播放状态后，陪伴监听才恢复为运行，过程中不发送播放命令。
 - 修复播放设置中的默认音乐源只保存但不生效：应用启动时静音选择已保存的 `local` 或 `apple_music` adapter；Apple 会话不可用时保留 disconnected 状态而不静默回退，并拒绝持久化未知来源 ID。

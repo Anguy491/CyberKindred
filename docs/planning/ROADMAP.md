@@ -74,7 +74,7 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M6 — Apple Music companion mode
 
-**Status:** Active — authorized by the Product Owner on 2026-09-05. `TASK-025` and implemented `TASK-026` await the real-session checkpoint path; `TASK-027` and `TASK-028` are `Done`.
+**Status:** Active — authorized by the Product Owner on 2026-09-05. The current [`M6 checkpoint`](../testing/checkpoints/M6.md) is `Blocked`: `TASK-025` and `TASK-026` await the real-session path, `TASK-027` is reopened for required security/data-lifecycle remediation, and `TASK-028` is `Done`. M7 is not activated.
 
 **Goal:** 在 capability 边界内连接 Apple Music Windows 系统媒体会话并插入安全串场。
 

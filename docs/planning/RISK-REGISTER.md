@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Lead Agent |
-| Last Verified | 2026-09-03 |
+| Last Verified | 2026-09-05 |
 | Source of Truth For | 已知项目风险、触发条件、缓解和关闭标准 |
 | Related Documents | `ROADMAP.md`, `../security/THREAT-MODEL.md`, `../integrations/EXTERNAL-INTEGRATIONS.md` |
 
@@ -30,6 +30,10 @@
 | RISK-016 | authoritative credential 生命周期语义冲突 | M | H | origin 切换实现误删仍需使用、但非当前选中的 credential，或 API-005 删除范围扩大 | API-004 已保留其他 canonical origin credential，API-005 精确删除指定 origin，full reset 语义保持全量删除；credential rollback、canary 与独立复审通过 | Product/Security | Closed |
 | RISK-017 | operation terminal event 无法在当前 Tauri bus/outbox 协议下证明 delivery exactly-once | M | H | emit 成功而 delivered 标记前崩溃会跨进程重放；先标记再 emit 则可能永久丢失 | 已实现权威 terminal exactly-one、transport at-least-once 与前端按 `operationId` 幂等；persist/emit/mark/recovery/replay/conflict 测试和独立复审通过 | Core/Product | Closed |
 | RISK-018 | model ID 保存前 capability probe 与 API-006/API-008 契约流程不相容 | M | M | model patch 未 probe 即持久化，或 probe 失败后出现部分设置写入 | API-008 已在 model 实际变化时以候选配置执行 60 秒 pre-save Responses probe；candidate usage 仅在设置事务成功时原子提升，失败保持全部设置/revision/status，timeout/no-call/restart 测试通过 | AI/Product | Closed |
+| RISK-019 | Apple 来源授权生命周期未随切源撤销 | H | M | 切回 Local 后仍轮询 Apple 会话，或 TTS 完成后恢复已不再是 active source 的旧会话 | 在 PlaybackService 与 SystemMediaActor 间增加可等待的 deactivate/source generation；切源清理观察状态并使旧 interruption token 失效；覆盖切源、TTS 完成和重新连接竞态 | Core/Security | Open |
+| RISK-020 | 分类删除不能精确清除派生/位置数据且 Library Index 删除可回滚 | H | H | 画像删除后偏好/位置仍生效、对话 hash 残留、天气 late write 重建缓存，或 retained segment 使 track 删除违反约束 | 按隐私分类建立完整 ownership/fence；在删除 tracks 前处理依赖 segment；为每类独立删除、late response 与原音乐哈希不变增加回归测试 | Data/Security | Open |
+| RISK-021 | 全部重置缺少所有副作用生产者的 quiescence barrier | M | H | reset 成功后仍有播放、Speech、provider、扫描、日程或通知任务运行/晚到 | 建立 fail-closed reset coordinator，按固定顺序取消并 await 全部 producer，再删除凭据、关闭存储和清理文件；无法证明静止则不报告成功 | Core/Data | Open |
+| RISK-022 | Apple AUMID、artwork decoder 与 WebView destructive IPC 的平台安全事实未证实 | M | M | 非 Apple 会话可匹配、压缩图片放大导致 WebView2 DoS，或未授权 renderer 可调用 API-037 | 在干净 Windows VM 使用 crafted GSMTC/image harness；执行全仓 renderer/capability review；在证实前保留严格边界且不扩大来源/协议/命令权限 | Security/QA | Open |
 
 ## M1 observations
 
@@ -43,3 +47,9 @@
 - The 2026-09-02 blocked result remains recorded in [`M2.md`](../testing/checkpoints/M2.md), followed by the 2026-09-03 final `Passed with known gaps` checkpoint. `RISK-015` is closed: the WebdriverIO tree was removed, the full npm audit is clean, and isolated Windows desktop onboarding/navigation smokes passed with matching signed EdgeDriver. Product Owner resolved the three public semantics; `TASK-008` hermetic suites and independent read-only review closed `RISK-016`–`RISK-018`. M3 subsequently completed with `Passed with known gaps`; its remaining non-hard-gate risks and mitigations are preserved in [`M3.md`](../testing/checkpoints/M3.md), and M4 is intentionally inactive.
 - The provider worktree persists API-009 acceptance before spawning, atomically converts accepted operations to one authoritative terminal, recovers bounded batches without a 100-row tail, expires delivered/undelivered outbox records at 24-hour/7-day boundaries, and serializes credential mutations. The approved contract now truthfully declares at-least-once transport and requires frontend `operationId` dedupe.
 - The model-setting remediation uses the existing fixed hermetic Responses probe (`store:false`, no tools, strict JSON Schema, `reasoning.effort=none`) before saving an actually changed model ID, with a 60-second API-008 path and atomic patch failure. No real provider request is authorized or required for the default suite.
+
+## M6 observations
+
+- `RISK-019`–`RISK-021` are active M6 blockers from sealed scan `628d9567-ff70-4332-ab6a-5ff8e23a41cc`: the scan contains no Critical/High finding, but it proves stricter user-intent, data-integrity and privacy-lifecycle gates are not yet satisfied.
+- `RISK-022` preserves three deferred platform questions without promoting them to verified vulnerabilities: AUMID publication authority, WebView2 image-decoder bounds and a concrete unauthorized renderer path to API-037.
+- The real Apple Music Windows App checkpoint remains `waiting for user`; hermetic source/session tests do not substitute for `TEST-APL-001/002/004` on the product candidate.
