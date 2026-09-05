@@ -8,6 +8,7 @@ mod events;
 mod idempotency;
 mod output;
 mod service;
+mod system_media;
 
 pub use dto::{
     ListMusicSourcesResponse, PlaybackControlRequest, SeekPlaybackRequest,

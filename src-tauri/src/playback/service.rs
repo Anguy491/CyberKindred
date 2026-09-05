@@ -1,4 +1,7 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use chrono::{SecondsFormat, Utc};
 use tokio::sync::{mpsc, oneshot};
@@ -6,8 +9,8 @@ use tokio::sync::{mpsc, oneshot};
 use crate::{
     contracts::PlaybackState,
     ipc::{
-        ApiError, EmptyRequest, ProcessSequence, SourceCapabilities, SourceKind, SourceSummary,
-        canonical_request_hash,
+        ApiError, EmptyRequest, InternalReason, ProcessSequence, SourceCapabilities, SourceKind,
+        SourceSummary, canonical_request_hash,
     },
 };
 
@@ -22,7 +25,11 @@ use super::{
     },
     events::SharedPlaybackEventSink,
     idempotency::AsyncIdempotency,
+    system_media::{APPLE_SOURCE_ID, SystemMediaControl, SystemMediaSource},
 };
+
+#[cfg(test)]
+use super::system_media::SystemMediaBackend;
 
 const STANDARD_RETENTION: Duration = Duration::from_mins(10);
 const MEDIA_RETENTION: Duration = Duration::from_secs(30);
@@ -47,6 +54,21 @@ struct PlaybackClient {
     sender: mpsc::Sender<ActorMessage>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ActiveSource {
+    Local,
+    System,
+}
+
+#[derive(Clone, Copy)]
+enum ControlAction {
+    Play,
+    Pause,
+    Seek(u64),
+    Next,
+    Previous,
+}
+
 impl Drop for PlaybackClient {
     fn drop(&mut self) {
         let (response, _receiver) = oneshot::channel();
@@ -56,8 +78,10 @@ impl Drop for PlaybackClient {
 
 #[derive(Clone)]
 pub struct PlaybackService {
-    client: Arc<PlaybackClient>,
-    source: SourceSummary,
+    local_client: Arc<PlaybackClient>,
+    local_source: SourceSummary,
+    system_source: SystemMediaSource,
+    active_source: Arc<Mutex<ActiveSource>>,
     select_requests: Arc<AsyncIdempotency<SelectMusicSourceResponse>>,
     control_requests: Arc<AsyncIdempotency<PlaybackState>>,
 }
@@ -77,12 +101,64 @@ impl PlaybackService {
         sequence: Arc<ProcessSequence>,
         capabilities: SourceCapabilities,
     ) -> Result<Self, ApiError> {
+        let system_source = SystemMediaSource::production(
+            Arc::clone(&events),
+            Arc::clone(&clock),
+            Arc::clone(&sequence),
+        )?;
+        Self::new_with_system_source(
+            resolver,
+            engine,
+            events,
+            clock,
+            sequence,
+            capabilities,
+            system_source,
+        )
+    }
+
+    #[cfg(test)]
+    pub(super) fn new_with_system_backend(
+        resolver: Arc<dyn LocalTrackResolver>,
+        engine: Box<dyn LocalAudioEngine>,
+        events: SharedPlaybackEventSink,
+        clock: Arc<dyn PlaybackClock>,
+        sequence: Arc<ProcessSequence>,
+        capabilities: SourceCapabilities,
+        backend: Box<dyn SystemMediaBackend>,
+    ) -> Result<Self, ApiError> {
+        let system_source = SystemMediaSource::new(
+            backend,
+            Arc::clone(&events),
+            Arc::clone(&clock),
+            Arc::clone(&sequence),
+        )?;
+        Self::new_with_system_source(
+            resolver,
+            engine,
+            events,
+            clock,
+            sequence,
+            capabilities,
+            system_source,
+        )
+    }
+
+    fn new_with_system_source(
+        resolver: Arc<dyn LocalTrackResolver>,
+        engine: Box<dyn LocalAudioEngine>,
+        events: SharedPlaybackEventSink,
+        clock: Arc<dyn PlaybackClock>,
+        sequence: Arc<ProcessSequence>,
+        capabilities: SourceCapabilities,
+        system_source: SystemMediaSource,
+    ) -> Result<Self, ApiError> {
         if !capabilities.set_queue {
             return Err(crate::ipc::ApiError::from_reason(
                 crate::ipc::InternalReason::RequestInvalid,
             ));
         }
-        let source = SourceSummary::new(
+        let local_source = SourceSummary::new(
             LOCAL_SOURCE_ID,
             SourceKind::Local,
             LOCAL_SOURCE_NAME,
@@ -90,7 +166,7 @@ impl PlaybackService {
             capabilities,
         )?;
         let sender = spawn_actor(
-            source.source_id.clone(),
+            local_source.source_id.clone(),
             capabilities,
             resolver,
             engine,
@@ -99,8 +175,10 @@ impl PlaybackService {
             sequence,
         )?;
         Ok(Self {
-            client: Arc::new(PlaybackClient { sender }),
-            source,
+            local_client: Arc::new(PlaybackClient { sender }),
+            local_source,
+            system_source,
+            active_source: Arc::new(Mutex::new(ActiveSource::Local)),
             select_requests: Arc::new(AsyncIdempotency::new(IDEMPOTENCY_CAPACITY)),
             control_requests: Arc::new(AsyncIdempotency::new(IDEMPOTENCY_CAPACITY)),
         })
@@ -122,7 +200,7 @@ impl PlaybackService {
     #[must_use]
     pub fn list_music_sources(&self, _request: EmptyRequest) -> ListMusicSourcesResponse {
         ListMusicSourcesResponse {
-            sources: vec![self.source.clone()],
+            sources: vec![self.local_source.clone(), self.system_source.summary()],
         }
     }
 
@@ -144,12 +222,26 @@ impl PlaybackService {
                 hash,
                 STANDARD_RETENTION,
                 || async {
-                    let state = self
-                        .request_state(|response| ActorMessage::SelectSource {
-                            source_id: request.source_id,
-                            response,
-                        })
-                        .await?;
+                    let state = match request.source_id.as_str() {
+                        LOCAL_SOURCE_ID => {
+                            let state = self
+                                .request_local_state(|response| ActorMessage::SelectSource {
+                                    source_id: request.source_id,
+                                    response,
+                                })
+                                .await?;
+                            self.set_active(ActiveSource::Local)?;
+                            state
+                        }
+                        APPLE_SOURCE_ID => {
+                            let state = self.system_source.select().await?;
+                            self.set_active(ActiveSource::System)?;
+                            state
+                        }
+                        _ => {
+                            return Err(ApiError::from_reason(InternalReason::SourceUnavailable));
+                        }
+                    };
                     Ok(SelectMusicSourceResponse { request_id, state })
                 },
             )
@@ -165,8 +257,13 @@ impl PlaybackService {
         &self,
         _request: EmptyRequest,
     ) -> Result<PlaybackState, ApiError> {
-        self.request_state(|response| ActorMessage::GetState { response })
-            .await
+        match self.active()? {
+            ActiveSource::Local => {
+                self.request_local_state(|response| ActorMessage::GetState { response })
+                    .await
+            }
+            ActiveSource::System => self.system_source.get_state().await,
+        }
     }
 
     /// API-019.
@@ -175,16 +272,8 @@ impl PlaybackService {
     ///
     /// Returns a safe validation, revision, capability, source, or actor error.
     pub async fn play(&self, request: PlaybackControlRequest) -> Result<PlaybackState, ApiError> {
-        self.control(
-            "api_v1_play",
-            request.client_request_id,
-            &request,
-            |response| ActorMessage::Play {
-                expected_revision: request.expected_state_revision,
-                response,
-            },
-        )
-        .await
+        self.control_active("api_v1_play", &request, ControlAction::Play)
+            .await
     }
 
     /// API-020.
@@ -193,16 +282,8 @@ impl PlaybackService {
     ///
     /// Returns a safe validation, revision, capability, source, or actor error.
     pub async fn pause(&self, request: PlaybackControlRequest) -> Result<PlaybackState, ApiError> {
-        self.control(
-            "api_v1_pause",
-            request.client_request_id,
-            &request,
-            |response| ActorMessage::Pause {
-                expected_revision: request.expected_state_revision,
-                response,
-            },
-        )
-        .await
+        self.control_active("api_v1_pause", &request, ControlAction::Pause)
+            .await
     }
 
     /// API-021.
@@ -211,15 +292,10 @@ impl PlaybackService {
     ///
     /// Returns a safe validation, revision, capability, source, or actor error.
     pub async fn seek(&self, request: SeekPlaybackRequest) -> Result<PlaybackState, ApiError> {
-        self.control(
+        self.control_active(
             "api_v1_seek",
-            request.client_request_id,
             &request,
-            |response| ActorMessage::Seek {
-                expected_revision: request.expected_state_revision,
-                position_ms: request.position_ms,
-                response,
-            },
+            ControlAction::Seek(request.position_ms),
         )
         .await
     }
@@ -230,16 +306,8 @@ impl PlaybackService {
     ///
     /// Returns a safe validation, revision, capability, source, or actor error.
     pub async fn next(&self, request: PlaybackControlRequest) -> Result<PlaybackState, ApiError> {
-        self.control(
-            "api_v1_next",
-            request.client_request_id,
-            &request,
-            |response| ActorMessage::Next {
-                expected_revision: request.expected_state_revision,
-                response,
-            },
-        )
-        .await
+        self.control_active("api_v1_next", &request, ControlAction::Next)
+            .await
     }
 
     /// API-023.
@@ -251,16 +319,8 @@ impl PlaybackService {
         &self,
         request: PlaybackControlRequest,
     ) -> Result<PlaybackState, ApiError> {
-        self.control(
-            "api_v1_previous",
-            request.client_request_id,
-            &request,
-            |response| ActorMessage::Previous {
-                expected_revision: request.expected_state_revision,
-                response,
-            },
-        )
-        .await
+        self.control_active("api_v1_previous", &request, ControlAction::Previous)
+            .await
     }
 
     /// Internal local-source queue activation for the program runner. Passing
@@ -275,7 +335,8 @@ impl PlaybackService {
         track_ids: Vec<String>,
         authorization: Option<PlaybackStartAuthorization>,
     ) -> Result<PlaybackState, ApiError> {
-        self.request_state(|response| ActorMessage::SetQueue {
+        self.set_active(ActiveSource::Local)?;
+        self.request_local_state(|response| ActorMessage::SetQueue {
             track_ids,
             authorization,
             response,
@@ -290,7 +351,7 @@ impl PlaybackService {
     /// Returns an actor-availability error. Stale session events are accepted
     /// as no-ops by the actor.
     pub async fn handle_engine_event(&self, event: LocalAudioEngineEvent) -> Result<(), ApiError> {
-        self.client
+        self.local_client
             .sender
             .send(ActorMessage::EngineEvent(event))
             .await
@@ -303,7 +364,7 @@ impl PlaybackService {
     ///
     /// Returns a safe media, output, or actor-availability error.
     pub async fn prepare_suspend(&self) -> Result<PlaybackState, ApiError> {
-        self.request_state(|response| ActorMessage::Suspend { response })
+        self.request_local_state(|response| ActorMessage::Suspend { response })
             .await
     }
 
@@ -313,7 +374,7 @@ impl PlaybackService {
     ///
     /// Returns a safe source, media, output, or actor-availability error.
     pub async fn resume_silent(&self) -> Result<PlaybackState, ApiError> {
-        self.request_state(|response| ActorMessage::ResumeSilent { response })
+        self.request_local_state(|response| ActorMessage::ResumeSilent { response })
             .await
     }
 
@@ -323,7 +384,7 @@ impl PlaybackService {
     ///
     /// Returns a safe actor-availability error.
     pub async fn stop_local(&self) -> Result<PlaybackState, ApiError> {
-        self.request_state(|response| ActorMessage::Stop { response })
+        self.request_local_state(|response| ActorMessage::Stop { response })
             .await
     }
 
@@ -334,7 +395,7 @@ impl PlaybackService {
     /// Returns a safe actor-availability error.
     pub async fn shutdown(&self) -> Result<(), ApiError> {
         let (response, receiver) = oneshot::channel();
-        self.client
+        self.local_client
             .sender
             .send(ActorMessage::Shutdown { response })
             .await
@@ -342,35 +403,131 @@ impl PlaybackService {
         receiver.await.map_err(|_| ApiError::unexpected())
     }
 
-    async fn control<R, F>(
+    async fn control_active<R>(
         &self,
         command: &'static str,
-        request_id: uuid::Uuid,
         request: &R,
-        message: F,
+        action: ControlAction,
     ) -> Result<PlaybackState, ApiError>
     where
-        R: serde::Serialize,
-        F: FnOnce(oneshot::Sender<Result<PlaybackState, ApiError>>) -> ActorMessage,
+        R: serde::Serialize + ControlRequest,
     {
         let hash = canonical_request_hash(request)?;
         self.control_requests
-            .execute(command, request_id, hash, MEDIA_RETENTION, || async {
-                self.request_state(message).await
-            })
+            .execute(
+                command,
+                request.request_id(),
+                hash,
+                MEDIA_RETENTION,
+                || async {
+                    match self.active()? {
+                        ActiveSource::Local => {
+                            self.control_local(request.expected_revision(), action)
+                                .await
+                        }
+                        ActiveSource::System => {
+                            self.system_source
+                                .control(request.expected_revision(), system_action(action))
+                                .await
+                        }
+                    }
+                },
+            )
             .await
     }
 
-    async fn request_state<F>(&self, message: F) -> Result<PlaybackState, ApiError>
+    async fn control_local(
+        &self,
+        expected_revision: u64,
+        action: ControlAction,
+    ) -> Result<PlaybackState, ApiError> {
+        self.request_local_state(|response| match action {
+            ControlAction::Play => ActorMessage::Play {
+                expected_revision,
+                response,
+            },
+            ControlAction::Pause => ActorMessage::Pause {
+                expected_revision,
+                response,
+            },
+            ControlAction::Seek(position_ms) => ActorMessage::Seek {
+                expected_revision,
+                position_ms,
+                response,
+            },
+            ControlAction::Next => ActorMessage::Next {
+                expected_revision,
+                response,
+            },
+            ControlAction::Previous => ActorMessage::Previous {
+                expected_revision,
+                response,
+            },
+        })
+        .await
+    }
+
+    fn active(&self) -> Result<ActiveSource, ApiError> {
+        self.active_source
+            .lock()
+            .map(|active| *active)
+            .map_err(|_| ApiError::unexpected())
+    }
+
+    fn set_active(&self, source: ActiveSource) -> Result<(), ApiError> {
+        let mut active = self
+            .active_source
+            .lock()
+            .map_err(|_| ApiError::unexpected())?;
+        *active = source;
+        Ok(())
+    }
+
+    async fn request_local_state<F>(&self, message: F) -> Result<PlaybackState, ApiError>
     where
         F: FnOnce(oneshot::Sender<Result<PlaybackState, ApiError>>) -> ActorMessage,
     {
         let (response, receiver) = oneshot::channel();
-        self.client
+        self.local_client
             .sender
             .send(message(response))
             .await
             .map_err(|_| ApiError::unexpected())?;
         receiver.await.map_err(|_| ApiError::unexpected())?
+    }
+}
+
+trait ControlRequest {
+    fn request_id(&self) -> uuid::Uuid;
+    fn expected_revision(&self) -> u64;
+}
+
+impl ControlRequest for PlaybackControlRequest {
+    fn request_id(&self) -> uuid::Uuid {
+        self.client_request_id
+    }
+
+    fn expected_revision(&self) -> u64 {
+        self.expected_state_revision
+    }
+}
+
+impl ControlRequest for SeekPlaybackRequest {
+    fn request_id(&self) -> uuid::Uuid {
+        self.client_request_id
+    }
+
+    fn expected_revision(&self) -> u64 {
+        self.expected_state_revision
+    }
+}
+
+const fn system_action(action: ControlAction) -> SystemMediaControl {
+    match action {
+        ControlAction::Play => SystemMediaControl::Play,
+        ControlAction::Pause => SystemMediaControl::Pause,
+        ControlAction::Seek(position_ms) => SystemMediaControl::Seek(position_ms),
+        ControlAction::Next => SystemMediaControl::Next,
+        ControlAction::Previous => SystemMediaControl::Previous,
     }
 }

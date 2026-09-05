@@ -60,7 +60,17 @@ export function RadioView({
 
   const receive = useCallback((event: RadioEvent) => {
     if (event.type === "playback") {
-      if (event.payload.state !== null) setPlayback(event.payload.state);
+      if (event.payload.state !== null) {
+        const state = event.payload.state;
+        setSources((current) => current.map((source) => source.sourceId === state.sourceId ? {
+          ...source,
+          connected: state.status !== "disconnected",
+          capabilities: state.capabilities,
+        } : source));
+        setPlayback((current) => current === null || current.sourceId === state.sourceId
+          ? state
+          : current);
+      }
       return;
     }
     if (event.type === "program-state") {

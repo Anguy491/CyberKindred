@@ -45,12 +45,12 @@ function id(index: number): string {
   return `018f47c0-8b8b-7c35-8bf7-${String(index).padStart(12, "0")}`;
 }
 
-function fixture(local = source()) {
+function fixture(local = source(), additionalSources: ReadonlyArray<SourceSummary> = []) {
   let handler: ((event: RadioEvent) => void) | undefined;
   let refresh: (() => Promise<void>) | undefined;
   let currentPlayback = playback();
   const ipc: RadioIpc = {
-    listMusicSources: vi.fn(async () => ({ sources: [local] })),
+    listMusicSources: vi.fn(async () => ({ sources: [local, ...additionalSources] })),
     getPlaybackState: vi.fn(async () => currentPlayback),
     selectMusicSource: vi.fn(async () => ({ requestId: id(100), state: currentPlayback })),
     startProgram: vi.fn(async () => ({ requestId: id(101), programId: PROGRAM_ID, plan: plan() })),
@@ -240,5 +240,37 @@ describe("[TASK-019] local radio view", () => {
     await user.click(screen.getByRole("button", { name: "少说一点" }));
     expect(test.ipc.submitFeedback).toHaveBeenCalledWith(PROGRAM_ID, null, "less_talk");
     expect(await screen.findByText(/每 4–6 首至多一次串场/u)).not.toBeNull();
+  });
+});
+
+describe("[TASK-025] system media source events", () => {
+  // FR-APL-001/002; NFR-REL-004.
+  it("updates source availability without replacing the active source snapshot", async () => {
+    const apple: SourceSummary = {
+      sourceId: "apple_music", kind: "system_session", displayName: "Apple Music / Windows App",
+      connected: false,
+      capabilities: { play: false, pause: false, seek: false, next: false, previous: false, setQueue: false },
+    };
+    const test = fixture(source(), [apple]);
+    render(<RadioView ipc={test.ipc} />);
+    await screen.findByRole("heading", { name: "今天想听什么状态？" });
+    test.emit({ type: "playback", payload: {
+      schemaVersion: "1.0.0", eventId: id(140), sequence: 2, type: "track_changed",
+      occurredAt: "2026-09-03T01:00:01.000Z", sourceId: "apple_music", stateRevision: 1,
+      reason: "adapter_update", state: {
+        schemaVersion: "1.0.0", sourceId: "apple_music", sourceKind: "system_session",
+        status: "playing",
+        capabilities: { play: true, pause: true, seek: false, next: true, previous: true, setQueue: false },
+        currentTrack: {
+          trackId: "system:0123456789abcdef0123456789abcdef", title: "Apple 测试曲目",
+          artist: null, album: null, artworkUri: null, origin: "system_session",
+        },
+        positionMs: 1_000, durationMs: 10_000, revision: 1,
+        updatedAt: "2026-09-03T01:00:01.000Z", lastError: null,
+      },
+    } });
+    expect(screen.getByRole("heading", { name: "今天想听什么状态？" })).not.toBeNull();
+    const appleButton = screen.getByRole("button", { name: "Apple Music / Windows App" });
+    expect(appleButton.getAttribute("aria-disabled")).not.toBe("true");
   });
 });

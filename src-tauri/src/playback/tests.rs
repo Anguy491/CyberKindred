@@ -10,7 +10,12 @@ use uuid::Uuid;
 use super::*;
 use crate::{
     contracts::{ContractRegistry, PlaybackEvent, PlaybackStateStatus},
-    ipc::{EmptyRequest, ErrorId, ProcessSequence, SourceCapabilities},
+    ipc::{CapabilityName, EmptyRequest, ErrorId, ProcessSequence, SourceCapabilities},
+};
+
+use super::system_media::{
+    SystemMediaBackend, SystemMediaControl, SystemMediaError, SystemMediaEventSink,
+    SystemMediaSnapshot,
 };
 
 #[derive(Default)]
@@ -144,6 +149,67 @@ struct Harness {
     _temp: tempfile::TempDir,
 }
 
+struct FakeSystemState {
+    available: bool,
+    snapshot: SystemMediaSnapshot,
+    controls: Vec<SystemMediaControl>,
+    sink: Option<Arc<dyn SystemMediaEventSink>>,
+}
+
+struct FakeSystemBackend(Arc<Mutex<FakeSystemState>>);
+
+impl SystemMediaBackend for FakeSystemBackend {
+    fn set_event_sink(&mut self, sink: Arc<dyn SystemMediaEventSink>) {
+        if let Ok(mut state) = self.0.lock() {
+            state.sink = Some(sink);
+        }
+    }
+
+    fn refresh(&mut self) -> Result<SystemMediaSnapshot, SystemMediaError> {
+        let state = self.0.lock().map_err(|_| SystemMediaError::Unavailable)?;
+        if state.available {
+            Ok(state.snapshot.clone())
+        } else {
+            Err(SystemMediaError::Unavailable)
+        }
+    }
+
+    fn control(
+        &mut self,
+        expected_identity: &str,
+        action: SystemMediaControl,
+    ) -> Result<SystemMediaSnapshot, SystemMediaError> {
+        let mut state = self.0.lock().map_err(|_| SystemMediaError::Unavailable)?;
+        if !state.available {
+            return Err(SystemMediaError::Unavailable);
+        }
+        if state.snapshot.identity != expected_identity {
+            return Err(SystemMediaError::SessionChanged);
+        }
+        let (enabled, capability) = match action {
+            SystemMediaControl::Play => (state.snapshot.capabilities.play, CapabilityName::Play),
+            SystemMediaControl::Pause => (state.snapshot.capabilities.pause, CapabilityName::Pause),
+            SystemMediaControl::Seek(_) => (state.snapshot.capabilities.seek, CapabilityName::Seek),
+            SystemMediaControl::Next => (state.snapshot.capabilities.next, CapabilityName::Next),
+            SystemMediaControl::Previous => (
+                state.snapshot.capabilities.previous,
+                CapabilityName::Previous,
+            ),
+        };
+        if !enabled {
+            return Err(SystemMediaError::CapabilityAbsent(capability));
+        }
+        state.controls.push(action);
+        match action {
+            SystemMediaControl::Play => state.snapshot.status = PlaybackStateStatus::Playing,
+            SystemMediaControl::Pause => state.snapshot.status = PlaybackStateStatus::Paused,
+            SystemMediaControl::Seek(position_ms) => state.snapshot.position_ms = position_ms,
+            SystemMediaControl::Next | SystemMediaControl::Previous => {}
+        }
+        Ok(state.snapshot.clone())
+    }
+}
+
 fn harness(capabilities: SourceCapabilities) -> Harness {
     let temp = tempfile::tempdir().expect("temporary playback root");
     let first = track(temp.path().join("first.wav"), "track-1", "第一首", 60_000);
@@ -173,6 +239,60 @@ fn harness(capabilities: SourceCapabilities) -> Harness {
         events,
         _temp: temp,
     }
+}
+
+fn system_snapshot() -> SystemMediaSnapshot {
+    SystemMediaSnapshot {
+        identity: "bound-session-a".to_owned(),
+        status: PlaybackStateStatus::Paused,
+        capabilities: SourceCapabilities {
+            play: true,
+            pause: true,
+            seek: false,
+            next: true,
+            previous: true,
+            set_queue: false,
+        },
+        title: Some("真实标题".to_owned()),
+        artist: Some("真实艺术家".to_owned()),
+        album: None,
+        position_ms: 7_000,
+        duration_ms: Some(180_000),
+    }
+}
+
+fn system_harness() -> (Harness, Arc<Mutex<FakeSystemState>>) {
+    let temp = tempfile::tempdir().expect("temporary playback root");
+    let resolver = Arc::new(FakeResolver {
+        tracks: HashMap::new(),
+    });
+    let engine = Arc::new(Mutex::new(FakeEngineState::default()));
+    let events = Arc::new(FakeEventSink::default());
+    let system = Arc::new(Mutex::new(FakeSystemState {
+        available: true,
+        snapshot: system_snapshot(),
+        controls: Vec::new(),
+        sink: None,
+    }));
+    let service = PlaybackService::new_with_system_backend(
+        resolver,
+        Box::new(FakeEngine(Arc::clone(&engine))),
+        events.clone(),
+        Arc::new(FixedClock),
+        Arc::new(ProcessSequence::default()),
+        PlaybackService::local_capabilities(),
+        Box::new(FakeSystemBackend(Arc::clone(&system))),
+    )
+    .expect("playback service with fake system source");
+    (
+        Harness {
+            service,
+            engine,
+            events,
+            _temp: temp,
+        },
+        system,
+    )
 }
 
 fn track(path: PathBuf, id: &str, title: &str, duration_ms: u64) -> LocalTrack {
@@ -492,4 +612,111 @@ async fn playback_actor_emits_schema_valid_monotonic_at_most_once_events_without
         assert!(!encoded.contains(":\\"));
         assert!(!encoded.contains("private"));
     }
+}
+
+#[tokio::test]
+async fn system_media_source_maps_only_observed_fields_and_never_advertises_queue_control() {
+    let (harness, _) = system_harness();
+    let selected = harness
+        .service
+        .select_music_source(SelectMusicSourceRequest {
+            client_request_id: Uuid::now_v7(),
+            source_id: "apple_music".to_owned(),
+        })
+        .await
+        .expect("system source selected")
+        .state;
+    assert_eq!(
+        selected.source_kind,
+        crate::contracts::PlaybackStateSourceKind::SystemSession
+    );
+    assert_eq!(selected.status, PlaybackStateStatus::Paused);
+    assert!(!selected.capabilities.set_queue);
+    let track = selected
+        .current_track
+        .expect("observed title creates track");
+    assert_eq!(track.title, "真实标题");
+    assert_eq!(track.artist.as_deref(), Some("真实艺术家"));
+    assert!(track.album.is_none());
+    assert!(track.artwork_uri.is_none());
+    assert!(track.track_id.starts_with("system:"));
+    assert!(!track.track_id.contains("真实标题"));
+
+    let sources = harness.service.list_music_sources(EmptyRequest {}).sources;
+    let apple = sources
+        .iter()
+        .find(|source| source.source_id == "apple_music")
+        .expect("Apple source summary");
+    assert!(apple.connected);
+    assert!(!apple.capabilities.set_queue);
+}
+
+#[tokio::test]
+async fn system_media_source_rechecks_capability_before_control_and_refreshes_failure_state() {
+    let (harness, system) = system_harness();
+    let selected = harness
+        .service
+        .select_music_source(SelectMusicSourceRequest {
+            client_request_id: Uuid::now_v7(),
+            source_id: "apple_music".to_owned(),
+        })
+        .await
+        .expect("system source selected")
+        .state;
+    system
+        .lock()
+        .expect("system state")
+        .snapshot
+        .capabilities
+        .next = false;
+    let error = harness
+        .service
+        .next(control(selected.revision))
+        .await
+        .expect_err("fresh capability blocks control");
+    assert_eq!(error.error_id, ErrorId::CapabilityUnsupported);
+    let state = harness
+        .service
+        .get_playback_state(EmptyRequest {})
+        .await
+        .expect("refreshed state");
+    assert!(!state.capabilities.next);
+    assert!(system.lock().expect("system state").controls.is_empty());
+}
+
+#[tokio::test]
+async fn system_media_source_rejects_replaced_session_and_disconnects_without_fighting_user() {
+    let (harness, system) = system_harness();
+    let selected = harness
+        .service
+        .select_music_source(SelectMusicSourceRequest {
+            client_request_id: Uuid::now_v7(),
+            source_id: "apple_music".to_owned(),
+        })
+        .await
+        .expect("system source selected")
+        .state;
+    system.lock().expect("system state").snapshot.identity = "bound-session-b".to_owned();
+    let error = harness
+        .service
+        .play(control(selected.revision))
+        .await
+        .expect_err("stale session control rejected");
+    assert_eq!(error.error_id, ErrorId::MediaSessionChanged);
+    assert!(system.lock().expect("system state").controls.is_empty());
+
+    let sink = {
+        let mut state = system.lock().expect("system state");
+        state.available = false;
+        state.sink.clone().expect("event sink")
+    };
+    sink.changed();
+    let disconnected = harness
+        .service
+        .get_playback_state(EmptyRequest {})
+        .await
+        .expect("disconnected snapshot");
+    assert_eq!(disconnected.status, PlaybackStateStatus::Disconnected);
+    assert!(disconnected.current_track.is_none());
+    assert!(!disconnected.capabilities.play);
 }

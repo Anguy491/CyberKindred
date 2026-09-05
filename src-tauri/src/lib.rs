@@ -26,7 +26,7 @@ use chrono::Utc;
 use diagnostics::{DiagnosticEvent, DiagnosticLog, ValidatedLogDirectory};
 use ipc::{
     ApiError, AppCapabilities, CapabilitiesService, EmptyRequest, ProcessSequence,
-    parse_command_request,
+    SourceCapabilities, SourceKind, SourceSummary, parse_command_request,
 };
 use library::{
     LibraryRootService, SystemLibraryRootClock, TauriLibraryRootPicker, TrackCatalogService,
@@ -378,14 +378,43 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Starts the desktop shell with the M2 storage and read-only IPC foundation.
+/// Starts the desktop shell with the approved local and Windows system-session sources.
 ///
 /// # Errors
 ///
 /// Returns a Tauri error when the desktop runtime cannot be initialized.
 pub fn run() -> tauri::Result<()> {
-    let capabilities = CapabilitiesService::foundation(env!("CARGO_PKG_VERSION"), "Windows")
-        .map_err(|_| io::Error::other("invalid static capability snapshot"))?;
+    let local_source = SourceSummary::new(
+        "local",
+        SourceKind::Local,
+        "本地曲库",
+        true,
+        PlaybackService::local_capabilities(),
+    )
+    .map_err(|_| io::Error::other("invalid local capability snapshot"))?;
+    let apple_source = SourceSummary::new(
+        "apple_music",
+        SourceKind::SystemSession,
+        "Apple Music / Windows App",
+        false,
+        SourceCapabilities {
+            play: false,
+            pause: false,
+            seek: false,
+            next: false,
+            previous: false,
+            set_queue: false,
+        },
+    )
+    .map_err(|_| io::Error::other("invalid system capability snapshot"))?;
+    let capabilities = CapabilitiesService::new(
+        env!("CARGO_PKG_VERSION"),
+        "Windows",
+        true,
+        vec![local_source, apple_source],
+        Vec::new(),
+    )
+    .map_err(|_| io::Error::other("invalid static capability snapshot"))?;
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
