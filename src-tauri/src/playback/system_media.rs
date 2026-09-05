@@ -691,6 +691,8 @@ mod windows_backend {
     const APPLE_AUMID_PREFIX: &str = "AppleInc.AppleMusicWin_";
     const APPLE_AUMID_SUFFIX: &str = "!App";
     const TICKS_PER_MILLISECOND: i64 = 10_000;
+    const MAX_PUBLIC_MEDIA_TEXT_CHARS: usize = 300;
+    const MAX_PUBLIC_TIMELINE_MS: u64 = 86_400_000;
     const CONTROL_CONFIRMATION_TIMEOUT: Duration = Duration::from_secs(2);
     const CONTROL_CONFIRMATION_POLL: Duration = Duration::from_millis(50);
 
@@ -988,11 +990,14 @@ mod windows_backend {
         let position_ms = timeline
             .as_ref()
             .and_then(|value| value.Position().ok())
-            .map_or(0, |value| ticks_to_ms(value.Duration));
+            .and_then(|value| public_timeline_ms(value.Duration))
+            .unwrap_or_default();
         let duration_ms = timeline.as_ref().and_then(|value| {
             let start = value.StartTime().ok()?.Duration;
             let end = value.EndTime().ok()?.Duration;
-            (end > start).then(|| ticks_to_ms(end.saturating_sub(start)))
+            (end > start)
+                .then(|| end.saturating_sub(start))
+                .and_then(public_timeline_ms)
         });
         Ok(SystemMediaSnapshot {
             identity: identity.to_owned(),
@@ -1035,7 +1040,7 @@ mod windows_backend {
             value
                 .chars()
                 .filter(|character| !character.is_control())
-                .take(512)
+                .take(MAX_PUBLIC_MEDIA_TEXT_CHARS)
                 .collect(),
         )
         .filter(|value: &String| !value.is_empty())
@@ -1043,6 +1048,11 @@ mod windows_backend {
 
     fn ticks_to_ms(value: i64) -> u64 {
         u64::try_from(value.max(0) / TICKS_PER_MILLISECOND).unwrap_or_default()
+    }
+
+    fn public_timeline_ms(value: i64) -> Option<u64> {
+        let value = ticks_to_ms(value);
+        (value <= MAX_PUBLIC_TIMELINE_MS).then_some(value)
     }
 
     fn action_confirmed(
@@ -1079,7 +1089,10 @@ mod windows_backend {
 
     #[cfg(test)]
     mod tests {
-        use super::is_apple_aumid;
+        use super::{
+            MAX_PUBLIC_MEDIA_TEXT_CHARS, MAX_PUBLIC_TIMELINE_MS, TICKS_PER_MILLISECOND, clean_text,
+            is_apple_aumid, public_timeline_ms,
+        };
 
         #[test]
         fn system_media_source_matches_only_apple_music_windows_app_aumid() {
@@ -1090,6 +1103,20 @@ mod windows_backend {
             assert!(!is_apple_aumid(
                 "AppleInc.AppleMusicWin_nzyj5cx40ttqa!Background"
             ));
+        }
+
+        #[test]
+        fn system_media_source_bounds_os_text_and_timeline_to_public_contract() {
+            let input = format!("\0  {}  ", "曲".repeat(MAX_PUBLIC_MEDIA_TEXT_CHARS + 1));
+            let cleaned = clean_text(&input).expect("bounded text");
+            assert_eq!(cleaned.chars().count(), MAX_PUBLIC_MEDIA_TEXT_CHARS);
+            assert!(cleaned.chars().all(|character| !character.is_control()));
+            assert!(clean_text(" \r\n ").is_none());
+
+            let exact = i64::try_from(MAX_PUBLIC_TIMELINE_MS).expect("bounded timeline")
+                * TICKS_PER_MILLISECOND;
+            assert_eq!(public_timeline_ms(exact), Some(MAX_PUBLIC_TIMELINE_MS));
+            assert_eq!(public_timeline_ms(exact + TICKS_PER_MILLISECOND), None);
         }
     }
 }
