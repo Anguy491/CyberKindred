@@ -13,8 +13,8 @@ mod store;
 mod traits;
 
 pub use apple::{
-    AppleCompanion, AppleCompanionMonitor, AppleCompanionSignal, SystemProgramSpeech,
-    UnavailableAppleCompanion,
+    AppleCompanion, AppleCompanionMonitor, AppleCompanionPolicySource, AppleCompanionSignal,
+    AppleReactionDensity, SystemProgramSpeech, UnavailableAppleCompanion,
 };
 pub use dto::{
     ProgramAck, StartProgramRequest, StartProgramResponse, StartProgramTrigger, StopProgramRequest,

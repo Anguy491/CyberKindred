@@ -371,6 +371,7 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
         playback_service.clone(),
         playback_event_hub,
         system_radio_speech,
+        Arc::new(repository.clone()),
     ));
     let radio_store: Arc<dyn RadioProgramStore> = Arc::new(repository.clone());
     let radio_service = RadioService::new(RadioServiceDependencies {
