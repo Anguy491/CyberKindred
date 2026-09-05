@@ -30,6 +30,8 @@ const PLANNING_FAILED_MESSAGE: &str = "节目计划生成失败，未开始播�
 const COMPANION_RUNNING_MESSAGE: &str =
     "COMPANION MODE：队列由 Apple Music 控制；曲目反应在本机生成。";
 const COMPANION_FAILED_MESSAGE: &str = "Apple Music 陪伴模式已安全停止；未改动外部队列。";
+pub(super) const COMPANION_RECONNECTED_MESSAGE: &str =
+    "Apple Music 会话已恢复；陪伴模式继续监听，不会改动外部队列。";
 
 pub trait RadioIdFactory: Send + Sync {
     fn next_id(&self) -> Uuid;
@@ -399,6 +401,7 @@ impl RadioServiceInner {
                 None,
             )
             .await?;
+        let mut phase = ProgramRunPhase::Music;
         self.events.state(
             active.program_id,
             ProgramEventState::Running,
@@ -419,7 +422,7 @@ impl RadioServiceInner {
                     if result.is_err() && !*active.cancellation().borrow() {
                         revision = self.store.transition_program(
                             active.program_id,
-                            ProgramRunPhase::Music,
+                            phase,
                             ProgramRunPhase::Failed,
                             revision,
                             self.clock.now_ms(),
@@ -434,7 +437,7 @@ impl RadioServiceInner {
                     }
                     revision = self.store.transition_program(
                         active.program_id,
-                        ProgramRunPhase::Music,
+                        phase,
                         ProgramRunPhase::Stopping,
                         revision,
                         self.clock.now_ms(),
@@ -452,25 +455,75 @@ impl RadioServiceInner {
                     self.events.state(active.program_id, ProgramEventState::Completed, None);
                     return Ok(revision);
                 }
-                signal = receiver.recv() => match signal {
-                    Some(AppleCompanionSignal::Reaction(message)) => {
-                        self.events.state(
+                signal = receiver.recv() => {
+                    if let Some(signal) = signal {
+                        self.handle_apple_signal(
                             active.program_id,
-                            ProgramEventState::Running,
-                            Some(&message),
-                        );
+                            signal,
+                            &mut revision,
+                            &mut phase,
+                        ).await?;
                     }
-                    Some(AppleCompanionSignal::Disconnected) => {
-                        self.events.state(
-                            active.program_id,
-                            ProgramEventState::Paused,
-                            Some(disconnected_message()),
-                        );
-                    }
-                    None => {}
                 }
             }
         }
+    }
+
+    async fn handle_apple_signal(
+        &self,
+        program_id: Uuid,
+        signal: AppleCompanionSignal,
+        revision: &mut u64,
+        phase: &mut ProgramRunPhase,
+    ) -> Result<(), ApiError> {
+        match signal {
+            AppleCompanionSignal::Reaction(message) if *phase == ProgramRunPhase::Music => {
+                self.events
+                    .state(program_id, ProgramEventState::Running, Some(&message));
+            }
+            AppleCompanionSignal::Disconnected if *phase == ProgramRunPhase::Music => {
+                *revision = self
+                    .store
+                    .transition_program(
+                        program_id,
+                        ProgramRunPhase::Music,
+                        ProgramRunPhase::Paused,
+                        *revision,
+                        self.clock.now_ms(),
+                        Some("apple_session_lost"),
+                    )
+                    .await?;
+                *phase = ProgramRunPhase::Paused;
+                self.events.state(
+                    program_id,
+                    ProgramEventState::Paused,
+                    Some(disconnected_message()),
+                );
+            }
+            AppleCompanionSignal::Reconnected if *phase == ProgramRunPhase::Paused => {
+                *revision = self
+                    .store
+                    .transition_program(
+                        program_id,
+                        ProgramRunPhase::Paused,
+                        ProgramRunPhase::Music,
+                        *revision,
+                        self.clock.now_ms(),
+                        None,
+                    )
+                    .await?;
+                *phase = ProgramRunPhase::Music;
+                self.events.state(
+                    program_id,
+                    ProgramEventState::Running,
+                    Some(COMPANION_RECONNECTED_MESSAGE),
+                );
+            }
+            AppleCompanionSignal::Reaction(_)
+            | AppleCompanionSignal::Disconnected
+            | AppleCompanionSignal::Reconnected => {}
+        }
+        Ok(())
     }
 
     async fn finish_run(&self, active: Arc<ActiveRun>, result: Result<u64, ApiError>) {

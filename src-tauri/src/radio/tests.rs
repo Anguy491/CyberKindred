@@ -22,6 +22,7 @@ use crate::{
     program::{CandidateSelection, PlanDegradation, PlanOrigin, PlannedProgram, ProgramCandidate},
 };
 
+use super::service::COMPANION_RECONNECTED_MESSAGE;
 use super::*;
 
 #[derive(Clone)]
@@ -321,6 +322,77 @@ impl AppleCompanion for FakeApple {
     }
 }
 
+struct DisconnectingApple;
+
+impl AppleCompanion for DisconnectingApple {
+    fn connect(&self) -> traits::RadioFuture<'_, Result<PlaybackState, ApiError>> {
+        Box::pin(async { Ok(system_playback_state()) })
+    }
+
+    fn run(
+        &self,
+        _program_id: Uuid,
+        _initial: PlaybackState,
+        _authorization: ConfirmedProgramStart,
+        mut cancellation: watch::Receiver<bool>,
+        signals: mpsc::Sender<AppleCompanionSignal>,
+    ) -> traits::RadioFuture<'_, Result<(), ApiError>> {
+        Box::pin(async move {
+            signals
+                .send(AppleCompanionSignal::Disconnected)
+                .await
+                .map_err(|_| ApiError::unexpected())?;
+            loop {
+                cancellation
+                    .changed()
+                    .await
+                    .map_err(|_| ApiError::unexpected())?;
+                if *cancellation.borrow() {
+                    return Ok(());
+                }
+            }
+        })
+    }
+}
+
+struct ReconnectingApple(Arc<Notify>);
+
+impl AppleCompanion for ReconnectingApple {
+    fn connect(&self) -> traits::RadioFuture<'_, Result<PlaybackState, ApiError>> {
+        Box::pin(async { Ok(system_playback_state()) })
+    }
+
+    fn run(
+        &self,
+        _program_id: Uuid,
+        _initial: PlaybackState,
+        _authorization: ConfirmedProgramStart,
+        mut cancellation: watch::Receiver<bool>,
+        signals: mpsc::Sender<AppleCompanionSignal>,
+    ) -> traits::RadioFuture<'_, Result<(), ApiError>> {
+        Box::pin(async move {
+            signals
+                .send(AppleCompanionSignal::Disconnected)
+                .await
+                .map_err(|_| ApiError::unexpected())?;
+            self.0.notified().await;
+            signals
+                .send(AppleCompanionSignal::Reconnected)
+                .await
+                .map_err(|_| ApiError::unexpected())?;
+            loop {
+                cancellation
+                    .changed()
+                    .await
+                    .map_err(|_| ApiError::unexpected())?;
+                if *cancellation.borrow() {
+                    return Ok(());
+                }
+            }
+        })
+    }
+}
+
 impl FakePlayback {
     fn new(actions: Arc<Mutex<Vec<String>>>) -> Self {
         Self {
@@ -400,6 +472,10 @@ struct Fixture {
 }
 
 fn fixture() -> Fixture {
+    fixture_with_apple(Arc::new(FakeApple))
+}
+
+fn fixture_with_apple(apple: Arc<dyn AppleCompanion>) -> Fixture {
     let actions = Arc::new(Mutex::new(Vec::new()));
     let planner = Arc::new(FakePlanner::new());
     let store = Arc::new(FakeStore::new());
@@ -419,7 +495,7 @@ fn fixture() -> Fixture {
         store: store.clone(),
         playback: playback.clone(),
         speech: speech.clone(),
-        apple: Arc::new(FakeApple),
+        apple,
         event_sink: sink.clone(),
         clock: Arc::new(FixedClock),
         sequence: Arc::new(ProcessSequence::default()),
@@ -524,6 +600,97 @@ async fn apple_program_returns_no_queue_plan_and_emits_only_local_companion_text
         .expect("safe stop");
     assert!(stopped.revision >= 4);
     assert_eq!(fixture.playback.stop_calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn apple_program_persists_session_loss_and_can_stop_while_paused() {
+    let fixture = fixture_with_apple(Arc::new(DisconnectingApple));
+    fixture
+        .service
+        .start_local_program(StartProgramRequest {
+            client_request_id: Uuid::now_v7(),
+            source_id: "apple_music".to_owned(),
+            trigger: StartProgramTrigger::Manual,
+        })
+        .await
+        .expect("Apple companion start");
+    wait_for_phase(&fixture.store, ProgramRunPhase::Paused).await;
+
+    fixture
+        .service
+        .stop_program(StopProgramRequest {
+            client_request_id: Uuid::now_v7(),
+            program_id: fixture.program_id,
+        })
+        .await
+        .expect("paused companion stop");
+
+    assert_eq!(fixture.store.phase(), Some(ProgramRunPhase::Completed));
+    let transitions = fixture
+        .store
+        .state
+        .lock()
+        .expect("store")
+        .transitions
+        .clone();
+    assert_eq!(
+        transitions.get(transitions.len().saturating_sub(3)..),
+        Some(
+            &[
+                ProgramRunPhase::Paused,
+                ProgramRunPhase::Stopping,
+                ProgramRunPhase::Completed,
+            ][..]
+        )
+    );
+}
+
+#[tokio::test]
+async fn apple_program_persists_reconnection_before_returning_to_running() {
+    let reconnect = Arc::new(Notify::new());
+    let fixture = fixture_with_apple(Arc::new(ReconnectingApple(Arc::clone(&reconnect))));
+    fixture
+        .service
+        .start_local_program(StartProgramRequest {
+            client_request_id: Uuid::now_v7(),
+            source_id: "apple_music".to_owned(),
+            trigger: StartProgramTrigger::Manual,
+        })
+        .await
+        .expect("Apple companion start");
+    wait_for_phase(&fixture.store, ProgramRunPhase::Paused).await;
+    reconnect.notify_one();
+    wait_for_phase(&fixture.store, ProgramRunPhase::Music).await;
+
+    let states = fixture
+        .sink
+        .0
+        .lock()
+        .expect("events")
+        .iter()
+        .filter_map(|event| match event {
+            RadioEvent::ProgramState(event) => Some((event.state, event.safe_message.clone())),
+            RadioEvent::ProgramSegment(_) => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        states
+            .iter()
+            .any(|(state, _)| *state == ProgramEventState::Paused)
+    );
+    assert!(states.iter().any(|(state, message)| {
+        *state == ProgramEventState::Running
+            && message.as_deref() == Some(COMPANION_RECONNECTED_MESSAGE)
+    }));
+
+    fixture
+        .service
+        .stop_program(StopProgramRequest {
+            client_request_id: Uuid::now_v7(),
+            program_id: fixture.program_id,
+        })
+        .await
+        .expect("reconnected companion stop");
 }
 
 #[tokio::test]

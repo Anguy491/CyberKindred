@@ -85,6 +85,7 @@ impl AppleCompanionPolicySource for Repository {
 pub enum AppleCompanionSignal {
     Reaction(String),
     Disconnected,
+    Reconnected,
 }
 
 pub trait SystemProgramSpeech: Send + Sync {
@@ -263,12 +264,15 @@ async fn observe(
             .await
             .map_err(|_| ApiError::unexpected());
     }
-    gate.disconnected_reported = false;
+    if gate.disconnected_reported && state.status != PlaybackStateStatus::Playing {
+        return Ok(());
+    }
     let Some(identity) = ReactionIdentity::from_state(&state) else {
         return Ok(());
     };
-    if gate.evaluated_identity.as_ref() == Some(&identity)
-        || gate.last_reacted_track_id.as_deref() == Some(identity.track_id.as_str())
+    if !gate.disconnected_reported
+        && (gate.evaluated_identity.as_ref() == Some(&identity)
+            || gate.last_reacted_track_id.as_deref() == Some(identity.track_id.as_str()))
     {
         return Ok(());
     }
@@ -291,7 +295,17 @@ async fn observe(
             .await
             .map_err(|_| ApiError::unexpected());
     }
-    gate.disconnected_reported = false;
+    if gate.disconnected_reported && stable.status != PlaybackStateStatus::Playing {
+        return Ok(());
+    }
+    if gate.disconnected_reported {
+        gate.disconnected_reported = false;
+        context
+            .signals
+            .send(AppleCompanionSignal::Reconnected)
+            .await
+            .map_err(|_| ApiError::unexpected())?;
+    }
     let Some(stable_identity) = ReactionIdentity::from_state(&stable) else {
         return Ok(());
     };
