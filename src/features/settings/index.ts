@@ -1,12 +1,19 @@
 import { CyberKindredIpcClient } from "../../ipc";
 import type {
   Ack,
+  DataDeletionCategory,
+  DeleteAllUserDataResponse,
+  DeleteDataCategoryRequest,
+  DeleteDataCategoryResponse,
   DeleteScheduleRequest,
   EventSubscriptionHandlers,
+  GetDataInventoryResponse,
   IpcUnlisten,
   ListSchedulesResponse,
   NotificationActionRequest,
   NotificationActionResponse,
+  OperationAccepted,
+  PreviewDataDeletionResponse,
   SearchWeatherLocationsRequest,
   SearchWeatherLocationsResponse,
   SelectWeatherLocationRequest,
@@ -35,6 +42,14 @@ export interface SettingsIpc {
     request: NotificationActionRequest,
   ): Promise<NotificationActionResponse>;
   startProgram(request: StartProgramRequest): Promise<StartProgramResponse>;
+  getDataInventory(): Promise<GetDataInventoryResponse>;
+  previewDataDeletion(category: DataDeletionCategory): Promise<PreviewDataDeletionResponse>;
+  deleteDataCategory(request: DeleteDataCategoryRequest): Promise<DeleteDataCategoryResponse>;
+  exportUserData(clientRequestId: string): Promise<OperationAccepted>;
+  deleteAllUserData(
+    clientRequestId: string,
+    confirmation: "DELETE CYBERKINDRED DATA",
+  ): Promise<DeleteAllUserDataResponse>;
   subscribeToEvents(handlers: EventSubscriptionHandlers): Promise<IpcUnlisten>;
 }
 
@@ -104,6 +119,27 @@ export const BROWSER_SETTINGS_IPC: SettingsIpc = {
   },
   async startProgram(request) {
     return { requestId: request.clientRequestId, programId: crypto.randomUUID(), plan: null };
+  },
+  async getDataInventory() {
+    return { generatedAt: new Date().toISOString(), categories: [] };
+  },
+  async previewDataDeletion(category) {
+    return {
+      previewToken: crypto.randomUUID(), expiresAt: new Date(Date.now() + 300_000).toISOString(),
+      category, itemCount: 0, consequences: ["没有可删除的项目。"],
+    };
+  },
+  async deleteDataCategory(request) {
+    return {
+      requestId: request.clientRequestId, category: request.category,
+      deletedCount: 0, restartRequired: false,
+    };
+  },
+  async exportUserData() {
+    return { operationId: crypto.randomUUID(), acceptedAt: new Date().toISOString() };
+  },
+  async deleteAllUserData(clientRequestId) {
+    return { requestId: clientRequestId, restartRequired: true };
   },
   async subscribeToEvents(handlers) {
     await handlers.refreshSnapshot("initial");

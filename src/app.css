@@ -593,6 +593,37 @@ input::placeholder {
   grid-column: 1;
 }
 
+.data-inventory-list {
+  display: grid;
+  gap: 0.45rem;
+  max-height: 24rem;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.data-inventory-list li,
+.destructive-data-control,
+.deletion-preview {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+}
+
+.data-inventory-list span,
+.data-inventory-list small {
+  color: var(--text-secondary);
+}
+
+.destructive-data-control select {
+  min-height: 2.5rem;
+  border: 1px solid var(--border-visible);
+  color: var(--text-primary);
+  background: var(--surface-raised);
+}
+
 .disabled-link {
   width: fit-content;
   min-height: 44px;

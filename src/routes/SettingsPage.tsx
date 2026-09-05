@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ControlButton } from "../components/ControlButton";
 import type { FontStatus, FoundationState } from "../design/foundation";
 import type { AppCapabilities } from "../ipc";
 import type {
   ScheduleDueEvent,
+  DataCategoryInventory,
+  DataDeletionCategory,
   ScheduleRule,
   ScheduleView,
   SettingsView,
@@ -143,14 +145,7 @@ function SettingsGroupContent({ group, capabilities, shellState, ipc }: Settings
       </div>
     );
   }
-  return (
-    <div className="setting-stack">
-      <SettingRow label="LOCAL DATA" value="空" detail="数据类别、数量、保留期和外发服务将在此列出。" />
-      <ControlButton disabledReason={unavailable}>导出数据</ControlButton>
-      <ControlButton tone="danger" disabledReason={unavailable}>删除所选数据</ControlButton>
-      <p className="non-impact-copy">全部重置不会删除你的音乐文件或主动保存的导出。</p>
-    </div>
-  );
+  return <PrivacyDataSettings ipc={ipc} />;
 }
 
 const WEEKDAYS = [
@@ -597,6 +592,175 @@ function ContextSettings({ ipc }: { readonly ipc: SettingsIpc }) {
         target="_blank"
         rel="noreferrer"
       >Geocoding data © GeoNames, weather data by Open-Meteo</a>
+    </div>
+  );
+}
+
+const DELETION_LABELS: Readonly<Record<DataDeletionCategory, string>> = {
+  profile_and_memories: "画像与记忆",
+  conversations_and_summaries: "对话与摘要",
+  playback_history: "节目与播放历史",
+  metadata_cache: "元数据与缓存",
+  library_index: "曲库索引",
+};
+
+function PrivacyDataSettings({ ipc }: { readonly ipc: SettingsIpc }) {
+  const [inventory, setInventory] = useState<ReadonlyArray<DataCategoryInventory>>([]);
+  const [category, setCategory] = useState<DataDeletionCategory>("profile_and_memories");
+  const [preview, setPreview] = useState<Awaited<ReturnType<SettingsIpc["previewDataDeletion"]>> | null>(null);
+  const [confirmation, setConfirmation] = useState("");
+  const [resetConfirmation, setResetConfirmation] = useState("");
+  const [status, setStatus] = useState("[LOADING…]");
+  const [busy, setBusy] = useState(false);
+  const exportOperation = useRef<string | null>(null);
+
+  async function refresh() {
+    const response = await ipc.getDataInventory();
+    setInventory(response.categories);
+    setStatus(`[READY · ${String(response.categories.length)} DATA CLASSES]`);
+  }
+
+  useEffect(() => {
+    let active = true;
+    let unlisten: (() => void) | undefined;
+    void refresh().catch(() => { if (active) setStatus("[INVENTORY UNAVAILABLE]"); });
+    void ipc.subscribeToEvents({
+      onEvent(eventName, payload) {
+        if (!active || exportOperation.current === null
+          || payload.operationId !== exportOperation.current) return;
+        if (eventName === "cyberkindred://v1/operation/completed") setStatus("[EXPORT SAVED]");
+        if (eventName === "cyberkindred://v1/operation/cancelled") setStatus("[EXPORT CANCELLED]");
+        if (eventName === "cyberkindred://v1/operation/failed") setStatus("[EXPORT FAILED]");
+      },
+      refreshSnapshot: async () => { if (active) await refresh(); },
+    }).then((stop) => { if (active) unlisten = stop; else stop(); }, () => undefined);
+    return () => { active = false; unlisten?.(); };
+  }, [ipc]);
+
+  async function createPreview() {
+    if (busy) return;
+    setBusy(true);
+    setConfirmation("");
+    try {
+      const response = await ipc.previewDataDeletion(category);
+      setPreview(response);
+      setStatus(`[PREVIEW · ${String(response.itemCount)} ITEMS]`);
+    } catch {
+      setStatus("[PREVIEW FAILED]");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteCategory() {
+    if (busy || preview === null || confirmation !== "DELETE SELECTED DATA") return;
+    setBusy(true);
+    try {
+      const response = await ipc.deleteDataCategory({
+        clientRequestId: crypto.randomUUID(), previewToken: preview.previewToken,
+        category: preview.category, confirmation: "DELETE SELECTED DATA",
+      });
+      setPreview(null);
+      setConfirmation("");
+      await refresh();
+      setStatus(`[DELETED · ${String(response.deletedCount)} ITEMS]`);
+    } catch {
+      setStatus("[DELETE FAILED · CREATE A NEW PREVIEW]");
+      setPreview(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function exportData() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const accepted = await ipc.exportUserData(crypto.randomUUID());
+      exportOperation.current = accepted.operationId;
+      setStatus("[EXPORT PICKER OPEN]");
+    } catch {
+      setStatus("[EXPORT NOT STARTED]");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resetAll() {
+    if (busy || resetConfirmation !== "DELETE CYBERKINDRED DATA") return;
+    setBusy(true);
+    try {
+      await ipc.deleteAllUserData(crypto.randomUUID(), "DELETE CYBERKINDRED DATA");
+      setInventory([]);
+      setStatus("[RESET COMPLETE · RESTART REQUIRED]");
+    } catch {
+      setStatus("[RESET FAILED · DATA NOT REPORTED AS DELETED]");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="setting-stack privacy-data-settings">
+      <SettingRow
+        label="LOCAL DATA INVENTORY"
+        value={String(inventory.length)}
+        detail="清单只显示类别、数量、介质、保留期和外发对象；不显示正文、密钥或路径。"
+      />
+      <span className="inline-status" role="status">{status}</span>
+      <ul className="data-inventory-list" aria-label="本地数据清单">
+        {inventory.map((entry) => (
+          <li key={entry.category} data-testid="data-inventory-row">
+            <strong>{entry.category.replaceAll("_", " ").toUpperCase()}</strong>
+            <span>{entry.itemCount} 项 · {entry.storageClasses.join(" / ")}</span>
+            <small>{entry.retentionSummary}</small>
+            <small>外发：{entry.externalRecipients.length === 0 ? "无" : entry.externalRecipients.join("、")}</small>
+          </li>
+        ))}
+      </ul>
+      <ControlButton disabled={busy} onClick={() => void exportData()}>导出数据</ControlButton>
+
+      <section className="destructive-data-control" aria-label="分类删除">
+        <label className="text-entry" htmlFor="data-delete-category">删除类别
+          <select id="data-delete-category" value={category} disabled={busy}
+            onChange={(event) => {
+              setCategory(event.target.value as DataDeletionCategory);
+              setPreview(null);
+              setConfirmation("");
+            }}>
+            {Object.entries(DELETION_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </label>
+        <ControlButton tone="danger" disabled={busy} onClick={() => void createPreview()}>
+          预览删除影响
+        </ControlButton>
+        {preview === null ? null : (
+          <div className="deletion-preview" data-testid="data-deletion-preview">
+            <strong>{DELETION_LABELS[preview.category]} · {preview.itemCount} 项</strong>
+            <ul>{preview.consequences.map((item) => <li key={item}>{item}</li>)}</ul>
+            <label className="text-entry" htmlFor="data-delete-confirmation">
+              输入 DELETE SELECTED DATA
+              <input id="data-delete-confirmation" value={confirmation} autoComplete="off"
+                onChange={(event) => setConfirmation(event.target.value)} />
+            </label>
+            <ControlButton tone="danger" disabled={busy || confirmation !== "DELETE SELECTED DATA"}
+              onClick={() => void deleteCategory()}>永久删除所选类别</ControlButton>
+          </div>
+        )}
+      </section>
+
+      <section className="destructive-data-control" aria-label="全部重置">
+        <p className="non-impact-copy">全部重置不可恢复，但不会删除源音乐文件或已保存到应用目录之外的导出。</p>
+        <label className="text-entry" htmlFor="data-reset-confirmation">
+          输入 DELETE CYBERKINDRED DATA
+          <input id="data-reset-confirmation" value={resetConfirmation} autoComplete="off"
+            onChange={(event) => setResetConfirmation(event.target.value)} />
+        </label>
+        <ControlButton tone="danger" disabled={busy || resetConfirmation !== "DELETE CYBERKINDRED DATA"}
+          onClick={() => void resetAll()}>全部重置并要求重启</ControlButton>
+      </section>
     </div>
   );
 }

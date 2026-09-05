@@ -165,6 +165,16 @@ pub trait SecretVault: Send {
     ///
     /// Returns a stable credential error if enumeration or any deletion fails.
     fn delete_cyberkindred_namespace(&mut self) -> Result<u32, SecretError>;
+
+    /// Counts every credential under the `CyberKindred` namespace without
+    /// returning identifiers or secret material.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable credential error if enumeration is unavailable.
+    fn count_cyberkindred_namespace(&self) -> Result<u32, SecretError> {
+        Err(SecretError::Unavailable)
+    }
 }
 
 #[cfg(windows)]
@@ -240,6 +250,12 @@ mod platform {
                 .delete_prefix(CREDENTIAL_PREFIX)
                 .map_err(map_credential_error)
         }
+
+        fn count_cyberkindred_namespace(&self) -> Result<u32, SecretError> {
+            self.store
+                .count_prefix(CREDENTIAL_PREFIX)
+                .map_err(map_credential_error)
+        }
     }
 
     const fn map_credential_error(error: CredentialError) -> SecretError {
@@ -312,6 +328,10 @@ mod tests {
                 u32::try_from(self.values.len()).map_err(|_| SecretError::OperationFailed)?;
             self.values.clear();
             Ok(count)
+        }
+
+        fn count_cyberkindred_namespace(&self) -> Result<u32, SecretError> {
+            u32::try_from(self.values.len()).map_err(|_| SecretError::OperationFailed)
         }
     }
 

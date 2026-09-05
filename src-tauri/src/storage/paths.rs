@@ -16,6 +16,7 @@ pub enum CacheArea {
 ///
 /// This type intentionally does not implement `Debug` or `Serialize`: absolute
 /// local paths must not accidentally cross logging or IPC boundaries.
+#[derive(Clone)]
 pub struct AppPaths {
     data: PathBuf,
     cache: PathBuf,
@@ -122,6 +123,11 @@ impl AppPaths {
     #[must_use]
     pub fn log_directory(&self) -> &Path {
         &self.logs
+    }
+
+    #[must_use]
+    pub(crate) fn cache_root(&self) -> &Path {
+        &self.cache
     }
 }
 

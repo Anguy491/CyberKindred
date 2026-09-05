@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod contracts;
+pub mod data_control;
 pub mod diagnostics;
 pub mod ipc;
 pub mod library;
@@ -23,6 +24,11 @@ mod understanding;
 mod weather;
 
 use chrono::Utc;
+use data_control::{
+    DataControlService, TauriDataExportEventSink, TauriDataExportPicker,
+    api_v1_delete_all_user_data, api_v1_delete_data_category, api_v1_export_user_data,
+    api_v1_get_data_inventory, api_v1_preview_data_deletion,
+};
 use diagnostics::{DiagnosticEvent, DiagnosticLog, ValidatedLogDirectory};
 use ipc::{
     ApiError, AppCapabilities, CapabilitiesService, EmptyRequest, ProcessSequence,
@@ -187,6 +193,7 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
             item_count: retention.expired_undelivered_outbox_deleted,
         })?;
     }
+    let storage = Arc::new(storage);
     let repository = storage.repository();
     let retention_repository = repository.clone();
     let retention_app_handle = app.handle().clone();
@@ -296,6 +303,18 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
         PlaybackService::local_capabilities(),
     )
     .map_err(|_| io::Error::other("playback runtime unavailable"))?;
+    let data_control_service = DataControlService::new(
+        repository.clone(),
+        Arc::clone(&storage),
+        paths.clone(),
+        Box::new(WindowsCredentialVault::new()?),
+        playback_service.clone(),
+        Arc::new(TauriDataExportPicker::new(app.handle().clone())),
+        Arc::new(TauriDataExportEventSink::new(
+            app.handle().clone(),
+            process_sequence.clone(),
+        )),
+    );
     let program_credentials = Arc::new(RepositoryProgramCredentialSource::new(
         repository.clone(),
         Box::new(WindowsCredentialVault::new()?),
@@ -385,6 +404,7 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     app.manage(scanner_service);
     app.manage(track_resolver);
     app.manage(playback_service);
+    app.manage(data_control_service);
     app.manage(radio_service);
     app.manage(understanding_service);
     app.manage(startup_preview_recovery);
@@ -479,6 +499,11 @@ pub fn run() -> tauri::Result<()> {
             api_v1_update_profile,
             api_v1_list_session_summaries,
             api_v1_delete_session_summary,
+            api_v1_get_data_inventory,
+            api_v1_preview_data_deletion,
+            api_v1_delete_data_category,
+            api_v1_export_user_data,
+            api_v1_delete_all_user_data,
         ])
         .run(tauri::generate_context!())
 }

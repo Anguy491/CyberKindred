@@ -3,6 +3,7 @@
 //! The module deliberately exposes neither database handles nor absolute paths to
 //! the WebView-facing IPC layer.
 
+mod data_control;
 mod database;
 mod error;
 mod library_roots;
@@ -23,6 +24,7 @@ pub(crate) mod track_catalog;
 mod understanding;
 mod weather;
 
+pub(crate) use data_control::InventoryCounts;
 pub use database::{APPLICATION_ID, LATEST_SCHEMA_VERSION, Storage};
 pub use error::{StorageError, StorageReason};
 pub(crate) use library_roots::{StoredLibraryRoot, StoredLibraryRootAddition, StoredLibraryRoots};

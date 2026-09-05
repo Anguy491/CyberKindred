@@ -125,6 +125,17 @@ impl CredentialStore {
         validate_prefix(prefix)?;
         platform::delete_prefix(prefix)
     }
+
+    /// Counts generic credentials whose target starts with `prefix` without
+    /// returning target names or secret material.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable redacted error for invalid input or an OS failure.
+    pub fn count_prefix(&self, prefix: &str) -> Result<u32, CredentialError> {
+        validate_prefix(prefix)?;
+        platform::count_prefix(prefix)
+    }
 }
 
 fn validate_name(value: &str) -> Result<(), CredentialError> {
@@ -240,6 +251,11 @@ mod platform {
             delete(&target)?;
         }
         Ok(deleted)
+    }
+
+    pub(super) fn count_prefix(prefix: &str) -> Result<u32, CredentialError> {
+        u32::try_from(enumerate_generic_targets(prefix)?.len())
+            .map_err(|_| CredentialError::OperationFailed)
     }
 
     fn enumerate_generic_targets(prefix: &str) -> Result<Vec<String>, CredentialError> {
@@ -433,6 +449,10 @@ mod platform {
     }
 
     pub(super) fn delete_prefix(_prefix: &str) -> Result<u32, CredentialError> {
+        Err(CredentialError::Unavailable)
+    }
+
+    pub(super) fn count_prefix(_prefix: &str) -> Result<u32, CredentialError> {
         Err(CredentialError::Unavailable)
     }
 }

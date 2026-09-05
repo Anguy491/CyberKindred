@@ -476,6 +476,62 @@ export interface OperationAccepted {
   readonly acceptedAt: string;
 }
 
+export type DataDeletionCategory = "profile_and_memories" | "conversations_and_summaries"
+  | "playback_history" | "metadata_cache" | "library_index";
+
+export type DataInventoryCategory = "credentials" | "profile_and_preferences"
+  | "weather_location_and_cache" | "library_roots_and_identity" | "embedded_music_tags"
+  | "metadata_matches" | "artwork_and_tts_cache" | "system_media_runtime"
+  | "playback_history_and_feedback" | "chat_messages" | "voice_segment_text"
+  | "session_summaries" | "memory_proposals" | "approved_memories_and_revisions"
+  | "schedules_and_notifications" | "provider_usage_facts" | "operation_outbox"
+  | "diagnostic_logs" | "migration_backups";
+
+export type DataStorageClass = "memory" | "credential_manager" | "sqlite" | "app_data"
+  | "app_cache" | "windows_task" | "windows_notification";
+
+export interface DataCategoryInventory {
+  readonly category: DataInventoryCategory;
+  readonly itemCount: number;
+  readonly storageClasses: ReadonlyArray<DataStorageClass>;
+  readonly retentionSummary: string;
+  readonly externalRecipients: ReadonlyArray<string>;
+  readonly deletionControl: "category" | "credential" | "automatic" | "reset_only";
+  readonly deletionCategory: DataDeletionCategory | null;
+}
+
+export interface GetDataInventoryResponse {
+  readonly generatedAt: string;
+  readonly categories: ReadonlyArray<DataCategoryInventory>;
+}
+
+export interface PreviewDataDeletionResponse {
+  readonly previewToken: string;
+  readonly expiresAt: string;
+  readonly category: DataDeletionCategory;
+  readonly itemCount: number;
+  readonly consequences: ReadonlyArray<string>;
+}
+
+export interface DeleteDataCategoryRequest {
+  readonly clientRequestId: string;
+  readonly previewToken: string;
+  readonly category: DataDeletionCategory;
+  readonly confirmation: "DELETE SELECTED DATA";
+}
+
+export interface DeleteDataCategoryResponse {
+  readonly requestId: string;
+  readonly category: DataDeletionCategory;
+  readonly deletedCount: number;
+  readonly restartRequired: boolean;
+}
+
+export interface DeleteAllUserDataResponse {
+  readonly requestId: string;
+  readonly restartRequired: true;
+}
+
 export interface LibraryRoot {
   readonly rootId: string;
   readonly displayName: string;

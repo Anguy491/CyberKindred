@@ -38,6 +38,8 @@
 
 ### Added
 
+- 完成 M6 数据控制切片：API-040 返回隐私生命周期全部 19 类 path-free inventory；API-041/042 以五分钟 token 和精确短语预览/删除五个固定集合；API-036 通过 Rust 临时文件与 native save picker 输出版本化 JSONL；API-037 枚举删除全部应用凭据并关闭 SQLite 后清除 DB/WAL/SHM、备份、缓存和日志，始终保留源音乐与应用目录外的用户导出。
+- 设置页 `PRIVACY & DATA` 现展示数量、介质、保留期和外发对象，提供导出、分类删除和独立全部重置确认；Rust/TypeScript canary 测试证明导出排除 secret 类数据、raw chat、路径、voice text、provider usage 与 outbox。
 - 完成 M5 Context and proactive scheduling 原型：设置页支持显式城市搜索/选择和天气状态；Forecast 仅接收经舍入坐标与固定参数，30 分钟新鲜天气可进入节目 Context，失败或过期时独立降级。
 - 增加持久化 weekly scheduler、API-032–035、EVT-007、IANA/DST occurrence、10/30/60 分钟 snooze、15 分钟 resume 边界与静音 Windows 通知；只有用户明确选择 `start` 后才授予一次 notification program start，其他路径零声音、零付费调用。
 - Windows 通知现提供固定 allowlist 的开始、稍后 10/30/60 分钟、忽略及打开应用动作；回调复用 API-035 状态转换，删除后陈旧通知 fail closed，scheduler actor 在通知和节目启动依赖完成绑定后才启动。

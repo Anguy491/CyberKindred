@@ -125,6 +125,11 @@ impl Storage {
     }
 
     pub async fn close(self) {
+        self.close_ref().await;
+    }
+
+    /// Closes both pools through a shared managed handle before full reset.
+    pub async fn close_ref(&self) {
         self.reader.close().await;
         self.writer.close().await;
     }

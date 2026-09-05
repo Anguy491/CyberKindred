@@ -5,6 +5,11 @@ import {
   type AppCapabilities,
   type Ack,
   type DeleteSecretResponse,
+  type DataCategoryInventory,
+  type DeleteAllUserDataResponse,
+  type DeleteDataCategoryResponse,
+  type GetDataInventoryResponse,
+  type PreviewDataDeletionResponse,
   type CancelLibraryScanResponse,
   type ErrorId,
   type IntegrationStatus,
@@ -59,6 +64,22 @@ const ONBOARDING_STEPS: ReadonlyArray<OnboardingStep> = [
   "welcome", "music_source", "openai_key", "voice", "profile", "city_schedule", "privacy",
 ];
 const INTEGRATIONS = new Set(["openai", "apple_music", "musicbrainz", "weather"]);
+const DATA_INVENTORY_CATEGORIES = new Set([
+  "credentials", "profile_and_preferences", "weather_location_and_cache",
+  "library_roots_and_identity", "embedded_music_tags", "metadata_matches",
+  "artwork_and_tts_cache", "system_media_runtime", "playback_history_and_feedback",
+  "chat_messages", "voice_segment_text", "session_summaries", "memory_proposals",
+  "approved_memories_and_revisions", "schedules_and_notifications", "provider_usage_facts",
+  "operation_outbox", "diagnostic_logs", "migration_backups",
+]);
+const DATA_DELETION_CATEGORIES = new Set([
+  "profile_and_memories", "conversations_and_summaries", "playback_history",
+  "metadata_cache", "library_index",
+]);
+const DATA_STORAGE_CLASSES = new Set([
+  "memory", "credential_manager", "sqlite", "app_data", "app_cache",
+  "windows_task", "windows_notification",
+]);
 
 export class IpcResponseValidationError extends Error {
   constructor() {
@@ -256,6 +277,50 @@ export function parseOperationAccepted(value: unknown): OperationAccepted {
     throw new IpcResponseValidationError();
   }
   return value as unknown as OperationAccepted;
+}
+
+export function parseDataInventory(value: unknown): GetDataInventoryResponse {
+  if (!isRecord(value) || !hasExactKeys(value, ["generatedAt", "categories"])
+    || !isTimestamp(value.generatedAt) || !Array.isArray(value.categories)
+    || value.categories.length !== DATA_INVENTORY_CATEGORIES.size
+    || !value.categories.every(isDataCategoryInventory)
+    || new Set(value.categories.map((entry) => (entry as DataCategoryInventory).category)).size
+      !== value.categories.length) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as GetDataInventoryResponse;
+}
+
+export function parseDataDeletionPreview(value: unknown): PreviewDataDeletionResponse {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "previewToken", "expiresAt", "category", "itemCount", "consequences",
+  ]) || !isUuid(value.previewToken) || !isTimestamp(value.expiresAt)
+    || typeof value.category !== "string" || !DATA_DELETION_CATEGORIES.has(value.category)
+    || !isNonNegativeInteger(value.itemCount) || !Array.isArray(value.consequences)
+    || value.consequences.length === 0
+    || !value.consequences.every((item) => isSafeDisplay(item, 300))) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as PreviewDataDeletionResponse;
+}
+
+export function parseDeleteDataCategoryResponse(value: unknown): DeleteDataCategoryResponse {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "requestId", "category", "deletedCount", "restartRequired",
+  ]) || !isUuid(value.requestId) || typeof value.category !== "string"
+    || !DATA_DELETION_CATEGORIES.has(value.category) || !isNonNegativeInteger(value.deletedCount)
+    || typeof value.restartRequired !== "boolean") {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as DeleteDataCategoryResponse;
+}
+
+export function parseDeleteAllUserDataResponse(value: unknown): DeleteAllUserDataResponse {
+  if (!isRecord(value) || !hasExactKeys(value, ["requestId", "restartRequired"])
+    || !isUuid(value.requestId) || value.restartRequired !== true) {
+    throw new IpcResponseValidationError();
+  }
+  return value as unknown as DeleteAllUserDataResponse;
 }
 
 export function parseLibraryRootsResponse(value: unknown): LibraryRootsResponse {
@@ -663,6 +728,30 @@ function isIntegrationStatus(value: unknown): value is IntegrationStatus {
       || value.state === "disabled" || value.state === "unavailable")
     && (value.lastSuccessAt === null || isTimestamp(value.lastSuccessAt))
     && isSafeDisplay(value.safeMessage, 300);
+}
+
+function isDataCategoryInventory(value: unknown): value is DataCategoryInventory {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "category", "itemCount", "storageClasses", "retentionSummary", "externalRecipients",
+    "deletionControl", "deletionCategory",
+  ])) return false;
+  const stores = value.storageClasses;
+  const recipients = value.externalRecipients;
+  const categoryDeletion = value.deletionControl === "category";
+  return typeof value.category === "string" && DATA_INVENTORY_CATEGORIES.has(value.category)
+    && isNonNegativeInteger(value.itemCount)
+    && Array.isArray(stores) && stores.length > 0
+    && stores.every((item) => typeof item === "string" && DATA_STORAGE_CLASSES.has(item))
+    && new Set(stores).size === stores.length
+    && isSafeDisplay(value.retentionSummary, 300)
+    && Array.isArray(recipients) && recipients.every((item) => isSafeDisplay(item, 300))
+    && new Set(recipients).size === recipients.length
+    && (value.deletionControl === "category" || value.deletionControl === "credential"
+      || value.deletionControl === "automatic" || value.deletionControl === "reset_only")
+    && (categoryDeletion
+      ? typeof value.deletionCategory === "string"
+        && DATA_DELETION_CATEGORIES.has(value.deletionCategory)
+      : value.deletionCategory === null);
 }
 
 function isWeatherLocation(value: unknown): value is WeatherLocation {

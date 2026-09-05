@@ -451,7 +451,10 @@ mod tests {
         .fetch_one(&repository.writer)
         .await
         .expect("system run facts");
-        assert_eq!(persisted, ("system_session".to_owned(), "planning".to_owned(), 0));
+        assert_eq!(
+            persisted,
+            ("system_session".to_owned(), "planning".to_owned(), 0)
+        );
         storage.close().await;
     }
 

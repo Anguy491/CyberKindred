@@ -119,6 +119,7 @@ pub async fn api_v1_cancel_operation(
     request: tauri::ipc::Request<'_>,
     provider_service: State<'_, ProviderService>,
     understanding_service: State<'_, UnderstandingService>,
+    data_control_service: State<'_, crate::data_control::DataControlService>,
     startup_recovery: State<'_, StartupVoicePreviewOutboxRecovery>,
 ) -> Result<CancelOperationResponse, ApiError> {
     let request = parse_command_request::<CancelOperationRequest>(&request)?;
@@ -126,6 +127,9 @@ pub async fn api_v1_cancel_operation(
         return understanding_service
             .cancel_chat(request.client_request_id, request.operation_id)
             .await;
+    }
+    if request.expected_kind == super::OperationKind::DataExport {
+        return data_control_service.cancel_export(request).await;
     }
     startup_recovery.ensure_recovered().await?;
     provider_service.cancel_operation(request).await

@@ -7,6 +7,12 @@ import type {
   CancelLibraryScanResponse,
   DeleteSecretRequest,
   DeleteSecretResponse,
+  DataDeletionCategory,
+  DeleteAllUserDataResponse,
+  DeleteDataCategoryRequest,
+  DeleteDataCategoryResponse,
+  GetDataInventoryResponse,
+  PreviewDataDeletionResponse,
   DeleteScheduleRequest,
   LibraryRootsResponse,
   MusicSourcesResponse,
@@ -63,6 +69,10 @@ import {
   parseAppCapabilities,
   parseCancelLibraryScanResponse,
   parseDeleteSecretResponse,
+  parseDataDeletionPreview,
+  parseDataInventory,
+  parseDeleteAllUserDataResponse,
+  parseDeleteDataCategoryResponse,
   parseLibraryRootsResponse,
   parseListSchedulesResponse,
   parseMusicSourcesResponse,
@@ -409,6 +419,49 @@ export class CyberKindredIpcClient {
   async deleteSessionSummary(request: DeleteSummaryRequest): Promise<Ack> {
     return this.#invokeValidated(
       "api_v1_delete_session_summary", { request }, STANDARD_TIMEOUT_MS, parseAck,
+    );
+  }
+
+  /** API-040: reads all 19 path-free lifecycle data classes. */
+  async getDataInventory(): Promise<GetDataInventoryResponse> {
+    return this.#invokeValidated(
+      "api_v1_get_data_inventory", { request: {} }, STANDARD_TIMEOUT_MS, parseDataInventory,
+    );
+  }
+
+  /** API-041: creates a five-minute preview token for one fixed deletion category. */
+  async previewDataDeletion(category: DataDeletionCategory): Promise<PreviewDataDeletionResponse> {
+    return this.#invokeValidated(
+      "api_v1_preview_data_deletion", { request: { category } }, STANDARD_TIMEOUT_MS,
+      parseDataDeletionPreview,
+    );
+  }
+
+  /** API-042: applies exactly the category represented by the preview token. */
+  async deleteDataCategory(
+    request: DeleteDataCategoryRequest,
+  ): Promise<DeleteDataCategoryResponse> {
+    return this.#invokeValidated(
+      "api_v1_delete_data_category", { request }, 30_000, parseDeleteDataCategoryResponse,
+    );
+  }
+
+  /** API-036: accepts an export that finishes through a public terminal event. */
+  async exportUserData(clientRequestId: string): Promise<OperationAccepted> {
+    return this.#invokeValidated(
+      "api_v1_export_user_data", { request: { clientRequestId } },
+      OPERATION_ACCEPT_TIMEOUT_MS, parseOperationAccepted,
+    );
+  }
+
+  /** API-037: irreversibly resets app-owned data while preserving source music and saved exports. */
+  async deleteAllUserData(
+    clientRequestId: string,
+    confirmation: "DELETE CYBERKINDRED DATA",
+  ): Promise<DeleteAllUserDataResponse> {
+    return this.#invokeValidated(
+      "api_v1_delete_all_user_data", { request: { clientRequestId, confirmation } },
+      30_000, parseDeleteAllUserDataResponse,
     );
   }
 
