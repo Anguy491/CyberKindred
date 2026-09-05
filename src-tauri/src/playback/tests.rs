@@ -696,6 +696,46 @@ async fn system_media_source_treats_closed_snapshot_as_disconnected_and_unselect
 }
 
 #[tokio::test]
+async fn system_media_source_publishes_coalesced_position_state_for_ui_and_companion() {
+    let (harness, system) = system_harness();
+    let selected = harness
+        .service
+        .select_music_source(SelectMusicSourceRequest {
+            client_request_id: Uuid::now_v7(),
+            source_id: "apple_music".to_owned(),
+        })
+        .await
+        .expect("system source selected")
+        .state;
+    system.lock().expect("system state").snapshot.position_ms = 8_000;
+
+    let refreshed = harness
+        .service
+        .get_playback_state(EmptyRequest {})
+        .await
+        .expect("position refresh");
+    assert_eq!(refreshed.position_ms, 8_000);
+    assert!(refreshed.revision > selected.revision);
+    let event = harness
+        .events
+        .0
+        .lock()
+        .expect("events")
+        .last()
+        .cloned()
+        .expect("position event");
+    assert_eq!(
+        event.r#type,
+        crate::contracts::PlaybackEventType::StateChanged
+    );
+    assert_eq!(event.state_revision, refreshed.revision);
+    assert_eq!(
+        event.state.as_ref().map(|state| state.position_ms),
+        Some(8_000)
+    );
+}
+
+#[tokio::test]
 async fn system_media_source_rechecks_capability_before_control_and_refreshes_failure_state() {
     let (harness, system) = system_harness();
     let selected = harness

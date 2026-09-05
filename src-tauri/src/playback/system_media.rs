@@ -619,7 +619,10 @@ fn semantic_event_type(
         Some(PlaybackEventType::TrackChanged)
     } else if previous.capabilities != next.capabilities {
         Some(PlaybackEventType::CapabilitiesChanged)
-    } else if previous.status != next.status {
+    } else if previous.status != next.status
+        || previous.position_ms != next.position_ms
+        || previous.duration_ms != next.duration_ms
+    {
         Some(PlaybackEventType::StateChanged)
     } else {
         None
