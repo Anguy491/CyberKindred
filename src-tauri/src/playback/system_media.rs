@@ -438,6 +438,10 @@ impl SystemMediaActor {
     }
 
     fn apply(&mut self, snapshot: SystemMediaSnapshot, reason: PlaybackEventReason) {
+        if snapshot.status == PlaybackStateStatus::Disconnected {
+            self.disconnect();
+            return;
+        }
         let previous = self.state.clone();
         let next_track = track_from_snapshot(&snapshot);
         self.identity = Some(snapshot.identity);

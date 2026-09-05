@@ -662,6 +662,40 @@ async fn system_media_source_maps_only_observed_fields_and_never_advertises_queu
 }
 
 #[tokio::test]
+async fn system_media_source_treats_closed_snapshot_as_disconnected_and_unselectable() {
+    let (harness, system) = system_harness();
+    {
+        let mut system = system.lock().expect("system state");
+        system.snapshot.status = PlaybackStateStatus::Disconnected;
+        system.snapshot.position_ms = 42_000;
+        system.snapshot.duration_ms = Some(180_000);
+    }
+    let error = harness
+        .service
+        .select_music_source(SelectMusicSourceRequest {
+            client_request_id: Uuid::now_v7(),
+            source_id: "apple_music".to_owned(),
+        })
+        .await
+        .expect_err("closed session must not be selectable");
+    assert_eq!(error.error_id, ErrorId::SourceUnavailable);
+    let apple = harness
+        .service
+        .list_music_sources(EmptyRequest {})
+        .sources
+        .into_iter()
+        .find(|source| source.source_id == "apple_music")
+        .expect("Apple source summary");
+    assert!(!apple.connected);
+    assert!(!apple.capabilities.play);
+    assert!(!apple.capabilities.pause);
+    assert!(!apple.capabilities.seek);
+    assert!(!apple.capabilities.next);
+    assert!(!apple.capabilities.previous);
+    assert!(!apple.capabilities.set_queue);
+}
+
+#[tokio::test]
 async fn system_media_source_rechecks_capability_before_control_and_refreshes_failure_state() {
     let (harness, system) = system_harness();
     let selected = harness
