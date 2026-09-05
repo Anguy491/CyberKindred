@@ -1,12 +1,12 @@
 use super::{
-    Ack, AudioOutputBehavior, CancelOperationRequest, CancelOperationResponse,
-    CancelOperationState, CandidateSecretValidator, Clock, DeleteSecretRequest,
-    DeleteSecretResponse, Integration, ListVoicesRequest, NarrationDensity, OperationAccepted,
-    OperationKind, OriginSecretStatus, PreviewVoiceRequest, ProviderCallContext, ProviderFailure,
-    ProviderHealthProbe, ProviderTestInput, ProviderTestKind, SecretStatus, SecretValidationInput,
-    SettingsPatch, SettingsView, TestProviderRequest, TestProviderResponse, UpdateSettingsRequest,
-    ValidateSecretRequest, ValidateSecretResponse, VoicePreviewEventSink, VoicePreviewInput,
-    VoicePreviewTerminal, VoicePreviewer, VoicesResponse, WeatherLocation,
+    Ack, AppBehaviorSettings, AppSettingsEffect, AudioOutputBehavior, CancelOperationRequest,
+    CancelOperationResponse, CancelOperationState, CandidateSecretValidator, Clock,
+    DeleteSecretRequest, DeleteSecretResponse, Integration, ListVoicesRequest, NarrationDensity,
+    OperationAccepted, OperationKind, OriginSecretStatus, PreviewVoiceRequest, ProviderCallContext,
+    ProviderFailure, ProviderHealthProbe, ProviderTestInput, ProviderTestKind, SecretStatus,
+    SecretValidationInput, SettingsPatch, SettingsView, TestProviderRequest, TestProviderResponse,
+    UpdateSettingsRequest, ValidateSecretRequest, ValidateSecretResponse, VoicePreviewEventSink,
+    VoicePreviewInput, VoicePreviewTerminal, VoicePreviewer, VoicesResponse, WeatherLocation,
 };
 use crate::{
     ipc::{ApiError, InternalReason, PublicField, RequestHash, Revision, canonical_request_hash},
@@ -144,6 +144,7 @@ pub struct ProviderService {
     update_settings_requests: AsyncIdempotency<Ack>,
     preview_voice_requests: AsyncIdempotency<OperationAccepted>,
     cancel_operation_requests: AsyncIdempotency<CancelOperationResponse>,
+    settings_effect: Option<Arc<dyn AppSettingsEffect>>,
     #[cfg(test)]
     fail_next_settings_write_after_secret: AtomicBool,
     #[cfg(test)]
@@ -187,6 +188,7 @@ impl ProviderService {
             update_settings_requests: AsyncIdempotency::new(),
             preview_voice_requests: AsyncIdempotency::new(),
             cancel_operation_requests: AsyncIdempotency::new(),
+            settings_effect: None,
             #[cfg(test)]
             fail_next_settings_write_after_secret: AtomicBool::new(false),
             #[cfg(test)]
@@ -196,6 +198,33 @@ impl ProviderService {
             #[cfg(test)]
             fail_next_preview_terminal_persist: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    #[must_use]
+    pub fn with_settings_effect(mut self, effect: Arc<dyn AppSettingsEffect>) -> Self {
+        self.settings_effect = Some(effect);
+        self
+    }
+
+    /// Refreshes the path-free Apple integration projection before API-007.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable storage error when the registry cannot be hydrated.
+    pub async fn refresh_apple_status(
+        &self,
+        app_installed: Option<bool>,
+        connected: bool,
+        controllable: bool,
+    ) -> Result<(), ApiError> {
+        self.ensure_registry_hydrated().await?;
+        self.registry.lock().await.apple_session(
+            app_installed,
+            connected,
+            controllable,
+            self.clock.now_rfc3339(),
+        );
+        Ok(())
     }
 
     #[cfg(test)]
@@ -621,8 +650,16 @@ impl ProviderService {
             .map_err(|error| map_storage_error(&error))?;
         Revision::new(current.revision).ensure_expected(request.expected_revision)?;
         let current_model_id = current.llm_model_id.clone();
+        let current_behavior = AppBehaviorSettings {
+            minimize_to_tray: current.minimize_to_tray,
+            launch_at_startup: current.launch_at_startup,
+        };
         let (updated, clear_weather_location) =
             self.apply_settings_patch(current, request.patch).await?;
+        let updated_behavior = AppBehaviorSettings {
+            minimize_to_tray: updated.minimize_to_tray,
+            launch_at_startup: updated.launch_at_startup,
+        };
         let model_changed = updated.llm_model_id != current_model_id;
         let status_promotion = if model_changed {
             Some(
@@ -634,15 +671,25 @@ impl ProviderService {
         } else {
             None
         };
+        let effect_applied = current_behavior != updated_behavior;
+        if effect_applied && let Some(effect) = &self.settings_effect {
+            effect.apply(current_behavior, updated_behavior)?;
+        }
         #[cfg(test)]
         if model_changed
             && self
                 .fail_next_settings_write_after_model_probe
                 .swap(false, Ordering::AcqRel)
         {
+            if effect_applied
+                && let Some(effect) = &self.settings_effect
+                && effect.apply(updated_behavior, current_behavior).is_err()
+            {
+                return Err(ApiError::unexpected());
+            }
             return Err(ApiError::from_reason(InternalReason::StorageWriteFailed));
         }
-        let revision = self
+        let revision = match self
             .repository
             .save_provider_settings(
                 request.expected_revision,
@@ -652,7 +699,18 @@ impl ProviderService {
                 status_promotion,
             )
             .await
-            .map_err(|error| map_storage_error(&error))?;
+        {
+            Ok(revision) => revision,
+            Err(error) => {
+                if effect_applied
+                    && let Some(effect) = &self.settings_effect
+                    && effect.apply(updated_behavior, current_behavior).is_err()
+                {
+                    return Err(ApiError::unexpected());
+                }
+                return Err(map_storage_error(&error));
+            }
+        };
         let mut registry = self.registry.lock().await;
         registry.set_enabled(Integration::Musicbrainz, updated.metadata_enabled);
         registry.set_enabled(Integration::Weather, updated.weather_enabled);

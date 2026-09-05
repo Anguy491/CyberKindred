@@ -7,4 +7,7 @@ pub use commands::{
     api_v1_get_data_inventory, api_v1_preview_data_deletion,
 };
 pub use dto::*;
-pub use service::{DataControlService, TauriDataExportEventSink, TauriDataExportPicker};
+pub use service::{
+    DataControlService, DataControlServiceDependencies, DataResetIntegration,
+    TauriDataExportEventSink, TauriDataExportPicker,
+};

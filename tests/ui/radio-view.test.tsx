@@ -247,7 +247,7 @@ describe("[TASK-025] system media source events", () => {
   // FR-APL-001/002; NFR-REL-004.
   it("updates source availability without replacing the active source snapshot", async () => {
     const apple: SourceSummary = {
-      sourceId: "apple_music", kind: "system_session", displayName: "Apple Music / Windows App",
+      sourceId: "apple_music", kind: "system_session", displayName: "Apple Music Windows App",
       connected: false,
       capabilities: { play: false, pause: false, seek: false, next: false, previous: false, setQueue: false },
     };
@@ -270,14 +270,14 @@ describe("[TASK-025] system media source events", () => {
       },
     } });
     expect(screen.getByRole("heading", { name: "今天想听什么状态？" })).not.toBeNull();
-    const appleButton = screen.getByRole("button", { name: "Apple Music / Windows App" });
+    const appleButton = screen.getByRole("button", { name: "Apple Music Windows App" });
     expect(appleButton.getAttribute("aria-disabled")).not.toBe("true");
   });
 
   // FR-APL-004; UX-RAD-006.
   it("starts companion mode without rendering an Apple queue plan", async () => {
     const apple: SourceSummary = {
-      sourceId: "apple_music", kind: "system_session", displayName: "Apple Music / Windows App",
+      sourceId: "apple_music", kind: "system_session", displayName: "Apple Music Windows App",
       connected: true,
       capabilities: { play: true, pause: true, seek: false, next: true, previous: true, setQueue: false },
     };
@@ -298,7 +298,7 @@ describe("[TASK-025] system media source events", () => {
     });
     const user = userEvent.setup();
     render(<RadioView ipc={test.ipc} />);
-    await user.click(await screen.findByRole("button", { name: "Apple Music / Windows App" }));
+    await user.click(await screen.findByRole("button", { name: "Apple Music Windows App" }));
     expect(await screen.findByText(/COMPANION MODE/u)).not.toBeNull();
     await user.click(screen.getByRole("button", { name: "开始节目" }));
     expect(test.ipc.startProgram).toHaveBeenCalledWith("apple_music");

@@ -7,6 +7,10 @@ import type {
   ScheduleDueEvent,
   DataCategoryInventory,
   DataDeletionCategory,
+  IntegrationStatus,
+  NarrationDensity,
+  SourceSummary,
+  SettingsPatch,
   ScheduleRule,
   ScheduleView,
   SettingsView,
@@ -92,43 +96,14 @@ interface SettingsGroupContentProps {
 }
 
 function SettingsGroupContent({ group, capabilities, shellState, ipc }: SettingsGroupContentProps) {
-  const unavailable = "[UNAVAILABLE: SETTINGS SERVICE NOT READY]";
   if (group === "AI & VOICE") {
-    const providerStatus = shellState === "offline"
-      ? "[OFFLINE]"
-      : shellState === "degraded" ? "[DEGRADED]" : "[NOT CONFIGURED]";
-    return (
-      <div className="setting-stack">
-        <SettingRow label="OPENAI" value={providerStatus} detail="密钥未保存到前端；仅可替换或删除。" />
-        <SettingRow label="LLM" value="尚未配置" detail="模型与连接状态将分别验证。" />
-        <SettingRow label="TTS" value="尚未配置" detail="关闭时主播内容仍显示文字。" />
-        <div className="inline-action-row">
-          <ControlButton disabledReason={unavailable}>替换密钥</ControlButton>
-          <ControlButton disabledReason={unavailable}>测试连接</ControlButton>
-        </div>
-      </div>
-    );
+    return <AiVoiceSettings ipc={ipc} shellState={shellState} />;
   }
   if (group === "PLAYBACK") {
-    return (
-      <div className="setting-stack">
-        <SettingRow label="DEFAULT SOURCE" value="每次询问" detail="不会在启动或恢复时自动出声。" />
-        <SettingRow label="TTS" value="关闭" detail="本地音乐不依赖语音能力。" />
-        <ControlButton disabledReason={unavailable}>更改播放设置</ControlButton>
-      </div>
-    );
+    return <PlaybackSettings ipc={ipc} />;
   }
   if (group === "APPLE MUSIC") {
-    return (
-      <div className="setting-stack">
-        <SettingRow
-          label="WINDOWS APP SESSION"
-          value={capabilities.features.systemMediaSession ? "[AVAILABLE]" : "[UNAVAILABLE]"}
-          detail="只读取并控制 Windows 系统媒体会话；不登录 MusicKit，不控制网页。"
-        />
-        <SettingRow label="CAPABILITIES" value="尚未获得" detail="每项控制只按会话实时能力启用。" />
-      </div>
-    );
+    return <AppleMusicSettings ipc={ipc} supported={capabilities.features.systemMediaSession} />;
   }
   if (group === "CONTEXT") {
     return <ContextSettings ipc={ipc} />;
@@ -137,15 +112,353 @@ function SettingsGroupContent({ group, capabilities, shellState, ipc }: Settings
     return <ScheduleSettings ipc={ipc} />;
   }
   if (group === "APP") {
-    return (
-      <div className="setting-stack">
-        <SettingRow label="LAUNCH AT STARTUP" value="关闭" detail="启动后保持静音。" />
-        <SettingRow label="MINIMIZE TO TRAY" value="关闭" detail="更改后会在原位置显示结果。" />
-        <ControlButton disabledReason={unavailable}>更改应用设置</ControlButton>
-      </div>
-    );
+    return <ApplicationSettings ipc={ipc} />;
   }
   return <PrivacyDataSettings ipc={ipc} />;
+}
+
+function AiVoiceSettings({ ipc, shellState }: {
+  readonly ipc: SettingsIpc;
+  readonly shellState: FoundationState;
+}) {
+  const [settings, setSettings] = useState<SettingsView | null>(null);
+  const [origin, setOrigin] = useState("");
+  const [llmModel, setLlmModel] = useState("");
+  const [ttsModel, setTtsModel] = useState("");
+  const [voiceId, setVoiceId] = useState("");
+  const [voices, setVoices] = useState<ReadonlyArray<{ voiceId: string; displayName: string }>>([]);
+  const [secret, setSecret] = useState("");
+  const [review, setReview] = useState<ReadonlyArray<string>>([]);
+  const [status, setStatus] = useState("[LOADING…]");
+  const [busy, setBusy] = useState(false);
+
+  async function refresh() {
+    const [next, voiceCatalog] = await Promise.all([ipc.getSettings(), ipc.listVoices()]);
+    setSettings(next);
+    setOrigin(next.providerOrigin);
+    setLlmModel(next.llmModelId);
+    setTtsModel(next.ttsModelId);
+    setVoiceId(next.ttsVoiceId);
+    setVoices(voiceCatalog.voices);
+    setStatus("[READY]");
+  }
+
+  useEffect(() => {
+    let active = true;
+    void refresh().catch(() => { if (active) setStatus("[SETTINGS UNAVAILABLE]"); });
+    return () => { active = false; };
+  }, [ipc]);
+
+  const configured = settings?.secretStatus.origins.some((entry) =>
+    entry.origin === settings.providerOrigin && entry.openaiApiKeyConfigured) ?? false;
+
+  function prepareReview() {
+    if (settings === null) return;
+    const changes = [
+      origin !== settings.providerOrigin ? `BASE URL: ${settings.providerOrigin} → ${origin}` : null,
+      llmModel !== settings.llmModelId ? `LLM: ${settings.llmModelId} → ${llmModel}` : null,
+      ttsModel !== settings.ttsModelId ? `TTS MODEL: ${settings.ttsModelId} → ${ttsModel}` : null,
+      voiceId !== settings.ttsVoiceId ? `VOICE: ${settings.ttsVoiceId} → ${voiceId}` : null,
+    ].filter((value): value is string => value !== null);
+    setReview(changes);
+    setStatus(changes.length === 0 ? "[NO CHANGES]" : "[REVIEW CHANGES]");
+  }
+
+  async function saveReviewed() {
+    if (settings === null || review.length === 0 || busy) return;
+    const patch: SettingsPatch = {
+      ...(origin !== settings.providerOrigin ? { providerOrigin: origin } : {}),
+      ...(llmModel !== settings.llmModelId ? { llmModelId: llmModel } : {}),
+      ...(ttsModel !== settings.ttsModelId ? { ttsModelId: ttsModel } : {}),
+      ...(voiceId !== settings.ttsVoiceId ? { ttsVoiceId: voiceId } : {}),
+    };
+    setBusy(true);
+    setStatus("[SAVING…]");
+    try {
+      await ipc.updateSettings({
+        clientRequestId: crypto.randomUUID(), expectedRevision: settings.revision, patch,
+      }, settings.llmModelId);
+      setReview([]);
+      await refresh();
+      setStatus("[SAVED]");
+    } catch {
+      setStatus("[SAVE FAILED · SETTINGS UNCHANGED]");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function replaceSecret() {
+    if (secret.length === 0 || origin.length === 0 || busy) return;
+    setBusy(true);
+    setStatus("[VERIFYING CREDENTIAL…]");
+    try {
+      await ipc.validateAndSetSecret({
+        clientRequestId: crypto.randomUUID(), kind: "openai_api_key", origin, value: secret,
+      });
+      setSecret("");
+      await refresh();
+      setStatus("[CONNECTED · KEY REPLACED]");
+    } catch {
+      setStatus("[KEY REJECTED · EXISTING KEY KEPT]");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteSecret() {
+    if (settings === null || !configured || busy) return;
+    setBusy(true);
+    try {
+      await ipc.deleteSecret({
+        clientRequestId: crypto.randomUUID(), kind: "openai_api_key",
+        origin: settings.providerOrigin,
+      });
+      await refresh();
+      setStatus("[KEY DELETED]");
+    } catch {
+      setStatus("[KEY DELETE FAILED]");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function test(kind: "llm" | "tts" | "metadata" | "weather") {
+    if (busy) return;
+    setBusy(true);
+    setStatus(`[TESTING ${kind.toUpperCase()}…]`);
+    try {
+      const result = await ipc.testProvider({ clientRequestId: crypto.randomUUID(), kind });
+      await refresh();
+      setStatus(result.ok ? `[${kind.toUpperCase()} CONNECTED · ${String(result.latencyMs)} MS]` : "[DEGRADED]");
+    } catch {
+      setStatus(`[${kind.toUpperCase()} TEST FAILED]`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="setting-stack">
+      <SettingRow label="OPENAI KEY" value={configured ? "•••••••• [CONFIGURED]" : "[NOT CONFIGURED]"}
+        detail="密钥只进入 Rust 与 Windows Credential Manager；无法明文读取。" />
+      <IntegrationRows statuses={settings?.integrationStatuses ?? []} shellState={shellState} />
+      <label className="text-entry" htmlFor="openai-key">替换密钥
+        <input id="openai-key" type="password" value={secret} autoComplete="new-password"
+          onChange={(event) => setSecret(event.target.value)} />
+      </label>
+      <div className="inline-action-row">
+        <ControlButton disabled={busy || secret.length === 0} onClick={() => void replaceSecret()}>验证并替换</ControlButton>
+        <ControlButton tone="danger" disabled={busy || !configured} onClick={() => void deleteSecret()}>删除当前来源密钥</ControlButton>
+      </div>
+      <details className="advanced-settings">
+        <summary>高级 Provider 设置</summary>
+        <label className="text-entry" htmlFor="provider-origin">Base URL
+          <input id="provider-origin" value={origin} onChange={(event) => setOrigin(event.target.value)} />
+        </label>
+        <label className="text-entry" htmlFor="llm-model">LLM model ID
+          <input id="llm-model" value={llmModel} onChange={(event) => setLlmModel(event.target.value)} />
+        </label>
+        <label className="text-entry" htmlFor="tts-model">TTS model ID
+          <input id="tts-model" value={ttsModel} onChange={(event) => setTtsModel(event.target.value)} />
+        </label>
+        <label className="text-entry" htmlFor="tts-voice">声音
+          <select id="tts-voice" value={voiceId} onChange={(event) => setVoiceId(event.target.value)}>
+            {voices.map((voice) => <option key={voice.voiceId} value={voice.voiceId}>{voice.displayName}</option>)}
+          </select>
+        </label>
+        <ControlButton disabled={busy || settings === null} onClick={prepareReview}>检查变更</ControlButton>
+        {review.length === 0 ? null : (
+          <div className="settings-change-review" aria-label="设置变更确认">
+            <ul>{review.map((item) => <li key={item}>{item}</li>)}</ul>
+            <ControlButton disabled={busy} onClick={() => void saveReviewed()}>保存已列出的变更</ControlButton>
+          </div>
+        )}
+      </details>
+      <div className="inline-action-row" aria-label="连接测试">
+        {(["llm", "tts", "metadata", "weather"] as const).map((kind) => (
+          <ControlButton key={kind} tone="ghost" disabled={busy}
+            onClick={() => void test(kind)}>测试 {kind.toUpperCase()}</ControlButton>
+        ))}
+      </div>
+      <span className="inline-status" role="status">{status}</span>
+    </div>
+  );
+}
+
+function IntegrationRows({ statuses, shellState }: {
+  readonly statuses: ReadonlyArray<IntegrationStatus>;
+  readonly shellState: FoundationState;
+}) {
+  if (statuses.length === 0) {
+    return <SettingRow label="INTEGRATIONS" value={shellState === "offline" ? "[OFFLINE]" : "[NOT CONFIGURED]"}
+      detail="每项集成会独立显示状态。" />;
+  }
+  return <>{statuses.map((item) => (
+    <SettingRow key={item.integration} label={item.integration.toUpperCase()}
+      value={`[${item.state.toUpperCase()}]`}
+      detail={`${item.safeMessage} 最近成功：${formatLastSuccess(item.lastSuccessAt)}`} />
+  ))}</>;
+}
+
+function PlaybackSettings({ ipc }: { readonly ipc: SettingsIpc }) {
+  const [settings, setSettings] = useState<SettingsView | null>(null);
+  const [sources, setSources] = useState<ReadonlyArray<SourceSummary>>([]);
+  const [sourceId, setSourceId] = useState("");
+  const [density, setDensity] = useState<NarrationDensity>("balanced");
+  const [tts, setTts] = useState(false);
+  const [status, setStatus] = useState("[LOADING…]");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.all([ipc.getSettings(), ipc.listMusicSources()]).then(([next, catalog]) => {
+      if (!active) return;
+      setSettings(next);
+      setSources(catalog.sources);
+      setSourceId(next.defaultSourceId ?? "");
+      setDensity(next.narrationDensity);
+      setTts(next.ttsEnabled);
+      setStatus("[READY · NO AUTOMATIC SOUND]");
+    }, () => { if (active) setStatus("[SETTINGS UNAVAILABLE]"); });
+    return () => { active = false; };
+  }, [ipc]);
+
+  async function save() {
+    if (settings === null || busy) return;
+    setBusy(true);
+    setStatus("[SAVING…]");
+    try {
+      const patch: SettingsPatch = {
+        defaultSourceId: sourceId === "" ? null : sourceId,
+        narrationDensity: density,
+        ttsEnabled: tts,
+      };
+      const ack = await ipc.updateSettings({
+        clientRequestId: crypto.randomUUID(), expectedRevision: settings.revision, patch,
+      }, settings.llmModelId);
+      setSettings({ ...settings, ...patch, revision: ack.revision });
+      setStatus(tts ? "[SAVED]" : "[SAVED · TTS OFF, TEXT CONTINUES]");
+    } catch {
+      setStatus("[SAVE FAILED]");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="setting-stack">
+      <label className="text-entry" htmlFor="default-source">默认音乐源
+        <select id="default-source" value={sourceId} onChange={(event) => setSourceId(event.target.value)}>
+          <option value="">每次询问</option>
+          {sources.map((source) => <option key={source.sourceId} value={source.sourceId}>{source.displayName}</option>)}
+        </select>
+      </label>
+      <label className="text-entry" htmlFor="narration-density">串场密度
+        <select id="narration-density" value={density}
+          onChange={(event) => setDensity(event.target.value as NarrationDensity)}>
+          <option value="quiet">安静</option><option value="balanced">平衡</option><option value="frequent">频繁</option>
+        </select>
+      </label>
+      <label className="toggle-setting"><input type="checkbox" checked={tts}
+        onChange={(event) => setTts(event.target.checked)} />启用 TTS</label>
+      <SettingRow label="AUDIO OUTPUT"
+        value={settings?.audioOutputBehavior === "fixed_device" ? "[FIXED DEVICE]" : "[FOLLOW SYSTEM DEFAULT]"}
+        detail="关闭 TTS 后音乐仍可播放，所有主播内容只显示文字；保存设置不会播放测试音。" />
+      <ControlButton disabled={busy || settings === null} onClick={() => void save()}>保存播放设置</ControlButton>
+      <span className="inline-status" role="status">{status}</span>
+    </div>
+  );
+}
+
+function AppleMusicSettings({ ipc, supported }: { readonly ipc: SettingsIpc; readonly supported: boolean }) {
+  const [source, setSource] = useState<SourceSummary | null>(null);
+  const [integration, setIntegration] = useState<IntegrationStatus | null>(null);
+  const [status, setStatus] = useState("[LOADING…]");
+
+  async function refresh() {
+    const [catalog, settings] = await Promise.all([ipc.listMusicSources(), ipc.getSettings()]);
+    const nextSource = catalog.sources.find((item) => item.sourceId === "apple_music") ?? null;
+    const nextIntegration = settings.integrationStatuses.find((item) => item.integration === "apple_music") ?? null;
+    setSource(nextSource);
+    setIntegration(nextIntegration);
+    setStatus(nextIntegration === null ? "[STATUS UNAVAILABLE]" : `[${nextIntegration.state.toUpperCase()}]`);
+  }
+
+  useEffect(() => {
+    let active = true;
+    void refresh().catch(() => { if (active) setStatus("[SESSION CHECK FAILED]"); });
+    return () => { active = false; };
+  }, [ipc]);
+
+  const controls = source === null ? [] : Object.entries(source.capabilities)
+    .filter(([name, enabled]) => name !== "setQueue" && enabled)
+    .map(([name]) => name.toUpperCase());
+  return (
+    <div className="setting-stack">
+      <SettingRow label="WINDOWS APP SESSION" value={supported ? status : "[UNAVAILABLE]"}
+        detail={integration?.safeMessage ?? "当前 Windows 不支持系统媒体会话。"} />
+      <SettingRow label="CAPABILITIES" value={controls.length === 0 ? "尚未获得" : controls.join(" · ")}
+        detail="每项控制只按当前会话实时能力启用；CyberKindred 不建立精确 Apple 队列。" />
+      <p className="secondary-copy">未安装 App：请先从 Microsoft Store 安装 Apple Music Windows App。</p>
+      <p className="secondary-copy">已安装但无会话：打开 App 并开始播放一首曲目。</p>
+      <p className="non-impact-copy">只连接 Windows App 的 GSMTC 会话；不登录 MusicKit、不读取账户，也不控制网页。</p>
+      <ControlButton tone="ghost" onClick={() => void refresh()}>重新检查会话</ControlButton>
+    </div>
+  );
+}
+
+function ApplicationSettings({ ipc }: { readonly ipc: SettingsIpc }) {
+  const [settings, setSettings] = useState<SettingsView | null>(null);
+  const [status, setStatus] = useState("[LOADING…]");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void ipc.getSettings().then((next) => {
+      if (active) { setSettings(next); setStatus("[READY · STARTUP STAYS SILENT]"); }
+    }, () => { if (active) setStatus("[SETTINGS UNAVAILABLE]"); });
+    return () => { active = false; };
+  }, [ipc]);
+
+  async function toggle(field: "minimizeToTray" | "launchAtStartup" | "notificationsEnabled") {
+    if (settings === null || busy) return;
+    const next = !settings[field];
+    setBusy(true);
+    setStatus("[APPLYING WINDOWS SETTING…]");
+    try {
+      const patch: SettingsPatch = { [field]: next };
+      const ack = await ipc.updateSettings({
+        clientRequestId: crypto.randomUUID(), expectedRevision: settings.revision, patch,
+      }, settings.llmModelId);
+      setSettings({ ...settings, [field]: next, revision: ack.revision });
+      setStatus(next ? "[ENABLED · NO SOUND]" : "[DISABLED]");
+    } catch {
+      setStatus("[WINDOWS SETTING FAILED · VALUE UNCHANGED]");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="setting-stack">
+      <SettingRow label="LAUNCH AT STARTUP" value={settings?.launchAtStartup ? "[ENABLED]" : "[DISABLED]"}
+        detail="首次安装默认关闭；启用后随当前 Windows 用户登录启动，启动后保持静音。" />
+      <ControlButton disabled={busy || settings === null}
+        data-testid={settings?.launchAtStartup ? "app-autostart-disable" : "app-autostart-enable"}
+        onClick={() => void toggle("launchAtStartup")}>{settings?.launchAtStartup ? "关闭登录启动" : "启用登录启动"}</ControlButton>
+      <SettingRow label="MINIMIZE TO TRAY" value={settings?.minimizeToTray ? "[ENABLED]" : "[DISABLED]"}
+        detail="启用后关闭主窗口会隐藏到托盘；托盘操作仍遵守实时播放能力。" />
+      <ControlButton disabled={busy || settings === null}
+        data-testid={settings?.minimizeToTray ? "app-tray-disable" : "app-tray-enable"}
+        onClick={() => void toggle("minimizeToTray")}>{settings?.minimizeToTray ? "关闭托盘运行" : "启用托盘运行"}</ControlButton>
+      <SettingRow label="NOTIFICATIONS" value={settings?.notificationsEnabled ? "[ENABLED]" : "[DISABLED]"}
+        detail="日程到点只通知，不自动开播。" />
+      <ControlButton disabled={busy || settings === null}
+        onClick={() => void toggle("notificationsEnabled")}>{settings?.notificationsEnabled ? "关闭通知" : "启用通知"}</ControlButton>
+      <span className="inline-status" role="status">{status}</span>
+    </div>
+  );
 }
 
 const WEEKDAYS = [
@@ -437,6 +750,10 @@ function formatDays(days: ScheduleRule["daysOfWeek"]): string {
 
 function formatTimestamp(value: string | null): string {
   return value === null ? "已暂停" : new Date(value).toLocaleString();
+}
+
+function formatLastSuccess(value: string | null): string {
+  return value === null ? "尚无记录" : formatTimestamp(value);
 }
 
 function ContextSettings({ ipc }: { readonly ipc: SettingsIpc }) {

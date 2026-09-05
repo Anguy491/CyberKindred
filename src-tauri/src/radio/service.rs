@@ -138,6 +138,18 @@ impl RadioService {
         }
     }
 
+    /// Returns the current program identifier for trusted shell controls.
+    #[must_use]
+    pub async fn active_program_id(&self) -> Option<Uuid> {
+        self.inner
+            .state
+            .lock()
+            .await
+            .active
+            .as_ref()
+            .map(|active| active.program_id)
+    }
+
     /// Starts API-024 only after proving user authority, then persists identity
     /// and the complete validated plan before spawning the sound-capable runner.
     ///

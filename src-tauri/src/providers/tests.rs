@@ -335,6 +335,23 @@ impl VoicePreviewEventSink for RecordingPreviewEvents {
     }
 }
 
+#[derive(Clone, Default)]
+struct RecordingSettingsEffect(Arc<StdMutex<Vec<(AppBehaviorSettings, AppBehaviorSettings)>>>);
+
+impl AppSettingsEffect for RecordingSettingsEffect {
+    fn apply(
+        &self,
+        previous: AppBehaviorSettings,
+        next: AppBehaviorSettings,
+    ) -> Result<(), ApiError> {
+        self.0
+            .lock()
+            .map_err(|_| ApiError::unexpected())?
+            .push((previous, next));
+        Ok(())
+    }
+}
+
 struct Fixture {
     temp: tempfile::TempDir,
     storage: Storage,
@@ -1124,6 +1141,92 @@ async fn provider_settings_patch_is_strict_nullable_and_revision_guarded() {
 }
 
 #[tokio::test]
+async fn provider_app_behavior_effect_commits_the_exact_transition() {
+    let fixture = Fixture::new().await;
+    let effect = RecordingSettingsEffect::default();
+    let service = fixture
+        .restarted_service()
+        .with_settings_effect(Arc::new(effect.clone()));
+    let patch: SettingsPatch = serde_json::from_value(serde_json::json!({
+        "minimizeToTray": true,
+        "launchAtStartup": true
+    }))
+    .expect("app behavior patch");
+
+    let ack = service
+        .update_settings(UpdateSettingsRequest {
+            client_request_id: Uuid::now_v7(),
+            expected_revision: 0,
+            patch,
+        })
+        .await
+        .expect("effect and settings commit");
+
+    assert_eq!(ack.revision, 1);
+    assert_eq!(
+        effect.0.lock().expect("effect calls").as_slice(),
+        [(
+            AppBehaviorSettings {
+                minimize_to_tray: false,
+                launch_at_startup: false,
+            },
+            AppBehaviorSettings {
+                minimize_to_tray: true,
+                launch_at_startup: true,
+            },
+        )]
+    );
+    let settings = service.get_settings().await.expect("committed settings");
+    assert!(settings.minimize_to_tray);
+    assert!(settings.launch_at_startup);
+}
+
+#[tokio::test]
+async fn provider_app_behavior_effect_rolls_back_when_storage_commit_fails() {
+    let fixture = Fixture::new().await;
+    fixture
+        .configure("https://api.openai.com", "task-028-rollback-canary")
+        .await;
+    let effect = RecordingSettingsEffect::default();
+    let service = fixture
+        .restarted_service()
+        .with_settings_effect(Arc::new(effect.clone()));
+    service.fail_next_settings_write_after_model_probe();
+    let patch: SettingsPatch = serde_json::from_value(serde_json::json!({
+        "llmModelId": "gpt-task-028-uncommitted",
+        "minimizeToTray": true
+    }))
+    .expect("combined patch");
+
+    let error = service
+        .update_settings(UpdateSettingsRequest {
+            client_request_id: Uuid::now_v7(),
+            expected_revision: 1,
+            patch,
+        })
+        .await
+        .expect_err("simulated storage failure");
+
+    assert_eq!(error.error_id, ErrorId::StorageFailed);
+    let disabled = AppBehaviorSettings {
+        minimize_to_tray: false,
+        launch_at_startup: false,
+    };
+    let tray_enabled = AppBehaviorSettings {
+        minimize_to_tray: true,
+        launch_at_startup: false,
+    };
+    assert_eq!(
+        effect.0.lock().expect("effect calls").as_slice(),
+        [(disabled, tray_enabled), (tray_enabled, disabled)]
+    );
+    let settings = service.get_settings().await.expect("unchanged settings");
+    assert!(!settings.minimize_to_tray);
+    assert_eq!(settings.llm_model_id, "gpt-5.6-luna");
+    assert_eq!(settings.revision, 1);
+}
+
+#[tokio::test]
 async fn provider_model_change_probes_merged_origin_model_and_credential_before_atomic_save() {
     let fixture = Fixture::new().await;
     let candidate_target = CredentialTarget::openai(
@@ -1469,6 +1572,52 @@ async fn provider_registry_tracks_integrations_independently() {
         .expect("weather status");
     assert_eq!(metadata.state, IntegrationState::Connected);
     assert_eq!(weather.state, IntegrationState::Degraded);
+}
+
+#[tokio::test]
+async fn provider_registry_distinguishes_apple_install_and_session_states() {
+    let fixture = Fixture::new().await;
+
+    fixture
+        .service
+        .refresh_apple_status(None, false, false)
+        .await
+        .expect("unknown installation status");
+    let settings = fixture.service.get_settings().await.expect("settings");
+    let apple = settings
+        .integration_statuses
+        .iter()
+        .find(|status| status.integration == Integration::AppleMusic)
+        .expect("Apple status");
+    assert_eq!(apple.state, IntegrationState::Unavailable);
+    assert!(apple.safe_message.contains("无法确认"));
+
+    fixture
+        .service
+        .refresh_apple_status(Some(true), false, false)
+        .await
+        .expect("installed without session");
+    let settings = fixture.service.get_settings().await.expect("settings");
+    let apple = settings
+        .integration_statuses
+        .iter()
+        .find(|status| status.integration == Integration::AppleMusic)
+        .expect("Apple status");
+    assert!(apple.safe_message.contains("当前没有媒体会话"));
+
+    fixture
+        .service
+        .refresh_apple_status(Some(true), true, true)
+        .await
+        .expect("controllable session");
+    let settings = fixture.service.get_settings().await.expect("settings");
+    let apple = settings
+        .integration_statuses
+        .iter()
+        .find(|status| status.integration == Integration::AppleMusic)
+        .expect("Apple status");
+    assert_eq!(apple.state, IntegrationState::Connected);
+    assert_eq!(apple.last_success_at.as_deref(), Some(FIXED_NOW));
 }
 
 #[tokio::test]

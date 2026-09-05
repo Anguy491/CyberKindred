@@ -259,6 +259,51 @@ button {
   gap: 24px;
 }
 
+.advanced-settings {
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.advanced-settings[open] {
+  display: grid;
+  gap: 20px;
+}
+
+.advanced-settings summary {
+  min-height: 44px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.settings-change-review {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border-left: 2px solid var(--accent);
+  background: var(--surface);
+}
+
+.settings-change-review ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-secondary);
+}
+
+.toggle-setting {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  color: var(--text-primary);
+}
+
+.toggle-setting input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+
 .source-selector {
   display: flex;
   flex-wrap: wrap;

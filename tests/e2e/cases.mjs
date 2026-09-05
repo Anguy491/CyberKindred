@@ -23,6 +23,37 @@ export const desktopCases = [
     },
   },
   {
+    name: "m6 settings applies and removes silent Windows behaviors [FR-SET-003] [NFR-COMPAT-001]",
+    async run(session) {
+      await ensureSilentFallbackOnboarding(session);
+      await clickWhenReady(session, '[aria-label="设置"]');
+      await clickWhenReady(session, '[data-settings-group="app"]');
+      let autostartEnabled = false;
+      let trayEnabled = false;
+      try {
+        await clickWhenEnabled(session, '[data-testid="app-autostart-enable"]');
+        autostartEnabled = true;
+        await session.waitForElement('[data-testid="app-autostart-disable"]');
+        await clickWhenEnabled(session, '[data-testid="app-tray-enable"]');
+        trayEnabled = true;
+        await session.waitForElement('[data-testid="app-tray-disable"]');
+      } finally {
+        if (trayEnabled) {
+          await clickWhenEnabled(session, '[data-testid="app-tray-disable"]');
+          await session.waitForElement('[data-testid="app-tray-enable"]');
+        }
+        if (autostartEnabled) {
+          await clickWhenEnabled(session, '[data-testid="app-autostart-disable"]');
+          await session.waitForElement('[data-testid="app-autostart-enable"]');
+        }
+      }
+      const autostart = await session.waitForElement('[data-testid="app-autostart-enable"]');
+      const tray = await session.waitForElement('[data-testid="app-tray-enable"]');
+      assertEqual(await session.elementText(autostart), "启用登录启动", "autostart restored off");
+      assertEqual(await session.elementText(tray), "启用托盘运行", "tray restored off");
+    },
+  },
+  {
     name: "m5 weather stays behind explicit city search [FR-WEA-001] [NFR-PRIV-004]",
     async run(session) {
       await ensureSilentFallbackOnboarding(session);
@@ -77,6 +108,19 @@ async function ensureSilentFallbackOnboarding(session) {
 async function clickWhenReady(session, selector) {
   const element = await session.waitForElement(selector);
   await session.click(element);
+}
+
+async function clickWhenEnabled(session, selector, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const element = await session.waitForElement(selector);
+    if (await session.elementAttribute(element, "disabled") === null) {
+      await session.click(element);
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`Desktop control did not become enabled within ${timeoutMs}ms.`);
 }
 
 export function selectDesktopCases(cases, filter) {

@@ -6,14 +6,19 @@ import type {
   DeleteDataCategoryRequest,
   DeleteDataCategoryResponse,
   DeleteScheduleRequest,
+  DeleteSecretRequest,
+  DeleteSecretResponse,
   EventSubscriptionHandlers,
   GetDataInventoryResponse,
   IpcUnlisten,
   ListSchedulesResponse,
+  MusicSourcesResponse,
   NotificationActionRequest,
   NotificationActionResponse,
   OperationAccepted,
   PreviewDataDeletionResponse,
+  TestProviderRequest,
+  TestProviderResponse,
   SearchWeatherLocationsRequest,
   SearchWeatherLocationsResponse,
   SelectWeatherLocationRequest,
@@ -24,10 +29,18 @@ import type {
   UpsertScheduleRequest,
   UpsertScheduleResponse,
   UpdateSettingsRequest,
+  ValidateSecretRequest,
+  ValidateSecretResponse,
+  VoicesResponse,
 } from "../../ipc";
 
 export interface SettingsIpc {
   getSettings(): Promise<SettingsView>;
+  validateAndSetSecret(request: ValidateSecretRequest): Promise<ValidateSecretResponse>;
+  deleteSecret(request: DeleteSecretRequest): Promise<DeleteSecretResponse>;
+  testProvider(request: TestProviderRequest): Promise<TestProviderResponse>;
+  listVoices(): Promise<VoicesResponse>;
+  listMusicSources(): Promise<MusicSourcesResponse>;
   updateSettings(request: UpdateSettingsRequest, currentModelId: string): Promise<Ack>;
   searchWeatherLocations(
     request: SearchWeatherLocationsRequest,
@@ -58,6 +71,28 @@ export function createSettingsIpc(): SettingsIpc {
 }
 
 export const BROWSER_SETTINGS_IPC: SettingsIpc = {
+  async validateAndSetSecret(request) {
+    return { requestId: request.clientRequestId, configured: true, verifiedAt: new Date().toISOString() };
+  },
+  async deleteSecret(request) {
+    return { requestId: request.clientRequestId, configured: false };
+  },
+  async testProvider(request) {
+    return { requestId: request.clientRequestId, ok: true, latencyMs: 12, safeMessage: "连接测试成功。" };
+  },
+  async listVoices() {
+    return { voices: [{ voiceId: "alloy", displayName: "Alloy", previewAvailable: true }] };
+  },
+  async listMusicSources() {
+    return {
+      sources: [
+        { sourceId: "local", kind: "local", displayName: "本地曲库", connected: true,
+          capabilities: { play: true, pause: true, seek: true, next: true, previous: true, setQueue: true } },
+        { sourceId: "apple_music", kind: "system_session", displayName: "Apple Music Windows App",
+          connected: false, capabilities: { play: false, pause: false, seek: false, next: false, previous: false, setQueue: false } },
+      ],
+    };
+  },
   async getSettings() {
     return {
       providerOrigin: "https://api.openai.com",

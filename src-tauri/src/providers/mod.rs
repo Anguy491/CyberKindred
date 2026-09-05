@@ -26,8 +26,8 @@ pub use error::{ProviderFailure, ProviderFailureCategory};
 pub use runtime::ProviderRuntime;
 pub use service::{PREVIEW_PHRASE_V1, ProviderService};
 pub use traits::{
-    CancellationFlag, CandidateSecretValidator, Clock, ProviderCallContext, ProviderFuture,
-    ProviderHealthProbe, ProviderTestInput, SecretValidationInput, SystemClock,
-    VoicePreviewCancelDisposition, VoicePreviewEventSink, VoicePreviewInput, VoicePreviewTerminal,
-    VoicePreviewer,
+    AppBehaviorSettings, AppSettingsEffect, CancellationFlag, CandidateSecretValidator, Clock,
+    ProviderCallContext, ProviderFuture, ProviderHealthProbe, ProviderTestInput,
+    SecretValidationInput, SystemClock, VoicePreviewCancelDisposition, VoicePreviewEventSink,
+    VoicePreviewInput, VoicePreviewTerminal, VoicePreviewer,
 };

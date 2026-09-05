@@ -25,7 +25,9 @@ use super::{
     },
     events::SharedPlaybackEventSink,
     idempotency::AsyncIdempotency,
-    system_media::{APPLE_SOURCE_ID, SystemMediaControl, SystemMediaSource},
+    system_media::{
+        APPLE_SOURCE_ID, SystemMediaControl, SystemMediaSource, apple_music_app_installed,
+    },
 };
 
 pub(crate) use super::system_media::SystemInterruptionToken;
@@ -196,6 +198,11 @@ impl PlaybackService {
             previous: true,
             set_queue: true,
         }
+    }
+
+    #[must_use]
+    pub fn apple_music_app_installed(&self) -> Option<bool> {
+        apple_music_app_installed()
     }
 
     /// API-016. This is a pure in-memory read.

@@ -70,8 +70,28 @@ pub async fn api_v1_test_provider(
 pub async fn api_v1_get_settings(
     request: tauri::ipc::Request<'_>,
     provider_service: State<'_, ProviderService>,
+    playback_service: State<'_, crate::playback::PlaybackService>,
 ) -> Result<SettingsView, ApiError> {
     let EmptyRequest {} = parse_command_request::<EmptyRequest>(&request)?;
+    let apple_source = playback_service
+        .list_music_sources(EmptyRequest {})
+        .sources
+        .into_iter()
+        .find(|source| source.source_id == "apple_music");
+    provider_service
+        .refresh_apple_status(
+            playback_service.apple_music_app_installed(),
+            apple_source.as_ref().is_some_and(|source| source.connected),
+            apple_source.as_ref().is_some_and(|source| {
+                let capabilities = source.capabilities;
+                capabilities.play
+                    || capabilities.pause
+                    || capabilities.seek
+                    || capabilities.next
+                    || capabilities.previous
+            }),
+        )
+        .await?;
     provider_service.get_settings().await
 }
 

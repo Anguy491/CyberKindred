@@ -269,7 +269,7 @@ export function OnboardingFlow({ state, client, onStateChange, onCompleted }: On
     </>;
     if (step === "music_source") return <fieldset className="choice-stack">
       <legend>选择一个或多个音乐来源</legend>
-      <Choice id="onboarding-source-apple" checked={sources.includes("apple_music")} label="Apple Music / Windows App"
+      <Choice id="onboarding-source-apple" checked={sources.includes("apple_music")} label="Apple Music Windows App"
         detail="仅使用 Windows 系统媒体会话；不操作网页 DOM，也不保证精确点歌。"
         onChange={(checked) => setSources(toggleSource(sources, "apple_music", checked))} />
       <Choice id="onboarding-source-local" checked={sources.includes("local")} label="本地音乐"

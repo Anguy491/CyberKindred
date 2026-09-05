@@ -124,6 +124,40 @@ impl ProviderRegistry {
         }
     }
 
+    pub(super) fn apple_session(
+        &mut self,
+        app_installed: Option<bool>,
+        connected: bool,
+        controllable: bool,
+        at: String,
+    ) {
+        let Some(entry) = self.entries.get_mut(&Integration::AppleMusic) else {
+            return;
+        };
+        if app_installed.is_none() {
+            entry.state = IntegrationState::Unavailable;
+            entry.last_success_at = None;
+            "无法确认 Apple Music Windows App 的安装状态。".clone_into(&mut entry.safe_message);
+        } else if app_installed == Some(false) {
+            entry.state = IntegrationState::Unavailable;
+            entry.last_success_at = None;
+            "未安装 Apple Music Windows App。".clone_into(&mut entry.safe_message);
+        } else if !connected {
+            entry.state = IntegrationState::Unavailable;
+            entry.last_success_at = None;
+            "Apple Music Windows App 已安装，但当前没有媒体会话。"
+                .clone_into(&mut entry.safe_message);
+        } else if !controllable {
+            entry.state = IntegrationState::Degraded;
+            entry.last_success_at = Some(at);
+            "会话已连接，但当前没有可用控制能力。".clone_into(&mut entry.safe_message);
+        } else {
+            entry.state = IntegrationState::Connected;
+            entry.last_success_at = Some(at);
+            "Apple Music Windows App 会话已连接。".clone_into(&mut entry.safe_message);
+        }
+    }
+
     pub(super) fn statuses(&self) -> Vec<IntegrationStatus> {
         [
             Integration::Openai,

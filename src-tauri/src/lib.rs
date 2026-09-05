@@ -9,6 +9,7 @@ pub mod llm;
 mod llm_repository;
 pub mod metadata;
 mod onboarding;
+mod os_integration;
 pub mod playback;
 mod playback_repository;
 pub mod program;
@@ -25,9 +26,9 @@ mod weather;
 
 use chrono::Utc;
 use data_control::{
-    DataControlService, TauriDataExportEventSink, TauriDataExportPicker,
-    api_v1_delete_all_user_data, api_v1_delete_data_category, api_v1_export_user_data,
-    api_v1_get_data_inventory, api_v1_preview_data_deletion,
+    DataControlService, DataControlServiceDependencies, TauriDataExportEventSink,
+    TauriDataExportPicker, api_v1_delete_all_user_data, api_v1_delete_data_category,
+    api_v1_export_user_data, api_v1_get_data_inventory, api_v1_preview_data_deletion,
 };
 use diagnostics::{DiagnosticEvent, DiagnosticLog, ValidatedLogDirectory};
 use ipc::{
@@ -47,6 +48,7 @@ use onboarding::{
     OnboardingService,
     commands::{api_v1_get_onboarding_state, api_v1_save_onboarding_step},
 };
+use os_integration::AppIntegrationService;
 use playback::{
     PlaybackEventSink, PlaybackService, RodioAudioEngine, SystemPlaybackClock,
     TauriPlaybackEventSink,
@@ -61,8 +63,8 @@ use program::{
     SystemProgramIdFactory,
 };
 use providers::{
-    CandidateSecretValidator, ProviderHealthProbe, ProviderRuntime, ProviderService, SystemClock,
-    VoicePreviewEventSink, VoicePreviewer,
+    AppBehaviorSettings, AppSettingsEffect, CandidateSecretValidator, ProviderHealthProbe,
+    ProviderRuntime, ProviderService, SystemClock, VoicePreviewEventSink, VoicePreviewer,
     commands::{
         api_v1_cancel_operation, api_v1_delete_secret, api_v1_get_settings, api_v1_list_voices,
         api_v1_preview_voice, api_v1_test_provider, api_v1_update_settings,
@@ -225,6 +227,17 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
         )
         .await;
     }));
+    let stored_settings = tauri::async_runtime::block_on(repository.load_provider_settings())?;
+    let app_integrations = Arc::new(
+        AppIntegrationService::install(
+            app,
+            AppBehaviorSettings {
+                minimize_to_tray: stored_settings.minimize_to_tray,
+                launch_at_startup: stored_settings.launch_at_startup,
+            },
+        )
+        .map_err(|_| io::Error::other("app integration unavailable"))?,
+    );
     let provider_runtime = Arc::new(
         ProviderRuntime::new().map_err(|_| io::Error::other("provider runtime unavailable"))?,
     );
@@ -257,7 +270,8 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
         voice_previewer,
         preview_events.clone(),
         clock.clone(),
-    );
+    )
+    .with_settings_effect(Arc::clone(&app_integrations) as Arc<dyn AppSettingsEffect>);
     let schedule_notifications = Arc::new(TauriScheduleNotificationSink::new(app.handle().clone()));
     let scheduler_service = Arc::new(
         SchedulerService::new(
@@ -303,18 +317,19 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
         PlaybackService::local_capabilities(),
     )
     .map_err(|_| io::Error::other("playback runtime unavailable"))?;
-    let data_control_service = DataControlService::new(
-        repository.clone(),
-        Arc::clone(&storage),
-        paths.clone(),
-        Box::new(WindowsCredentialVault::new()?),
-        playback_service.clone(),
-        Arc::new(TauriDataExportPicker::new(app.handle().clone())),
-        Arc::new(TauriDataExportEventSink::new(
+    let data_control_service = DataControlService::new(DataControlServiceDependencies {
+        repository: repository.clone(),
+        storage: Arc::clone(&storage),
+        paths: paths.clone(),
+        vault: Box::new(WindowsCredentialVault::new()?),
+        playback: playback_service.clone(),
+        picker: Arc::new(TauriDataExportPicker::new(app.handle().clone())),
+        events: Arc::new(TauriDataExportEventSink::new(
             app.handle().clone(),
             process_sequence.clone(),
         )),
-    );
+        reset_integration: app_integrations.clone() as Arc<dyn data_control::DataResetIntegration>,
+    });
     let program_credentials = Arc::new(RepositoryProgramCredentialSource::new(
         repository.clone(),
         Box::new(WindowsCredentialVault::new()?),
@@ -395,6 +410,7 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     app.manage(storage);
     app.manage(retention_maintenance);
     app.manage(provider_service);
+    app.manage(app_integrations);
     app.manage(scheduler_service);
     app.manage(scheduler_runtime);
     app.manage(weather_service);
@@ -411,12 +427,7 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Starts the desktop shell with the approved local and Windows system-session sources.
-///
-/// # Errors
-///
-/// Returns a Tauri error when the desktop runtime cannot be initialized.
-pub fn run() -> tauri::Result<()> {
+fn static_capabilities() -> Result<CapabilitiesService, io::Error> {
     let local_source = SourceSummary::new(
         "local",
         SourceKind::Local,
@@ -428,7 +439,7 @@ pub fn run() -> tauri::Result<()> {
     let apple_source = SourceSummary::new(
         "apple_music",
         SourceKind::SystemSession,
-        "Apple Music / Windows App",
+        "Apple Music Windows App",
         false,
         SourceCapabilities {
             play: false,
@@ -440,20 +451,43 @@ pub fn run() -> tauri::Result<()> {
         },
     )
     .map_err(|_| io::Error::other("invalid system capability snapshot"))?;
-    let capabilities = CapabilitiesService::new(
+    CapabilitiesService::new(
         env!("CARGO_PKG_VERSION"),
         "Windows",
         true,
         vec![local_source, apple_source],
         Vec::new(),
     )
-    .map_err(|_| io::Error::other("invalid static capability snapshot"))?;
+    .map_err(|_| io::Error::other("invalid static capability snapshot"))
+}
+
+/// Starts the desktop shell with the approved local and Windows system-session sources.
+///
+/// # Errors
+///
+/// Returns a Tauri error when the desktop runtime cannot be initialized.
+pub fn run() -> tauri::Result<()> {
+    let capabilities = static_capabilities()?;
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .arg("--silent-start")
+                .build(),
+        )
         .manage(capabilities)
         .setup(setup_application)
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event
+                && let Some(integrations) = window.try_state::<Arc<AppIntegrationService>>()
+                && integrations.should_minimize_to_tray()
+            {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             api_v1_get_capabilities,
             api_v1_get_onboarding_state,
@@ -506,6 +540,23 @@ pub fn run() -> tauri::Result<()> {
             api_v1_delete_all_user_data,
         ])
         .run(tauri::generate_context!())
+}
+
+#[cfg(test)]
+#[test]
+fn static_apple_capability_snapshot_starts_disconnected_and_path_free() {
+    let snapshot = static_capabilities()
+        .expect("static capabilities")
+        .get_capabilities(EmptyRequest {});
+    let apple = snapshot
+        .sources
+        .iter()
+        .find(|source| source.source_id == "apple_music")
+        .expect("Apple source");
+    assert_eq!(apple.display_name, "Apple Music Windows App");
+    assert!(!apple.connected);
+    assert!(!apple.capabilities.play);
+    assert!(!apple.capabilities.set_queue);
 }
 
 #[cfg(test)]

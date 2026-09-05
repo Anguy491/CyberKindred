@@ -90,6 +90,15 @@ pub trait DataExportEventSink: Send + Sync {
     fn cancelled(&self, operation_id: Uuid) -> Result<(), ApiError>;
 }
 
+pub trait DataResetIntegration: Send + Sync {
+    /// Disables app-owned Windows integrations before persistent data removal.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable error when an integration cannot be removed.
+    fn reset(&self) -> Result<(), ApiError>;
+}
+
 pub struct TauriDataExportEventSink<R: Runtime> {
     app_handle: AppHandle<R>,
     sequence: Arc<ProcessSequence>,
@@ -255,6 +264,7 @@ pub struct DataControlService {
     playback: PlaybackService,
     picker: Arc<dyn DataExportPicker>,
     events: Arc<dyn DataExportEventSink>,
+    reset_integration: Arc<dyn DataResetIntegration>,
     previews: Mutex<HashMap<Uuid, PreviewEntry>>,
     exports: Arc<Mutex<HashMap<Uuid, Arc<AtomicBool>>>>,
     export_requests: AsyncIdempotency<OperationAccepted>,
@@ -263,25 +273,29 @@ pub struct DataControlService {
     reset_requests: AsyncIdempotency<DeleteAllUserDataResponse>,
 }
 
+pub struct DataControlServiceDependencies {
+    pub repository: Repository,
+    pub storage: Arc<Storage>,
+    pub paths: AppPaths,
+    pub vault: Box<dyn SecretVault>,
+    pub playback: PlaybackService,
+    pub picker: Arc<dyn DataExportPicker>,
+    pub events: Arc<dyn DataExportEventSink>,
+    pub reset_integration: Arc<dyn DataResetIntegration>,
+}
+
 impl DataControlService {
     #[must_use]
-    pub fn new(
-        repository: Repository,
-        storage: Arc<Storage>,
-        paths: AppPaths,
-        vault: Box<dyn SecretVault>,
-        playback: PlaybackService,
-        picker: Arc<dyn DataExportPicker>,
-        events: Arc<dyn DataExportEventSink>,
-    ) -> Self {
+    pub fn new(dependencies: DataControlServiceDependencies) -> Self {
         Self {
-            repository,
-            storage,
-            paths,
-            vault: Arc::new(Mutex::new(vault)),
-            playback,
-            picker,
-            events,
+            repository: dependencies.repository,
+            storage: dependencies.storage,
+            paths: dependencies.paths,
+            vault: Arc::new(Mutex::new(dependencies.vault)),
+            playback: dependencies.playback,
+            picker: dependencies.picker,
+            events: dependencies.events,
+            reset_integration: dependencies.reset_integration,
             previews: Mutex::new(HashMap::new()),
             exports: Arc::new(Mutex::new(HashMap::new())),
             export_requests: AsyncIdempotency::new(),
@@ -517,6 +531,7 @@ impl DataControlService {
         for cancelled in self.exports.lock().await.values() {
             cancelled.store(true, Ordering::Release);
         }
+        self.reset_integration.reset()?;
         self.vault
             .lock()
             .await

@@ -14,7 +14,7 @@
 
 ### Changed
 
-- Product Owner 于 2026-09-05 解除 post-M5 stop condition 并授权完成 M6；Roadmap 已将 M6 设为 Active，`TASK-025` 开始实施，`TASK-027`、`TASK-028` 进入 Ready。
+- Product Owner 于 2026-09-05 解除 post-M5 stop condition 并授权完成 M6；Roadmap 已将 M6 设为 Active，`TASK-025`–`TASK-028` 依次实施。
 - Product Owner 已解除 post-M4 stop 并仅授权 M5；`TASK-023`–`TASK-024` 已按依赖完成，M5 checkpoint 以 `Passed with known gaps` 关闭，M6 按明确停止条件保持未激活。
 - 明确 M4 对话降级契约：Provider 不可用时保留用户原文并保存带 `local/deterministic` provenance 的固定可用性提示；该提示不是 AI 生成内容，不产生 Memory Proposal，也不自动重放付费请求。
 - 修复 `MemoryRecord.lastUsedAt`、proposal `expectedRevision` 与 SQLite 数据模型的基线不一致：前向 `V0003` 迁移新增 `memories.last_used_at_ms` 和 `memory_proposals.revision`；使用时间只在 approved memory 实际进入 Context 后写入，proposal 决策保持乐观并发。
@@ -38,6 +38,9 @@
 
 ### Added
 
+- 完成 M6 Settings 整合：AI/Voice、播放、Apple Music、应用和数据控制设置均接入真实 API；Key 只显示掩码并只可验证替换/删除，高级 provider 变更先列出再保存，各集成独立显示安全状态与最近成功时间。
+- 增加固定 Windows 托盘菜单与 per-user 登录启动；首次默认关闭，设置与系统副作用在同一提交边界失败回滚，登录启动携带 `--silent-start` 且不会自动播放/调用 provider，全部重置先移除自启动并隐藏托盘。隔离 Windows desktop E2E 已验证启用、关闭和零遗留启动项。
+- Apple Music 安装检测、无会话、能力受限和已连接状态现在分别显示；静态与运行时来源统一使用 path-free 显示名，修复候选在窗口出现前被安全标签校验拒绝的启动问题。
 - 完成 M6 数据控制切片：API-040 返回隐私生命周期全部 19 类 path-free inventory；API-041/042 以五分钟 token 和精确短语预览/删除五个固定集合；API-036 通过 Rust 临时文件与 native save picker 输出版本化 JSONL；API-037 枚举删除全部应用凭据并关闭 SQLite 后清除 DB/WAL/SHM、备份、缓存和日志，始终保留源音乐与应用目录外的用户导出。
 - 设置页 `PRIVACY & DATA` 现展示数量、介质、保留期和外发对象，提供导出、分类删除和独立全部重置确认；Rust/TypeScript canary 测试证明导出排除 secret 类数据、raw chat、路径、voice text、provider usage 与 outbox。
 - 完成 M5 Context and proactive scheduling 原型：设置页支持显式城市搜索/选择和天气状态；Forecast 仅接收经舍入坐标与固定参数，30 分钟新鲜天气可进入节目 Context，失败或过期时独立降级。

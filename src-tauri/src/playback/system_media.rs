@@ -22,9 +22,19 @@ use crate::{
 use super::{events::SharedPlaybackEventSink, service::PlaybackClock};
 
 pub(super) const APPLE_SOURCE_ID: &str = "apple_music";
-const APPLE_SOURCE_NAME: &str = "Apple Music / Windows App";
+const APPLE_SOURCE_NAME: &str = "Apple Music Windows App";
 const REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 const CHANNEL_CAPACITY: usize = 64;
+
+#[cfg(windows)]
+pub(super) fn apple_music_app_installed() -> Option<bool> {
+    windows_backend::apple_music_app_installed()
+}
+
+#[cfg(not(windows))]
+pub(super) const fn apple_music_app_installed() -> Option<bool> {
+    Some(false)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SystemMediaControl {
@@ -655,6 +665,7 @@ mod windows_backend {
     };
     use windows::{
         Foundation::TypedEventHandler,
+        Management::Deployment::PackageManager,
         Media::Control::{
             GlobalSystemMediaTransportControlsSession as Session,
             GlobalSystemMediaTransportControlsSessionManager as SessionManager,
@@ -669,6 +680,17 @@ mod windows_backend {
     const TICKS_PER_MILLISECOND: i64 = 10_000;
     const CONTROL_CONFIRMATION_TIMEOUT: Duration = Duration::from_secs(2);
     const CONTROL_CONFIRMATION_POLL: Duration = Duration::from_millis(50);
+
+    pub(super) fn apple_music_app_installed() -> Option<bool> {
+        let manager = PackageManager::new().ok()?;
+        let packages = manager.FindPackages().ok()?;
+        Some(packages.into_iter().any(|package| {
+            package
+                .Id()
+                .and_then(|identity| identity.Name())
+                .is_ok_and(|name| name == "AppleInc.AppleMusicWin")
+        }))
+    }
 
     struct BoundSession {
         identity: String,

@@ -15,6 +15,26 @@ use uuid::Uuid;
 
 pub type ProviderFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AppBehaviorSettings {
+    pub minimize_to_tray: bool,
+    pub launch_at_startup: bool,
+}
+
+/// Applies user-visible OS settings at the same commit boundary as SQLite settings.
+pub trait AppSettingsEffect: Send + Sync {
+    /// Applies `next`, or restores `previous` when called in the reverse direction.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable, redacted error when the Windows integration rejects the change.
+    fn apply(
+        &self,
+        previous: AppBehaviorSettings,
+        next: AppBehaviorSettings,
+    ) -> Result<(), ApiError>;
+}
+
 #[derive(Clone, Default)]
 pub struct CancellationFlag(Arc<AtomicBool>);
 
