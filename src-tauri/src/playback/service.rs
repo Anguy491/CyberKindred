@@ -28,6 +28,8 @@ use super::{
     system_media::{APPLE_SOURCE_ID, SystemMediaControl, SystemMediaSource},
 };
 
+pub(crate) use super::system_media::SystemInterruptionToken;
+
 #[cfg(test)]
 use super::system_media::SystemMediaBackend;
 
@@ -401,6 +403,22 @@ impl PlaybackService {
             .await
             .map_err(|_| ApiError::unexpected())?;
         receiver.await.map_err(|_| ApiError::unexpected())
+    }
+
+    pub(crate) async fn begin_system_interruption(
+        &self,
+    ) -> Result<SystemInterruptionToken, ApiError> {
+        if self.active()? != ActiveSource::System {
+            return Err(ApiError::from_reason(InternalReason::SourceUnavailable));
+        }
+        self.system_source.begin_interruption().await
+    }
+
+    pub(crate) async fn finish_system_interruption(
+        &self,
+        token: SystemInterruptionToken,
+    ) -> Result<PlaybackState, ApiError> {
+        self.system_source.finish_interruption(token).await
     }
 
     async fn control_active<R>(

@@ -60,6 +60,20 @@ pub enum SpeechProvenance {
     SystemSessionGeneric,
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SystemSessionGenericPhrase {
+    CompanionOpening,
+}
+
+impl SystemSessionGenericPhrase {
+    #[must_use]
+    pub const fn text(self) -> &'static str {
+        match self {
+            Self::CompanionOpening => "我会陪你听一会儿，播放队列继续由 Apple Music 控制。",
+        }
+    }
+}
+
 /// Validated, normalized input for the closed `OpenAI` Speech request.
 #[derive(Clone)]
 pub struct SpeechInput {
@@ -114,6 +128,29 @@ impl SpeechInput {
             speed,
             locale,
             SpeechProvenance::VoicePreview,
+        )
+    }
+
+    /// Creates a system-session-safe voice input from a closed generic phrase.
+    /// No caller-provided or GSMTC-derived text can cross this constructor.
+    ///
+    /// # Errors
+    ///
+    /// Rejects unsafe identifiers, speed, or locale.
+    pub fn system_session_generic(
+        phrase: SystemSessionGenericPhrase,
+        voice_id: String,
+        model_id: String,
+        speed: f32,
+        locale: String,
+    ) -> Result<Self, ProviderFailure> {
+        Self::validated(
+            phrase.text(),
+            voice_id,
+            model_id,
+            speed,
+            locale,
+            SpeechProvenance::SystemSessionGeneric,
         )
     }
 

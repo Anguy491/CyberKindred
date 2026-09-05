@@ -13,8 +13,10 @@ use uuid::Uuid;
 
 use crate::{
     contracts::{
-        ProgramPlan, ProgramPlanMode, ProgramPlanSegmentsItem, ProgramPlanTrackSegment,
-        ProgramPlanVoiceSegment, ProgramPlanVoiceSegmentTrigger,
+        PlaybackState, PlaybackStateCapabilities, PlaybackStateSourceKind, PlaybackStateStatus,
+        PlaybackStateTrack, PlaybackStateTrackOrigin, ProgramPlan, ProgramPlanMode,
+        ProgramPlanSegmentsItem, ProgramPlanTrackSegment, ProgramPlanVoiceSegment,
+        ProgramPlanVoiceSegmentTrigger,
     },
     ipc::{ApiError, ErrorId, InternalReason, ProcessSequence},
     program::{CandidateSelection, PlanDegradation, PlanOrigin, PlannedProgram, ProgramCandidate},
@@ -119,6 +121,14 @@ impl RadioProgramStore for FakeStore {
             state.phase = Some(ProgramRunPhase::Planning);
             Ok(0)
         })
+    }
+
+    fn begin_system_program(
+        &self,
+        program_id: Uuid,
+        created_at_ms: i64,
+    ) -> traits::RadioFuture<'_, Result<u64, ApiError>> {
+        self.begin_program(program_id, created_at_ms)
     }
 
     fn persist_plan<'a>(
@@ -276,6 +286,41 @@ struct FakePlayback {
     actions: Arc<Mutex<Vec<String>>>,
 }
 
+struct FakeApple;
+
+impl AppleCompanion for FakeApple {
+    fn connect(&self) -> traits::RadioFuture<'_, Result<PlaybackState, ApiError>> {
+        Box::pin(async { Ok(system_playback_state()) })
+    }
+
+    fn run(
+        &self,
+        _program_id: Uuid,
+        _initial: PlaybackState,
+        _authorization: ConfirmedProgramStart,
+        mut cancellation: watch::Receiver<bool>,
+        signals: mpsc::Sender<AppleCompanionSignal>,
+    ) -> traits::RadioFuture<'_, Result<(), ApiError>> {
+        Box::pin(async move {
+            signals
+                .send(AppleCompanionSignal::Reaction(
+                    "deterministic apple reaction".to_owned(),
+                ))
+                .await
+                .map_err(|_| ApiError::unexpected())?;
+            loop {
+                cancellation
+                    .changed()
+                    .await
+                    .map_err(|_| ApiError::unexpected())?;
+                if *cancellation.borrow() {
+                    return Ok(());
+                }
+            }
+        })
+    }
+}
+
 impl FakePlayback {
     fn new(actions: Arc<Mutex<Vec<String>>>) -> Self {
         Self {
@@ -374,6 +419,7 @@ fn fixture() -> Fixture {
         store: store.clone(),
         playback: playback.clone(),
         speech: speech.clone(),
+        apple: Arc::new(FakeApple),
         event_sink: sink.clone(),
         clock: Arc::new(FixedClock),
         sequence: Arc::new(ProcessSequence::default()),
@@ -388,6 +434,36 @@ fn fixture() -> Fixture {
         sink,
         actions,
         program_id,
+    }
+}
+
+fn system_playback_state() -> PlaybackState {
+    PlaybackState {
+        schema_version: crate::ipc::IPC_SCHEMA_VERSION.to_owned(),
+        source_id: "apple_music".to_owned(),
+        source_kind: PlaybackStateSourceKind::SystemSession,
+        status: PlaybackStateStatus::Playing,
+        capabilities: PlaybackStateCapabilities {
+            play: true,
+            pause: true,
+            seek: false,
+            next: true,
+            previous: true,
+            set_queue: false,
+        },
+        current_track: Some(PlaybackStateTrack {
+            track_id: "system:0123456789abcdef0123456789abcdef".to_owned(),
+            title: "GSMTC CANARY".to_owned(),
+            artist: None,
+            album: None,
+            artwork_uri: None,
+            origin: PlaybackStateTrackOrigin::SystemSession,
+        }),
+        position_ms: 0,
+        duration_ms: Some(10_000),
+        revision: 1,
+        updated_at: "2026-09-03T01:00:00.000Z".to_owned(),
+        last_error: None,
     }
 }
 
@@ -407,6 +483,47 @@ async fn wait_for_phase(store: &FakeStore, expected: ProgramRunPhase) {
     })
     .await
     .expect("runner reached expected phase");
+}
+
+#[tokio::test]
+async fn apple_program_returns_no_queue_plan_and_emits_only_local_companion_text() {
+    let fixture = fixture();
+    let response = fixture
+        .service
+        .start_local_program(StartProgramRequest {
+            client_request_id: Uuid::now_v7(),
+            source_id: "apple_music".to_owned(),
+            trigger: StartProgramTrigger::Manual,
+        })
+        .await
+        .expect("Apple companion start");
+    assert!(response.plan.is_none());
+    assert_eq!(fixture.planner.calls.load(Ordering::SeqCst), 0);
+    wait_for_phase(&fixture.store, ProgramRunPhase::Music).await;
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let has_reaction = fixture.sink.0.lock().expect("events").iter().any(|event| {
+                matches!(event, RadioEvent::ProgramState(value)
+                    if value.safe_message.as_deref() == Some("deterministic apple reaction"))
+            });
+            if has_reaction {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("local deterministic reaction");
+    let stopped = fixture
+        .service
+        .stop_program(StopProgramRequest {
+            client_request_id: Uuid::now_v7(),
+            program_id: fixture.program_id,
+        })
+        .await
+        .expect("safe stop");
+    assert!(stopped.revision >= 4);
+    assert_eq!(fixture.playback.stop_calls.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]

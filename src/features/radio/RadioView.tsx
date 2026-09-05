@@ -148,11 +148,12 @@ export function RadioView({
     }
   }, [autoFocusStart, loadState, onStartFocused, startButtonRef]);
 
-  const localSource = sources.find((source) => source.sourceId === "local");
+  const selectedSource = sources.find((source) => source.sourceId === (playback?.sourceId ?? "local"));
   const unavailable = disabledReason
-    ?? (localSource === undefined ? "[UNAVAILABLE: LOCAL SOURCE]"
-      : !localSource.connected ? "[UNAVAILABLE: LOCAL SOURCE DISCONNECTED]"
-        : !localSource.capabilities.setQueue ? "[UNAVAILABLE: QUEUE CAPABILITY]" : undefined);
+    ?? (selectedSource === undefined ? "[UNAVAILABLE: MUSIC SOURCE]"
+      : !selectedSource.connected ? "[UNAVAILABLE: MUSIC SOURCE DISCONNECTED]"
+        : selectedSource.kind === "local" && !selectedSource.capabilities.setQueue
+          ? "[UNAVAILABLE: QUEUE CAPABILITY]" : undefined);
   const active = programState === "planning" || programState === "running"
     || programState === "paused" || programState === "stopping";
   const currentVoice = currentVoiceText(plan, segmentStates);
@@ -172,7 +173,7 @@ export function RadioView({
     terminalChatOperationsRef.current.clear();
     setProgramState("planning");
     try {
-      const response = await ipc.startProgram("local");
+      const response = await ipc.startProgram(playback?.sourceId ?? "local");
       programIdRef.current = response.programId;
       setProgramId(response.programId);
       setPlan(response.plan);
@@ -221,7 +222,7 @@ export function RadioView({
   if (loadState === "loading") {
     return <section className="radio-state" aria-labelledby="radio-title">
       <p className="instrument-label">RADIO / LOADING</p>
-      <h1 id="radio-title" className="hero-title">正在连接本地播放核心</h1>
+      <h1 id="radio-title" className="hero-title">正在连接播放核心</h1>
       <p role="status" className="inline-status">[LOADING…] 尚未播放或调用服务。</p>
     </section>;
   }
@@ -278,6 +279,9 @@ export function RadioView({
           onClick={() => void stop()}>停止节目</ControlButton>
       </div>
       <p className="inline-status">保持静音，等待用户明确开始。</p>
+      {playback?.sourceKind === "system_session" ? <p className="radio-degradation">
+        COMPANION MODE · 队列由 Apple Music 控制 · 曲目反应在本机生成
+      </p> : null}
 
       <div className="playback-controls" aria-label="播放控制">
         <ControlButton {...disabledWhen(controlsDisabled || !playback?.capabilities.previous, "[UNAVAILABLE]")}
@@ -310,7 +314,9 @@ export function RadioView({
 
       {error !== null ? <p role="alert" className="inline-status radio-error">{error}</p> : null}
       {messages.map((message) => <p key={message} role="status" className="radio-degradation">
-        {message.includes("语音") ? "[TTS UNAVAILABLE — TEXT CONTINUES] " : "[DETERMINISTIC LOCAL QUEUE] "}{message}
+        {message.includes("语音") ? "[TTS UNAVAILABLE — TEXT CONTINUES] "
+          : playback?.sourceKind === "system_session" ? "[LOCAL COMPANION TEXT] "
+            : "[DETERMINISTIC LOCAL QUEUE] "}{message}
       </p>)}
 
       <PlanView plan={plan} segmentStates={segmentStates} />

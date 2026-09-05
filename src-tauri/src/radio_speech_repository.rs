@@ -12,13 +12,14 @@ use uuid::Uuid;
 
 use crate::{
     ipc::{ApiError, InternalReason},
+    playback::PlaybackService,
     providers::{ProviderCallContext, ProviderFailure, ProviderFailureCategory, SystemClock},
-    radio::{ConfirmedProgramStart, ProgramSpeech, ProgramSpeechOutcome},
+    radio::{ConfirmedProgramStart, ProgramSpeech, ProgramSpeechOutcome, SystemProgramSpeech},
     speech::{
         CallScopedOpenAiTtsProvider, ReqwestSpeechTransportFactory, RodioSpeechPlayback,
         SpeechActor, SpeechArtifact, SpeechAuthorization, SpeechCache, SpeechInput, SpeechOwner,
         SpeechPlayback, SpeechProvenance, SpeechRunOutcome, SpeechSink, SpeechTransportFactory,
-        TtsProvider,
+        SystemSessionGenericPhrase, TtsProvider,
     },
     storage::{
         CanonicalOrigin, CredentialTarget, Repository, SecretVault, StorageError, StorageReason,
@@ -163,6 +164,187 @@ impl ProgramSpeech for RepositoryProgramSpeech {
 
     fn cancel(&self, segment_id: Uuid) {
         let _ = self.actor.cancel(segment_id);
+    }
+}
+
+pub(crate) struct RepositorySystemProgramSpeech {
+    repository: Repository,
+    vault: Mutex<Box<dyn SecretVault>>,
+    actor: Arc<SpeechActor>,
+    transports: Arc<dyn SpeechTransportFactory>,
+}
+
+impl RepositorySystemProgramSpeech {
+    #[must_use]
+    pub(crate) fn new(
+        repository: Repository,
+        vault: Box<dyn SecretVault>,
+        actor: Arc<SpeechActor>,
+        transports: Arc<dyn SpeechTransportFactory>,
+    ) -> Self {
+        Self {
+            repository,
+            vault: Mutex::new(vault),
+            actor,
+            transports,
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn production(
+        repository: Repository,
+        vault: Box<dyn SecretVault>,
+        playback: PlaybackService,
+    ) -> Self {
+        let local_output: Arc<dyn SpeechPlayback> = Arc::new(RodioSpeechPlayback::new());
+        let interruption_output: Arc<dyn SpeechPlayback> = Arc::new(
+            SystemInterruptionSpeechPlayback::new(playback, local_output),
+        );
+        let actor = Arc::new(SpeechActor::new(
+            Arc::new(CallScopedOnlyProvider),
+            SpeechCache::new(PROGRAM_CACHE_ENTRIES, PROGRAM_CACHE_BYTES),
+            interruption_output,
+            Arc::new(SystemClock),
+            PROGRAM_TERMINAL_CAPACITY,
+        ));
+        Self::new(
+            repository,
+            vault,
+            actor,
+            Arc::new(ReqwestSpeechTransportFactory),
+        )
+    }
+
+    fn load_secret(&self, target: &CredentialTarget) -> Option<crate::storage::SecretValue> {
+        let vault = self.vault.lock().ok()?;
+        vault.get(target).ok().flatten()
+    }
+}
+
+impl SystemProgramSpeech for RepositorySystemProgramSpeech {
+    fn present_opening(
+        &self,
+        program_id: Uuid,
+        _authorization: ConfirmedProgramStart,
+        mut cancellation: watch::Receiver<bool>,
+    ) -> Pin<Box<dyn Future<Output = Result<ProgramSpeechOutcome, ApiError>> + Send + '_>> {
+        Box::pin(async move {
+            ensure_not_cancelled(&cancellation)?;
+            let load_settings = self.repository.load_provider_settings();
+            tokio::pin!(load_settings);
+            let settings = tokio::select! {
+                biased;
+                () = wait_for_cancellation(&mut cancellation) => {
+                    return Err(cancelled_error());
+                }
+                result = &mut load_settings => result.map_err(|error| map_storage_error(&error))?,
+            };
+            ensure_not_cancelled(&cancellation)?;
+            if !settings.tts_enabled {
+                return Ok(ProgramSpeechOutcome::TextOnly);
+            }
+            let Ok(input) = SpeechInput::system_session_generic(
+                SystemSessionGenericPhrase::CompanionOpening,
+                settings.tts_voice_id,
+                settings.tts_model_id,
+                1.0,
+                "zh-CN".to_owned(),
+            ) else {
+                return Ok(ProgramSpeechOutcome::TextOnly);
+            };
+            let Ok(origin) = CanonicalOrigin::parse(&settings.provider_origin) else {
+                return Ok(ProgramSpeechOutcome::TextOnly);
+            };
+            ensure_not_cancelled(&cancellation)?;
+            let Some(secret) = self.load_secret(&CredentialTarget::openai(&origin)) else {
+                return Ok(ProgramSpeechOutcome::TextOnly);
+            };
+            ensure_not_cancelled(&cancellation)?;
+            let Ok(transport) = self.transports.for_origin(&origin) else {
+                return Ok(ProgramSpeechOutcome::TextOnly);
+            };
+            let provider = CallScopedOpenAiTtsProvider::new(transport.as_ref(), &secret);
+            let context = ProviderCallContext::new(PROGRAM_SPEECH_DEADLINE);
+            let caller_cancellation = context.cancellation.clone();
+            let run = self.actor.run_with_provider(
+                &provider,
+                program_id,
+                input,
+                SpeechOwner::Segment(program_id),
+                true,
+                Some(SpeechAuthorization::ConfirmedProgram(program_id)),
+                &context,
+            );
+            tokio::pin!(run);
+            tokio::select! {
+                biased;
+                () = wait_for_cancellation(&mut cancellation) => {
+                    caller_cancellation.cancel();
+                    let _ = self.actor.cancel(program_id);
+                    Err(cancelled_error())
+                }
+                result = &mut run => {
+                    match result.map_err(|failure| failure.into_api_error(false))? {
+                        SpeechRunOutcome::Spoken { .. } => Ok(ProgramSpeechOutcome::Spoken),
+                        SpeechRunOutcome::TextOnly { .. } => Ok(ProgramSpeechOutcome::TextOnly),
+                    }
+                }
+            }
+        })
+    }
+
+    fn cancel(&self, program_id: Uuid) {
+        let _ = self.actor.cancel(program_id);
+    }
+}
+
+struct SystemInterruptionSpeechPlayback {
+    playback: PlaybackService,
+    output: Arc<dyn SpeechPlayback>,
+}
+
+impl SystemInterruptionSpeechPlayback {
+    const fn new(playback: PlaybackService, output: Arc<dyn SpeechPlayback>) -> Self {
+        Self { playback, output }
+    }
+}
+
+impl SpeechPlayback for SystemInterruptionSpeechPlayback {
+    fn play(
+        &self,
+        operation_id: Uuid,
+        bytes: Arc<[u8]>,
+        authorization: SpeechAuthorization,
+        operation_cancellation: crate::providers::CancellationFlag,
+        caller_cancellation: crate::providers::CancellationFlag,
+    ) -> Pin<Box<dyn Future<Output = Result<(), ProviderFailure>> + Send + '_>> {
+        Box::pin(async move {
+            let token = self
+                .playback
+                .begin_system_interruption()
+                .await
+                .map_err(|_| ProviderFailure::new(ProviderFailureCategory::Unavailable))?;
+            let result = self
+                .output
+                .play(
+                    operation_id,
+                    bytes,
+                    authorization,
+                    operation_cancellation,
+                    caller_cancellation,
+                )
+                .await;
+            let resumed = self.playback.finish_system_interruption(token).await;
+            match (result, resumed) {
+                (Ok(()), Ok(_)) => Ok(()),
+                (Err(error), _) => Err(error),
+                (Ok(()), Err(_)) => Err(ProviderFailure::new(ProviderFailureCategory::Unavailable)),
+            }
+        })
+    }
+
+    fn stop(&self, operation_id: Uuid) {
+        self.output.stop(operation_id);
     }
 }
 

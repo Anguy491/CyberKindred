@@ -47,6 +47,13 @@ pub struct SystemMediaSnapshot {
     pub duration_ms: Option<u64>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct SystemInterruptionToken {
+    identity: String,
+    revision: u64,
+    resume: bool,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum SystemMediaError {
     Unavailable,
@@ -81,6 +88,13 @@ enum SystemMessage {
     Control {
         expected_revision: u64,
         action: SystemMediaControl,
+        response: oneshot::Sender<Result<PlaybackState, ApiError>>,
+    },
+    BeginInterruption {
+        response: oneshot::Sender<Result<SystemInterruptionToken, ApiError>>,
+    },
+    FinishInterruption {
+        token: SystemInterruptionToken,
         response: oneshot::Sender<Result<PlaybackState, ApiError>>,
     },
     Refresh,
@@ -185,6 +199,27 @@ impl SystemMediaSource {
         .await
     }
 
+    pub(super) async fn begin_interruption(&self) -> Result<SystemInterruptionToken, ApiError> {
+        let (response, receiver) = oneshot::channel();
+        self.client
+            .sender
+            .send(SystemMessage::BeginInterruption { response })
+            .map_err(|_| ApiError::unexpected())?;
+        receiver.await.map_err(|_| ApiError::unexpected())?
+    }
+
+    pub(super) async fn finish_interruption(
+        &self,
+        token: SystemInterruptionToken,
+    ) -> Result<PlaybackState, ApiError> {
+        let (response, receiver) = oneshot::channel();
+        self.client
+            .sender
+            .send(SystemMessage::FinishInterruption { token, response })
+            .map_err(|_| ApiError::unexpected())?;
+        receiver.await.map_err(|_| ApiError::unexpected())?
+    }
+
     async fn request<F>(&self, message: F) -> Result<PlaybackState, ApiError>
     where
         F: FnOnce(oneshot::Sender<Result<PlaybackState, ApiError>>) -> SystemMessage,
@@ -234,6 +269,14 @@ impl SystemMediaActor {
                     let result = self.control(expected_revision, action);
                     let _ = response.send(result);
                 }
+                Ok(SystemMessage::BeginInterruption { response }) => {
+                    let result = self.begin_interruption();
+                    let _ = response.send(result);
+                }
+                Ok(SystemMessage::FinishInterruption { token, response }) => {
+                    let state = self.finish_interruption(&token);
+                    let _ = response.send(Ok(state));
+                }
                 Ok(SystemMessage::Refresh) | Err(mpsc::RecvTimeoutError::Timeout) => {
                     self.refresh(PlaybackEventReason::AdapterUpdate);
                 }
@@ -277,6 +320,91 @@ impl SystemMediaActor {
                 Err(map_error(error))
             }
         }
+    }
+
+    fn begin_interruption(&mut self) -> Result<SystemInterruptionToken, ApiError> {
+        self.refresh(PlaybackEventReason::AdapterUpdate);
+        let identity = self
+            .identity
+            .clone()
+            .ok_or_else(|| ApiError::from_reason(InternalReason::SourceUnavailable))?;
+        if self.state.status != PlaybackStateStatus::Playing {
+            return Ok(SystemInterruptionToken {
+                identity,
+                revision: self.state.revision,
+                resume: false,
+            });
+        }
+        if !self.state.capabilities.pause {
+            return Err(ApiError::from_reason(InternalReason::CapabilityAbsent)
+                .with_capability(CapabilityName::Pause));
+        }
+        let snapshot = self
+            .backend
+            .control(&identity, SystemMediaControl::Pause)
+            .map_err(map_error)?;
+        if snapshot.identity != identity || snapshot.status != PlaybackStateStatus::Paused {
+            self.refresh(PlaybackEventReason::AdapterUpdate);
+            return Err(ApiError::from_reason(
+                InternalReason::SessionIdentityChanged,
+            ));
+        }
+        self.apply(snapshot, PlaybackEventReason::UserCommand);
+        Ok(SystemInterruptionToken {
+            identity,
+            revision: self.state.revision,
+            resume: true,
+        })
+    }
+
+    fn finish_interruption(&mut self, token: &SystemInterruptionToken) -> PlaybackState {
+        self.refresh(PlaybackEventReason::AdapterUpdate);
+        if !token.resume {
+            return self.state.clone();
+        }
+        let same_identity = self.identity.as_deref() == Some(token.identity.as_str());
+        let untouched = self.state.revision == token.revision
+            && self.state.status == PlaybackStateStatus::Paused;
+        if !same_identity || !untouched {
+            let event_type = if same_identity {
+                PlaybackEventType::UserOverride
+            } else {
+                PlaybackEventType::ProgramInterrupted
+            };
+            let reason = if same_identity {
+                PlaybackEventReason::UserMediaKey
+            } else {
+                PlaybackEventReason::SessionReplaced
+            };
+            self.publish(event_type, reason);
+            return self.state.clone();
+        }
+        if !self.state.capabilities.play {
+            self.publish(
+                PlaybackEventType::ProgramInterrupted,
+                PlaybackEventReason::TtsResumeAborted,
+            );
+            return self.state.clone();
+        }
+        match self
+            .backend
+            .control(&token.identity, SystemMediaControl::Play)
+        {
+            Ok(snapshot)
+                if snapshot.identity == token.identity
+                    && snapshot.status == PlaybackStateStatus::Playing =>
+            {
+                self.apply(snapshot, PlaybackEventReason::UserCommand);
+            }
+            Ok(_) | Err(_) => {
+                self.refresh(PlaybackEventReason::AdapterUpdate);
+                self.publish(
+                    PlaybackEventType::ProgramInterrupted,
+                    PlaybackEventReason::TtsResumeAborted,
+                );
+            }
+        }
+        self.state.clone()
     }
 
     fn refresh(&mut self, reason: PlaybackEventReason) {
@@ -518,6 +646,8 @@ impl SystemMediaBackend for UnavailableSystemMediaBackend {
 
 #[cfg(windows)]
 mod windows_backend {
+    use std::time::{Duration, Instant};
+
     use super::{
         Arc, CapabilityName, PlaybackStateStatus, SourceCapabilities, SystemMediaBackend,
         SystemMediaControl, SystemMediaError, SystemMediaEventSink, SystemMediaSnapshot, Uuid,
@@ -537,6 +667,8 @@ mod windows_backend {
     const APPLE_AUMID_PREFIX: &str = "AppleInc.AppleMusicWin_";
     const APPLE_AUMID_SUFFIX: &str = "!App";
     const TICKS_PER_MILLISECOND: i64 = 10_000;
+    const CONTROL_CONFIRMATION_TIMEOUT: Duration = Duration::from_secs(2);
+    const CONTROL_CONFIRMATION_POLL: Duration = Duration::from_millis(50);
 
     struct BoundSession {
         identity: String,
@@ -743,7 +875,18 @@ mod windows_backend {
             if !accepted {
                 return Err(SystemMediaError::Rejected);
             }
-            self.read_bound()
+            let deadline = Instant::now() + CONTROL_CONFIRMATION_TIMEOUT;
+            loop {
+                if let Ok(after) = self.read_bound()
+                    && action_confirmed(action, &before, &after)
+                {
+                    return Ok(after);
+                }
+                if Instant::now() >= deadline {
+                    return Err(SystemMediaError::Rejected);
+                }
+                std::thread::sleep(CONTROL_CONFIRMATION_POLL);
+            }
         }
     }
 
@@ -835,6 +978,24 @@ mod windows_backend {
 
     fn ticks_to_ms(value: i64) -> u64 {
         u64::try_from(value.max(0) / TICKS_PER_MILLISECOND).unwrap_or_default()
+    }
+
+    fn action_confirmed(
+        action: SystemMediaControl,
+        before: &SystemMediaSnapshot,
+        after: &SystemMediaSnapshot,
+    ) -> bool {
+        match action {
+            SystemMediaControl::Play => after.status == PlaybackStateStatus::Playing,
+            SystemMediaControl::Pause => after.status == PlaybackStateStatus::Paused,
+            SystemMediaControl::Seek(position_ms) => after.position_ms.abs_diff(position_ms) <= 500,
+            SystemMediaControl::Next | SystemMediaControl::Previous => {
+                after.title != before.title
+                    || after.artist != before.artist
+                    || after.album != before.album
+                    || after.duration_ms != before.duration_ms
+            }
+        }
     }
 
     const fn source_capability_enabled(

@@ -1,5 +1,6 @@
 //! Confirmed-start local program orchestration and public API-024/025 events.
 
+mod apple;
 pub mod commands;
 mod dto;
 mod events;
@@ -11,6 +12,10 @@ mod speech;
 mod store;
 mod traits;
 
+pub use apple::{
+    AppleCompanion, AppleCompanionMonitor, AppleCompanionSignal, SystemProgramSpeech,
+    UnavailableAppleCompanion,
+};
 pub use dto::{
     ProgramAck, StartProgramRequest, StartProgramResponse, StartProgramTrigger, StopProgramRequest,
 };

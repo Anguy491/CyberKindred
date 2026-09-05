@@ -44,6 +44,12 @@ pub trait RadioProgramStore: Send + Sync {
         created_at_ms: i64,
     ) -> RadioFuture<'_, Result<u64, ApiError>>;
 
+    fn begin_system_program(
+        &self,
+        program_id: Uuid,
+        created_at_ms: i64,
+    ) -> RadioFuture<'_, Result<u64, ApiError>>;
+
     fn persist_plan<'a>(
         &'a self,
         planned: &'a PlannedProgram,
@@ -85,6 +91,19 @@ impl RadioProgramStore for Repository {
     ) -> RadioFuture<'_, Result<u64, ApiError>> {
         Box::pin(async move {
             self.begin_local_program(program_id, created_at_ms)
+                .await
+                .map_err(|error| map_storage_error(&error))?;
+            Ok(0)
+        })
+    }
+
+    fn begin_system_program(
+        &self,
+        program_id: Uuid,
+        created_at_ms: i64,
+    ) -> RadioFuture<'_, Result<u64, ApiError>> {
+        Box::pin(async move {
+            self.begin_system_program(program_id, created_at_ms)
                 .await
                 .map_err(|error| map_storage_error(&error))?;
             Ok(0)

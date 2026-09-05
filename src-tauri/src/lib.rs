@@ -65,13 +65,14 @@ use providers::{
     events::{StartupVoicePreviewOutboxRecovery, TauriVoicePreviewEventSink},
 };
 use radio::{
-    DomainProgramPlanner, LocalProgramPlayback, PlaybackEventHub, ProgramPlannerContextSource,
-    ProgramRadioPlanner, ProgramSpeech, RadioProgramStore, RadioService, RadioServiceDependencies,
+    AppleCompanion, AppleCompanionMonitor, DomainProgramPlanner, LocalProgramPlayback,
+    PlaybackEventHub, ProgramPlannerContextSource, ProgramRadioPlanner, ProgramSpeech,
+    RadioProgramStore, RadioService, RadioServiceDependencies, SystemProgramSpeech,
     SystemRadioClock, SystemRadioIdFactory, TauriRadioEventSink,
     commands::{api_v1_start_program, api_v1_stop_program},
 };
 use radio_repository::RepositoryProgramContextSource;
-use radio_speech_repository::RepositoryProgramSpeech;
+use radio_speech_repository::{RepositoryProgramSpeech, RepositorySystemProgramSpeech};
 use scanner::{
     ScannerService, SystemScanClock, TauriScanEventSink,
     commands::{api_v1_cancel_library_scan, api_v1_start_library_scan},
@@ -320,11 +321,22 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
     let radio_playback = Arc::new(LocalProgramPlayback::new(
         playback_service.clone(),
         repository_track_resolver,
-        playback_event_hub,
+        playback_event_hub.clone(),
     ));
     let radio_speech: Arc<dyn ProgramSpeech> = Arc::new(RepositoryProgramSpeech::production(
         repository.clone(),
         Box::new(WindowsCredentialVault::new()?),
+    ));
+    let system_radio_speech: Arc<dyn SystemProgramSpeech> =
+        Arc::new(RepositorySystemProgramSpeech::production(
+            repository.clone(),
+            Box::new(WindowsCredentialVault::new()?),
+            playback_service.clone(),
+        ));
+    let apple_companion: Arc<dyn AppleCompanion> = Arc::new(AppleCompanionMonitor::new(
+        playback_service.clone(),
+        playback_event_hub,
+        system_radio_speech,
     ));
     let radio_store: Arc<dyn RadioProgramStore> = Arc::new(repository.clone());
     let radio_service = RadioService::new(RadioServiceDependencies {
@@ -335,6 +347,7 @@ fn setup_application(app: &mut tauri::App) -> Result<(), Box<dyn Error>> {
         store: radio_store,
         playback: radio_playback,
         speech: radio_speech,
+        apple: apple_companion,
         event_sink: Arc::new(TauriRadioEventSink::new(app.handle().clone())),
         clock: Arc::new(SystemRadioClock),
         sequence: process_sequence.clone(),

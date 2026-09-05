@@ -12,9 +12,11 @@ use crate::{
 };
 
 use super::{
-    ProgramAck, ProgramEventState, ProgramPlayback, ProgramRadioPlanner, ProgramRunPhase,
-    ProgramSpeech, ProgramStartAuthorizer, RadioClock, RadioEventSink, RadioProgramStore,
-    StartProgramRequest, StartProgramResponse, StopProgramRequest,
+    AppleCompanion, AppleCompanionSignal, ProgramAck, ProgramEventState, ProgramPlayback,
+    ProgramRadioPlanner, ProgramRunPhase, ProgramSpeech, ProgramStartAuthorizer, RadioClock,
+    RadioEventSink, RadioProgramStore, StartProgramRequest, StartProgramResponse,
+    StopProgramRequest,
+    apple::disconnected_message,
     events::RadioEventPublisher,
     idempotency::AsyncIdempotency,
     runner::{ActiveRun, ProgramRunner},
@@ -23,7 +25,11 @@ use super::{
 const IDEMPOTENCY_CAPACITY: usize = 256;
 const TERMINAL_CAPACITY: usize = 256;
 const LOCAL_SOURCE_ID: &str = "local";
+const APPLE_SOURCE_ID: &str = "apple_music";
 const PLANNING_FAILED_MESSAGE: &str = "节目计划生成失败，未开始播放。";
+const COMPANION_RUNNING_MESSAGE: &str =
+    "COMPANION MODE：队列由 Apple Music 控制；曲目反应在本机生成。";
+const COMPANION_FAILED_MESSAGE: &str = "Apple Music 陪伴模式已安全停止；未改动外部队列。";
 
 pub trait RadioIdFactory: Send + Sync {
     fn next_id(&self) -> Uuid;
@@ -46,6 +52,7 @@ pub struct RadioServiceDependencies {
     pub store: Arc<dyn RadioProgramStore>,
     pub playback: Arc<dyn ProgramPlayback>,
     pub speech: Arc<dyn ProgramSpeech>,
+    pub apple: Arc<dyn AppleCompanion>,
     pub event_sink: Arc<dyn RadioEventSink>,
     pub clock: Arc<dyn RadioClock>,
     pub sequence: Arc<ProcessSequence>,
@@ -85,6 +92,7 @@ struct RadioServiceInner {
     authorizer: Arc<dyn ProgramStartAuthorizer>,
     store: Arc<dyn RadioProgramStore>,
     runner: ProgramRunner,
+    apple: Arc<dyn AppleCompanion>,
     events: RadioEventPublisher,
     clock: Arc<dyn RadioClock>,
     id_factory: Arc<dyn RadioIdFactory>,
@@ -119,6 +127,7 @@ impl RadioService {
                 authorizer: dependencies.authorizer,
                 store: dependencies.store,
                 runner,
+                apple: dependencies.apple,
                 events,
                 clock: dependencies.clock,
                 id_factory: dependencies.id_factory,
@@ -149,6 +158,10 @@ impl RadioService {
             .await
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "the confirmed start, durable reservation, and source-specific handoff remain one auditable transaction"
+    )]
     async fn start_once(
         &self,
         request: StartProgramRequest,
@@ -158,18 +171,70 @@ impl RadioService {
         let active = ActiveRun::new(program_id);
         self.reserve(Arc::clone(&active)).await?;
 
-        if let Err(error) = self
-            .inner
-            .store
-            .begin_program(program_id, self.inner.clock.now_ms())
-            .await
-        {
+        let apple_initial = if request.source_id == APPLE_SOURCE_ID {
+            match self.inner.apple.connect().await {
+                Ok(state) => Some(state),
+                Err(error) => {
+                    self.release_unstarted(program_id).await;
+                    return Err(error);
+                }
+            }
+        } else {
+            None
+        };
+
+        let begin = if apple_initial.is_some() {
+            self.inner
+                .store
+                .begin_system_program(program_id, self.inner.clock.now_ms())
+                .await
+        } else {
+            self.inner
+                .store
+                .begin_program(program_id, self.inner.clock.now_ms())
+                .await
+        };
+        if let Err(error) = begin {
             self.release_unstarted(program_id).await;
             return Err(error);
         }
         self.inner
             .events
             .state(program_id, ProgramEventState::Planning, None);
+
+        if let Some(initial) = apple_initial {
+            let revision = match self
+                .inner
+                .store
+                .transition_program(
+                    program_id,
+                    ProgramRunPhase::Planning,
+                    ProgramRunPhase::Ready,
+                    0,
+                    self.inner.clock.now_ms(),
+                    None,
+                )
+                .await
+            {
+                Ok(revision) => revision,
+                Err(error) => {
+                    self.release_unstarted(program_id).await;
+                    return Err(error);
+                }
+            };
+            let inner = Arc::clone(&self.inner);
+            tokio::spawn(async move {
+                let result = inner
+                    .run_apple(Arc::clone(&active), initial, authorization, revision)
+                    .await;
+                inner.finish_run(active, result).await;
+            });
+            return Ok(StartProgramResponse {
+                request_id: request.client_request_id,
+                program_id,
+                plan: None,
+            });
+        }
 
         let planned = match self.inner.planner.plan_local(program_id).await {
             Ok(planned) => planned,
@@ -304,6 +369,98 @@ impl RadioService {
 }
 
 impl RadioServiceInner {
+    async fn run_apple(
+        &self,
+        active: Arc<ActiveRun>,
+        initial: crate::contracts::PlaybackState,
+        authorization: super::ConfirmedProgramStart,
+        revision: u64,
+    ) -> Result<u64, ApiError> {
+        let mut revision = self
+            .store
+            .transition_program(
+                active.program_id,
+                ProgramRunPhase::Ready,
+                ProgramRunPhase::Music,
+                revision,
+                self.clock.now_ms(),
+                None,
+            )
+            .await?;
+        self.events.state(
+            active.program_id,
+            ProgramEventState::Running,
+            Some(COMPANION_RUNNING_MESSAGE),
+        );
+        let (sender, mut receiver) = tokio::sync::mpsc::channel(16);
+        let monitor = self.apple.run(
+            active.program_id,
+            initial,
+            authorization,
+            active.cancellation(),
+            sender,
+        );
+        tokio::pin!(monitor);
+        loop {
+            tokio::select! {
+                result = &mut monitor => {
+                    if result.is_err() && !*active.cancellation().borrow() {
+                        revision = self.store.transition_program(
+                            active.program_id,
+                            ProgramRunPhase::Music,
+                            ProgramRunPhase::Failed,
+                            revision,
+                            self.clock.now_ms(),
+                            Some("apple_monitor_failed"),
+                        ).await?;
+                        self.events.state(
+                            active.program_id,
+                            ProgramEventState::Failed,
+                            Some(COMPANION_FAILED_MESSAGE),
+                        );
+                        return Ok(revision);
+                    }
+                    revision = self.store.transition_program(
+                        active.program_id,
+                        ProgramRunPhase::Music,
+                        ProgramRunPhase::Stopping,
+                        revision,
+                        self.clock.now_ms(),
+                        Some("user_stop"),
+                    ).await?;
+                    self.events.state(active.program_id, ProgramEventState::Stopping, None);
+                    revision = self.store.transition_program(
+                        active.program_id,
+                        ProgramRunPhase::Stopping,
+                        ProgramRunPhase::Completed,
+                        revision,
+                        self.clock.now_ms(),
+                        Some("user_stop"),
+                    ).await?;
+                    self.events.state(active.program_id, ProgramEventState::Completed, None);
+                    return Ok(revision);
+                }
+                signal = receiver.recv() => match signal {
+                    Some(AppleCompanionSignal::Reaction(message)) => {
+                        self.events.state(
+                            active.program_id,
+                            ProgramEventState::Running,
+                            Some(&message),
+                        );
+                    }
+                    Some(AppleCompanionSignal::Disconnected) => {
+                        self.events.state(
+                            active.program_id,
+                            ProgramEventState::Paused,
+                            Some(disconnected_message()),
+                        );
+                    }
+                    None => {}
+                }
+            }
+        }
+    }
+
     async fn finish_run(&self, active: Arc<ActiveRun>, result: Result<u64, ApiError>) {
         {
             let mut state = self.state.lock().await;
@@ -319,7 +476,12 @@ impl RadioServiceInner {
 }
 
 fn validate_start_request(request: &StartProgramRequest) -> Result<(), ApiError> {
-    if request.client_request_id.get_version_num() != 7 || request.source_id != LOCAL_SOURCE_ID {
+    if request.client_request_id.get_version_num() != 7
+        || !matches!(
+            request.source_id.as_str(),
+            LOCAL_SOURCE_ID | APPLE_SOURCE_ID
+        )
+    {
         return Err(
             ApiError::from_reason(InternalReason::RequestInvalid).with_field(PublicField::Request)
         );

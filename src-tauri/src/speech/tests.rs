@@ -793,3 +793,35 @@ fn tts_provider_rejects_mime_and_framing_mismatch() {
     assert!(provider::validate_mp3(&[0xff, 0xfb, 0x90, 0x64], "text/html").is_err());
     assert!(provider::validate_mp3(b"ID3\x04\0\0\0\0\0\0", "audio/mpeg").is_err());
 }
+
+#[test]
+fn apple_data_boundary_allows_only_closed_generic_text_into_speech() {
+    let input = SpeechInput::system_session_generic(
+        SystemSessionGenericPhrase::CompanionOpening,
+        "alloy".to_owned(),
+        "gpt-4o-mini-tts".to_owned(),
+        1.0,
+        "zh-CN".to_owned(),
+    )
+    .expect("closed generic phrase");
+    assert_eq!(
+        input.text(),
+        "我会陪你听一会儿，播放队列继续由 Apple Music 控制。"
+    );
+    assert_eq!(input.provenance(), SpeechProvenance::SystemSessionGeneric);
+    assert!(
+        SpeechInput::segment(
+            "GSMTC-CANARY-TRACK",
+            "alloy".to_owned(),
+            "gpt-4o-mini-tts".to_owned(),
+            1.0,
+            "zh-CN".to_owned(),
+            SpeechProvenance::SystemSessionGeneric,
+        )
+        .is_err()
+    );
+    let request = provider::serialized_request_for_test(&input);
+    let request = String::from_utf8_lossy(&request);
+    assert!(!request.contains("GSMTC-CANARY-TRACK"));
+    assert!(request.contains(SystemSessionGenericPhrase::CompanionOpening.text()));
+}

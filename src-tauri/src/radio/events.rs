@@ -133,7 +133,7 @@ impl RadioEventPublisher {
         &self,
         program_id: Uuid,
         state: ProgramEventState,
-        safe_message: Option<&'static str>,
+        safe_message: Option<&str>,
     ) {
         let Some(envelope) = self.envelope() else {
             return;

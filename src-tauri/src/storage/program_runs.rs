@@ -81,6 +81,24 @@ impl Repository {
             .map_err(|_| invalid_write())
     }
 
+    /// Persists a confirmed Apple companion run without creating a remote queue.
+    pub(crate) async fn begin_system_program(
+        &self,
+        program_id: Uuid,
+        created_at_ms: i64,
+    ) -> Result<(), StorageError> {
+        if program_id.get_version_num() != 7 || created_at_ms < 0 {
+            return Err(invalid_write());
+        }
+        sqlx::query("INSERT INTO program_runs(id, source_kind, status, plan_schema_version, created_at_ms) VALUES(?, 'system_session', 'planning', 1, ?)")
+            .bind(program_id.to_string())
+            .bind(created_at_ms)
+            .execute(&self.writer)
+            .await
+            .map(|_| ())
+            .map_err(|_| invalid_write())
+    }
+
     /// Atomically installs a schema-valid local plan and all of its segments.
     pub(crate) async fn persist_local_program_plan(
         &self,
@@ -414,6 +432,26 @@ mod tests {
                 .await
                 .expect("segments");
         assert_eq!(segment_count, 2);
+        storage.close().await;
+    }
+
+    #[tokio::test]
+    async fn apple_program_run_persists_system_mode_without_queue_segments() {
+        let (_temp, storage, repository, _track_id) = fixture().await;
+        let program_id = Uuid::now_v7();
+        repository
+            .begin_system_program(program_id, 10)
+            .await
+            .expect("system companion run");
+        let persisted: (String, String, i64) = sqlx::query_as(
+            "SELECT source_kind, status, (SELECT count(*) FROM program_segments WHERE program_run_id = ?) FROM program_runs WHERE id = ?",
+        )
+        .bind(program_id.to_string())
+        .bind(program_id.to_string())
+        .fetch_one(&repository.writer)
+        .await
+        .expect("system run facts");
+        assert_eq!(persisted, ("system_session".to_owned(), "planning".to_owned(), 0));
         storage.close().await;
     }
 

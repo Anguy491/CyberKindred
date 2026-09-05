@@ -26,6 +26,7 @@ use cyberkindred_lib::{
         ProgramRadioPlanner, RadioClock, RadioEvent, RadioEventSink, RadioPlanningContext,
         RadioProgramStore, RadioService, RadioServiceDependencies, StartProgramRequest,
         StartProgramTrigger, StopProgramRequest, SystemRadioIdFactory, TextOnlyProgramSpeech,
+        UnavailableAppleCompanion,
     },
     scanner::{
         CancelLibraryScanRequest, CancelLibraryScanState, ScanClock, ScanEvent, ScanEventSink,
@@ -682,6 +683,7 @@ async fn m3_licensed_fixture_scans_plans_and_runs_six_tracks_with_text_fallback(
         store,
         playback: playback.clone(),
         speech: Arc::new(TextOnlyProgramSpeech),
+        apple: Arc::new(UnavailableAppleCompanion),
         event_sink: radio_events.clone(),
         clock: Arc::new(FixedClock {
             now_ms: 1_780_000_000_000,

@@ -720,3 +720,119 @@ async fn system_media_source_rejects_replaced_session_and_disconnects_without_fi
     assert!(disconnected.current_track.is_none());
     assert!(!disconnected.capabilities.play);
 }
+
+#[tokio::test]
+async fn tts_interruption_resumes_only_the_unchanged_paused_system_session() {
+    let (harness, system) = system_harness();
+    let selected = harness
+        .service
+        .select_music_source(SelectMusicSourceRequest {
+            client_request_id: Uuid::now_v7(),
+            source_id: "apple_music".to_owned(),
+        })
+        .await
+        .expect("system source selected")
+        .state;
+    assert_eq!(selected.status, PlaybackStateStatus::Paused);
+    system.lock().expect("system state").snapshot.status = PlaybackStateStatus::Playing;
+    harness
+        .service
+        .get_playback_state(EmptyRequest {})
+        .await
+        .expect("playing refresh");
+    let token = harness
+        .service
+        .begin_system_interruption()
+        .await
+        .expect("safe pause token");
+    assert_eq!(
+        system.lock().expect("system state").controls,
+        vec![SystemMediaControl::Pause]
+    );
+    let resumed = harness
+        .service
+        .finish_system_interruption(token)
+        .await
+        .expect("safe resume");
+    assert_eq!(resumed.status, PlaybackStateStatus::Playing);
+    assert_eq!(
+        system.lock().expect("system state").controls,
+        vec![SystemMediaControl::Pause, SystemMediaControl::Play]
+    );
+}
+
+#[tokio::test]
+async fn tts_interruption_user_override_or_session_replacement_aborts_resume() {
+    let (harness, system) = system_harness();
+    harness
+        .service
+        .select_music_source(SelectMusicSourceRequest {
+            client_request_id: Uuid::now_v7(),
+            source_id: "apple_music".to_owned(),
+        })
+        .await
+        .expect("system source selected");
+    system.lock().expect("system state").snapshot.status = PlaybackStateStatus::Playing;
+    harness
+        .service
+        .get_playback_state(EmptyRequest {})
+        .await
+        .expect("playing refresh");
+    let token = harness
+        .service
+        .begin_system_interruption()
+        .await
+        .expect("safe pause token");
+    system.lock().expect("system state").snapshot.status = PlaybackStateStatus::Playing;
+    let overridden = harness
+        .service
+        .finish_system_interruption(token)
+        .await
+        .expect("override leaves external state untouched");
+    assert_eq!(overridden.status, PlaybackStateStatus::Playing);
+    assert_eq!(
+        system.lock().expect("system state").controls,
+        vec![SystemMediaControl::Pause]
+    );
+
+    let token = harness
+        .service
+        .begin_system_interruption()
+        .await
+        .expect("second safe pause token");
+    system.lock().expect("system state").snapshot.identity = "replacement-session".to_owned();
+    let replaced = harness
+        .service
+        .finish_system_interruption(token)
+        .await
+        .expect("replacement leaves new session untouched");
+    assert_eq!(replaced.status, PlaybackStateStatus::Paused);
+    assert_eq!(
+        system.lock().expect("system state").controls,
+        vec![SystemMediaControl::Pause, SystemMediaControl::Pause]
+    );
+}
+
+#[tokio::test]
+async fn tts_interruption_does_not_control_an_already_paused_session() {
+    let (harness, system) = system_harness();
+    harness
+        .service
+        .select_music_source(SelectMusicSourceRequest {
+            client_request_id: Uuid::now_v7(),
+            source_id: "apple_music".to_owned(),
+        })
+        .await
+        .expect("system source selected");
+    let token = harness
+        .service
+        .begin_system_interruption()
+        .await
+        .expect("non-resuming token");
+    harness
+        .service
+        .finish_system_interruption(token)
+        .await
+        .expect("no-op finish");
+    assert!(system.lock().expect("system state").controls.is_empty());
+}
