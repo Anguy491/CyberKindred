@@ -5,7 +5,7 @@ use tokio::time::Instant;
 use uuid::Uuid;
 
 use crate::{
-    contracts::{PlaybackState, PlaybackStateStatus},
+    contracts::{PlaybackState, PlaybackStateSourceKind, PlaybackStateStatus},
     ipc::{ApiError, EmptyRequest, InternalReason},
     playback::{PlaybackService, SelectMusicSourceRequest},
     storage::Repository,
@@ -246,6 +246,9 @@ async fn observe(
     cancellation: &mut watch::Receiver<bool>,
     gate: &mut AppleReactionGate,
 ) -> Result<(), ApiError> {
+    if !is_apple_state(&state) {
+        return Ok(());
+    }
     if !gate.observe_timeline(&state) {
         return Ok(());
     }
@@ -271,6 +274,9 @@ async fn observe(
     }
 
     let stable = stabilize_metadata(context.playback, state, cancellation).await?;
+    if !is_apple_state(&stable) {
+        return Ok(());
+    }
     if !gate.observe_timeline(&stable) {
         return Ok(());
     }
@@ -314,6 +320,11 @@ async fn observe(
         .map_err(|_| ApiError::unexpected())
 }
 
+fn is_apple_state(state: &PlaybackState) -> bool {
+    state.source_id == APPLE_SOURCE_ID
+        && state.source_kind == PlaybackStateSourceKind::SystemSession
+}
+
 async fn stabilize_metadata(
     playback: &PlaybackService,
     mut candidate: PlaybackState,
@@ -350,6 +361,9 @@ struct ReactionIdentity {
 
 impl ReactionIdentity {
     fn from_state(state: &PlaybackState) -> Option<Self> {
+        if !is_apple_state(state) {
+            return None;
+        }
         let track = state.current_track.as_ref()?;
         Some(Self {
             track_id: track.track_id.clone(),
@@ -371,6 +385,9 @@ struct ObservedTrack {
 
 impl ObservedTrack {
     fn from_state(state: &PlaybackState) -> Option<Self> {
+        if !is_apple_state(state) {
+            return None;
+        }
         let track = state.current_track.as_ref()?;
         let duration_ms = state.duration_ms?;
         Some(Self {
@@ -548,6 +565,13 @@ mod tests {
         gate.observe_timeline(&state("short", 0, 30_000, 1));
         assert!(short.duration_ms <= MIN_REACTION_TRACK_DURATION_MS);
         assert!(!gate.current.as_ref().expect("short current").completed());
+
+        let mut local = state("local", 0, 180_000, 2);
+        local.source_id = "local".to_owned();
+        local.source_kind = PlaybackStateSourceKind::Local;
+        assert!(!is_apple_state(&local));
+        assert!(ReactionIdentity::from_state(&local).is_none());
+        assert!(ObservedTrack::from_state(&local).is_none());
     }
 
     #[test]
