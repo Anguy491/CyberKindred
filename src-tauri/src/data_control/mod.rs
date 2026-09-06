@@ -8,6 +8,6 @@ pub use commands::{
 };
 pub use dto::*;
 pub use service::{
-    DataControlService, DataControlServiceDependencies, DataResetIntegration,
-    TauriDataExportEventSink, TauriDataExportPicker,
+    DataControlService, DataControlServiceDependencies, DataResetIntegration, DataRuntimeReset,
+    DataRuntimeResetFuture, TauriDataExportEventSink, TauriDataExportPicker,
 };

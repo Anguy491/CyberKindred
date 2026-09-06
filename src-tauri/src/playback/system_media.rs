@@ -62,6 +62,7 @@ pub struct SystemMediaSnapshot {
 pub(crate) struct SystemInterruptionToken {
     identity: String,
     revision: u64,
+    activation_generation: u64,
     resume: bool,
 }
 
@@ -81,6 +82,7 @@ pub(super) trait SystemMediaEventSink: Send + Sync + 'static {
 /// retain OS session identities internally and never expose AUMIDs over IPC.
 pub trait SystemMediaBackend: Send + 'static {
     fn set_event_sink(&mut self, sink: Arc<dyn SystemMediaEventSink>);
+    fn deactivate(&mut self) {}
     fn refresh(&mut self) -> Result<SystemMediaSnapshot, SystemMediaError>;
     fn control(
         &mut self,
@@ -107,6 +109,9 @@ enum SystemMessage {
     FinishInterruption {
         token: SystemInterruptionToken,
         response: oneshot::Sender<Result<PlaybackState, ApiError>>,
+    },
+    Deactivate {
+        response: oneshot::Sender<PlaybackState>,
     },
     Refresh,
     Shutdown,
@@ -164,6 +169,7 @@ impl SystemMediaSource {
             state: state.read().map_err(|_| ApiError::unexpected())?.clone(),
             identity: None,
             monitoring: false,
+            activation_generation: 0,
         };
         std::thread::Builder::new()
             .name("cyberkindred-system-media".to_owned())
@@ -233,6 +239,15 @@ impl SystemMediaSource {
         receiver.await.map_err(|_| ApiError::unexpected())?
     }
 
+    pub(super) async fn deactivate(&self) -> Result<PlaybackState, ApiError> {
+        let (response, receiver) = oneshot::channel();
+        self.client
+            .sender
+            .send(SystemMessage::Deactivate { response })
+            .map_err(|_| ApiError::unexpected())?;
+        receiver.await.map_err(|_| ApiError::unexpected())
+    }
+
     async fn request<F>(&self, message: F) -> Result<PlaybackState, ApiError>
     where
         F: FnOnce(oneshot::Sender<Result<PlaybackState, ApiError>>) -> SystemMessage,
@@ -255,6 +270,7 @@ struct SystemMediaActor {
     state: PlaybackState,
     identity: Option<String>,
     monitoring: bool,
+    activation_generation: u64,
 }
 
 impl SystemMediaActor {
@@ -262,6 +278,7 @@ impl SystemMediaActor {
         loop {
             match receiver.recv_timeout(REFRESH_INTERVAL) {
                 Ok(SystemMessage::Select { response }) => {
+                    self.activation_generation = self.activation_generation.saturating_add(1);
                     self.monitoring = true;
                     self.refresh(PlaybackEventReason::AdapterUpdate);
                     let result = if self.identity.is_some() {
@@ -294,9 +311,15 @@ impl SystemMediaActor {
                     let _ = response.send(result);
                 }
                 Ok(SystemMessage::FinishInterruption { token, response }) => {
-                    self.monitoring = true;
                     let state = self.finish_interruption(&token);
                     let _ = response.send(Ok(state));
+                }
+                Ok(SystemMessage::Deactivate { response }) => {
+                    self.activation_generation = self.activation_generation.saturating_add(1);
+                    self.monitoring = false;
+                    self.backend.deactivate();
+                    self.disconnect();
+                    let _ = response.send(self.state.clone());
                 }
                 Ok(SystemMessage::Refresh) | Err(mpsc::RecvTimeoutError::Timeout) => {
                     if self.monitoring {
@@ -355,6 +378,7 @@ impl SystemMediaActor {
             return Ok(SystemInterruptionToken {
                 identity,
                 revision: self.state.revision,
+                activation_generation: self.activation_generation,
                 resume: false,
             });
         }
@@ -376,11 +400,15 @@ impl SystemMediaActor {
         Ok(SystemInterruptionToken {
             identity,
             revision: self.state.revision,
+            activation_generation: self.activation_generation,
             resume: true,
         })
     }
 
     fn finish_interruption(&mut self, token: &SystemInterruptionToken) -> PlaybackState {
+        if !self.monitoring || token.activation_generation != self.activation_generation {
+            return self.state.clone();
+        }
         self.refresh(PlaybackEventReason::AdapterUpdate);
         if !token.resume {
             return self.state.clone();
@@ -887,6 +915,10 @@ mod windows_backend {
     impl SystemMediaBackend for WindowsSystemMediaBackend {
         fn set_event_sink(&mut self, sink: Arc<dyn SystemMediaEventSink>) {
             self.sink = Some(sink);
+        }
+
+        fn deactivate(&mut self) {
+            self.reset_manager();
         }
 
         fn refresh(&mut self) -> Result<SystemMediaSnapshot, SystemMediaError> {

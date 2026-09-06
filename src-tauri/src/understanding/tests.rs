@@ -417,6 +417,19 @@ async fn mutation_keys_replay_original_result_and_reject_changed_payloads() {
         Arc::new(RecordedEvents::default()),
         Arc::new(FixedClock),
     );
+    service
+        .update_profile(UpdateProfileRequest {
+            client_request_id: Uuid::now_v7(),
+            expected_revision: 0,
+            patch: ProfilePatch {
+                display_name: Some("偏好测试".to_owned()),
+                companion_style: None,
+                initial_preferences: None,
+                narration_density: None,
+            },
+        })
+        .await
+        .expect("profile baseline");
     let request = SubmitFeedbackRequest {
         client_request_id: Uuid::now_v7(),
         program_id,

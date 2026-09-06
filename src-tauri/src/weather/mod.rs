@@ -18,10 +18,13 @@ use std::{
     collections::HashMap,
     future::Future,
     pin::Pin,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock, RwLockWriteGuard};
 use uuid::Uuid;
 
 const GEOCODING_ENDPOINT: &str = "https://geocoding-api.open-meteo.com/v1/search";
@@ -393,6 +396,8 @@ pub(crate) struct WeatherService {
     provider: Arc<dyn WeatherProvider>,
     clock: Arc<dyn Clock>,
     candidates: Mutex<HashMap<Uuid, CandidateRecord>>,
+    lifecycle: RwLock<()>,
+    accepting: AtomicBool,
     search_requests: AsyncIdempotency<SearchWeatherLocationsResponse>,
     select_requests: AsyncIdempotency<SelectWeatherLocationResponse>,
 }
@@ -432,6 +437,8 @@ impl WeatherService {
             provider,
             clock,
             candidates: Mutex::new(HashMap::new()),
+            lifecycle: RwLock::new(()),
+            accepting: AtomicBool::new(true),
             search_requests: AsyncIdempotency::new(),
             select_requests: AsyncIdempotency::new(),
         }
@@ -452,6 +459,10 @@ impl WeatherService {
         &self,
         request: SearchWeatherLocationsRequest,
     ) -> Result<SearchWeatherLocationsResponse, ApiError> {
+        let _lifecycle = self.lifecycle.read().await;
+        if !self.accepting.load(Ordering::Acquire) {
+            return Err(ApiError::from_reason(InternalReason::ResourceBusy));
+        }
         validate_search(&request)?;
         let started_at = Instant::now();
         let result = self.provider.search(&request.query, request.limit).await;
@@ -512,6 +523,10 @@ impl WeatherService {
         &self,
         request: SelectWeatherLocationRequest,
     ) -> Result<SelectWeatherLocationResponse, ApiError> {
+        let _lifecycle = self.lifecycle.read().await;
+        if !self.accepting.load(Ordering::Acquire) {
+            return Err(ApiError::from_reason(InternalReason::ResourceBusy));
+        }
         let candidate = {
             let mut candidates = self.candidates.lock().await;
             candidates.retain(|_, value| value.expires_at_ms > self.clock.now_ms());
@@ -546,6 +561,10 @@ impl WeatherService {
     }
 
     async fn weather_summary(&self) -> Option<String> {
+        let _lifecycle = self.lifecycle.read().await;
+        if !self.accepting.load(Ordering::Acquire) {
+            return None;
+        }
         let settings = self.repository.load_provider_settings().await.ok()?;
         if !settings.weather_enabled {
             return None;
@@ -585,6 +604,18 @@ impl WeatherService {
         };
         self.repository.save_weather_cache(&cache).await.ok()?;
         Some(format_weather_summary(&location.city, &weather))
+    }
+
+    pub(crate) async fn lock_private_lifecycle(&self) -> RwLockWriteGuard<'_, ()> {
+        self.lifecycle.write().await
+    }
+
+    pub(crate) async fn clear_private_candidates(&self) {
+        self.candidates.lock().await.clear();
+    }
+
+    pub(crate) fn begin_reset(&self) {
+        self.accepting.store(false, Ordering::Release);
     }
 
     async fn record_outcome(

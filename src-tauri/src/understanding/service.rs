@@ -1,12 +1,15 @@
 use std::{
     collections::HashMap,
     future::Future,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
 use chrono::{DateTime, SecondsFormat, Utc};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use uuid::Uuid;
 
 use crate::{
@@ -119,15 +122,51 @@ struct ChatOperation {
     program_id: Uuid,
     cancellation: CancellationFlag,
     state: Mutex<ChatState>,
+    completion: Arc<OperationCompletion>,
+}
+
+struct OperationCompletion {
+    finished: AtomicBool,
+    notify: Notify,
+}
+
+impl OperationCompletion {
+    fn new() -> Self {
+        Self {
+            finished: AtomicBool::new(false),
+            notify: Notify::new(),
+        }
+    }
+
+    async fn wait(&self) {
+        loop {
+            let notified = self.notify.notified();
+            if self.finished.load(Ordering::Acquire) {
+                return;
+            }
+            notified.await;
+        }
+    }
+}
+
+struct CompletionGuard(Arc<OperationCompletion>);
+
+impl Drop for CompletionGuard {
+    fn drop(&mut self) {
+        self.0.finished.store(true, Ordering::Release);
+        self.0.notify.notify_waiters();
+    }
 }
 
 struct ServiceState {
     operations: Mutex<HashMap<Uuid, Arc<ChatOperation>>>,
+    admission: Mutex<()>,
     submit_requests: AsyncIdempotency<OperationAccepted>,
     cancel_requests: AsyncIdempotency<CancelOperationResponse>,
     ack_requests: AsyncIdempotency<Ack>,
     memory_requests: AsyncIdempotency<MemoryRecord>,
     reject_requests: AsyncIdempotency<RejectMemoryResponse>,
+    accepting: AtomicBool,
 }
 
 /// Rust-owned M4 service. Construction and read methods perform no provider call.
@@ -153,11 +192,13 @@ impl UnderstandingService {
             clock,
             state: Arc::new(ServiceState {
                 operations: Mutex::new(HashMap::new()),
+                admission: Mutex::new(()),
                 submit_requests: AsyncIdempotency::new(),
                 cancel_requests: AsyncIdempotency::new(),
                 ack_requests: AsyncIdempotency::new(),
                 memory_requests: AsyncIdempotency::new(),
                 reject_requests: AsyncIdempotency::new(),
+                accepting: AtomicBool::new(true),
             }),
         }
     }
@@ -180,6 +221,10 @@ impl UnderstandingService {
         &self,
         request: SubmitChatRequest,
     ) -> Result<OperationAccepted, ApiError> {
+        let _admission = self.state.admission.lock().await;
+        if !self.state.accepting.load(Ordering::Acquire) {
+            return Err(ApiError::from_reason(InternalReason::ResourceBusy));
+        }
         validate_chat_text(&request.text)?;
         let now = self.clock.now();
         let accepted_chat = self
@@ -201,6 +246,7 @@ impl UnderstandingService {
             program_id: request.program_id,
             cancellation: CancellationFlag::default(),
             state: Mutex::new(ChatState::Active),
+            completion: Arc::new(OperationCompletion::new()),
         });
         self.state
             .operations
@@ -218,7 +264,9 @@ impl UnderstandingService {
         let provider = self.provider.clone();
         let events = Arc::clone(&self.events);
         let clock = Arc::clone(&self.clock);
+        let completion = Arc::clone(&operation.completion);
         tokio::spawn(async move {
+            let _completion = CompletionGuard(completion);
             run_chat_operation(
                 repository,
                 provider,
@@ -250,6 +298,30 @@ impl UnderstandingService {
                 || self.cancel_chat_once(client_request_id, operation_id),
             )
             .await
+    }
+
+    pub(crate) async fn quiesce_for_reset(&self) -> Result<(), ApiError> {
+        let operations = {
+            let _admission = self.state.admission.lock().await;
+            self.state.accepting.store(false, Ordering::Release);
+            self.state
+                .operations
+                .lock()
+                .await
+                .values()
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        for operation in operations {
+            let mut state = operation.state.lock().await;
+            if matches!(*state, ChatState::Active) {
+                operation.cancellation.cancel();
+                *state = ChatState::Terminal;
+            }
+            drop(state);
+            operation.completion.wait().await;
+        }
+        Ok(())
     }
 
     async fn cancel_chat_once(

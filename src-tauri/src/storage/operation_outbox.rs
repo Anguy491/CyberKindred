@@ -105,6 +105,22 @@ enum OperationOutboxState {
 type OutboxRow = (String, String, i64, String, String, i64, Option<i64>);
 
 impl Repository {
+    pub(crate) async fn load_active_voice_preview_ids(&self) -> Result<Vec<Uuid>, StorageError> {
+        let values: Vec<String> = sqlx::query_scalar(
+            "SELECT aggregate_id FROM outbox_events WHERE aggregate_type = ? AND event_type = ? AND aggregate_revision = ? AND delivered_at_ms IS NULL ORDER BY created_at_ms, id",
+        )
+        .bind(OPERATION_AGGREGATE)
+        .bind(ACCEPTED_EVENT)
+        .bind(ACCEPTED_REVISION)
+        .fetch_all(&self.writer)
+        .await
+        .map_err(|_| StorageError::new(StorageReason::StorageReadFailed))?;
+        values
+            .into_iter()
+            .map(|value| Uuid::parse_str(&value).map_err(|_| integrity_error()))
+            .collect()
+    }
+
     /// Persists the minimal accepted state before API-009 returns or spawns work.
     ///
     /// # Errors

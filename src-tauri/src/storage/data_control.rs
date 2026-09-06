@@ -46,10 +46,10 @@ impl Repository {
     pub(crate) async fn category_count(&self, category: &str) -> Result<u64, StorageError> {
         let sql = match category {
             "profile_and_memories" => {
-                "SELECT (SELECT count(*) FROM user_profile) + (SELECT count(*) FROM app_settings WHERE key LIKE 'program.%' OR key LIKE 'privacy.%') + (SELECT count(*) FROM memory_proposals) + (SELECT count(*) FROM memories) + (SELECT count(*) FROM memory_revisions)"
+                "SELECT (SELECT count(*) FROM user_profile) + (SELECT count(*) FROM app_settings WHERE key LIKE 'program.%' OR key LIKE 'privacy.%') + (SELECT count(*) FROM memory_proposals) + (SELECT count(*) FROM memories) + (SELECT count(*) FROM memory_revisions) + (SELECT count(*) FROM weather_cache)"
             }
             "conversations_and_summaries" => {
-                "SELECT (SELECT count(*) FROM chat_sessions) + (SELECT count(*) FROM messages) + (SELECT count(*) FROM session_summaries)"
+                "SELECT (SELECT count(*) FROM chat_sessions) + (SELECT count(*) FROM messages) + (SELECT count(*) FROM session_summaries) + (SELECT count(*) FROM memory_proposal_sources)"
             }
             "playback_history" => {
                 "SELECT (SELECT count(*) FROM program_runs) + (SELECT count(*) FROM program_segments) + (SELECT count(*) FROM playback_events) + (SELECT count(*) FROM feedback)"
@@ -66,6 +66,14 @@ impl Repository {
     }
 
     pub(crate) async fn delete_category(&self, category: &str) -> Result<u64, StorageError> {
+        if category == "library_index"
+            && self
+                .count("SELECT count(*) FROM program_segments WHERE track_id IS NOT NULL AND status NOT IN ('completed','skipped','failed','cancelled')")
+                .await?
+                > 0
+        {
+            return Err(StorageError::new(StorageReason::ResourceBusy));
+        }
         let mut transaction = self.writer.begin().await.map_err(|_| write_failed())?;
         let deleted = match category {
             "profile_and_memories" => delete_all(
@@ -75,6 +83,7 @@ impl Repository {
                     "DELETE FROM memory_revisions",
                     "DELETE FROM memories",
                     "DELETE FROM memory_proposals",
+                    "DELETE FROM weather_cache",
                     "DELETE FROM user_profile",
                     "DELETE FROM app_settings WHERE key LIKE 'program.%' OR key LIKE 'privacy.%'",
                     "DELETE FROM outbox_events",
@@ -86,7 +95,7 @@ impl Repository {
                     &mut transaction,
                     &[
                         "DELETE FROM session_summaries",
-                        "DELETE FROM memory_proposal_sources WHERE message_id IS NOT NULL",
+                        "DELETE FROM memory_proposal_sources",
                         "DELETE FROM messages",
                         "DELETE FROM chat_sessions",
                         "DELETE FROM outbox_events",
@@ -378,6 +387,44 @@ mod tests {
             0
         );
         assert!(source.exists(), "source music must remain untouched");
+        storage.close().await;
+    }
+
+    #[tokio::test]
+    async fn data_deletion_detaches_completed_library_history_without_losing_the_run() {
+        let (_temp, storage, repository) = fixture().await;
+        sqlx::query("INSERT INTO library_roots(id,canonical_path,path_key,display_name,enabled,created_at_ms) VALUES('root','C:/Music','root','Canary',1,1)")
+            .execute(&repository.writer).await.expect("root");
+        sqlx::query("INSERT INTO tracks(id,root_id,relative_path,relative_path_key,availability,format,file_size_bytes,modified_at_ms,duration_ms,genre_json,metadata_confidence,created_at_ms,updated_at_ms) VALUES('track','root','song.mp3','song.mp3','available','mp3',1,1,1000,'[]',1.0,1,1)")
+            .execute(&repository.writer).await.expect("track");
+        sqlx::query("INSERT INTO program_runs(id,source_kind,status,plan_schema_version,degraded_features_json,revision,created_at_ms) VALUES('run','local','completed',1,'[]',0,1)")
+            .execute(&repository.writer).await.expect("run");
+        sqlx::query("INSERT INTO program_segments(id,program_run_id,ordinal,kind,track_id,status,ended_at_ms) VALUES('segment','run',0,'track','track','completed',2)")
+            .execute(&repository.writer).await.expect("segment");
+
+        repository
+            .delete_category("library_index")
+            .await
+            .expect("delete index");
+        let segment: (Option<String>, Option<String>, String) = sqlx::query_as(
+            "SELECT track_id,system_media_identity,status FROM program_segments WHERE id='segment'",
+        )
+        .fetch_one(&repository.writer)
+        .await
+        .expect("history tombstone");
+        assert_eq!(segment, (None, None, "completed".to_owned()));
+        assert_eq!(
+            repository
+                .count("SELECT count(*) FROM program_runs WHERE id='run'")
+                .await
+                .expect("run count"),
+            1
+        );
+        let integrity: String = sqlx::query_scalar("PRAGMA integrity_check(1)")
+            .fetch_one(&repository.writer)
+            .await
+            .expect("integrity");
+        assert_eq!(integrity, "ok");
         storage.close().await;
     }
 }

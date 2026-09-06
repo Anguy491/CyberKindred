@@ -20,7 +20,6 @@ use crate::{
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-#[cfg(test)]
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -28,7 +27,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use uuid::Uuid;
 
 use super::dto::WeatherLocationAction;
@@ -120,6 +119,43 @@ struct SecretRequestFingerprint<'a> {
     value_digest: String,
 }
 
+struct ProviderOperationCompletion {
+    finished: AtomicBool,
+    notify: Notify,
+}
+
+impl ProviderOperationCompletion {
+    fn new() -> Self {
+        Self {
+            finished: AtomicBool::new(false),
+            notify: Notify::new(),
+        }
+    }
+
+    async fn wait(&self) {
+        loop {
+            let notified = self.notify.notified();
+            if self.finished.load(Ordering::Acquire) {
+                return;
+            }
+            notified.await;
+        }
+    }
+
+    fn is_finished(&self) -> bool {
+        self.finished.load(Ordering::Acquire)
+    }
+}
+
+struct ProviderCompletionGuard(Arc<ProviderOperationCompletion>);
+
+impl Drop for ProviderCompletionGuard {
+    fn drop(&mut self) {
+        self.0.finished.store(true, Ordering::Release);
+        self.0.notify.notify_waiters();
+    }
+}
+
 /// Provider/settings application service. Construction and read-only calls have
 /// no network, paid-provider, credential-write, or audio side effects.
 pub struct ProviderService {
@@ -145,6 +181,9 @@ pub struct ProviderService {
     preview_voice_requests: AsyncIdempotency<OperationAccepted>,
     cancel_operation_requests: AsyncIdempotency<CancelOperationResponse>,
     settings_effect: Option<Arc<dyn AppSettingsEffect>>,
+    accepting_previews: AtomicBool,
+    preview_admission: Mutex<()>,
+    preview_completions: Mutex<HashMap<Uuid, Arc<ProviderOperationCompletion>>>,
     #[cfg(test)]
     fail_next_settings_write_after_secret: AtomicBool,
     #[cfg(test)]
@@ -189,6 +228,9 @@ impl ProviderService {
             preview_voice_requests: AsyncIdempotency::new(),
             cancel_operation_requests: AsyncIdempotency::new(),
             settings_effect: None,
+            accepting_previews: AtomicBool::new(true),
+            preview_admission: Mutex::new(()),
+            preview_completions: Mutex::new(HashMap::new()),
             #[cfg(test)]
             fail_next_settings_write_after_secret: AtomicBool::new(false),
             #[cfg(test)]
@@ -919,6 +961,35 @@ impl ProviderService {
             .await
     }
 
+    pub(crate) async fn quiesce_for_reset(&self) -> Result<(), ApiError> {
+        let _admission = self.preview_admission.lock().await;
+        self.accepting_previews.store(false, Ordering::Release);
+        for operation_id in self
+            .repository
+            .load_active_voice_preview_ids()
+            .await
+            .map_err(|error| map_storage_error(&error))?
+        {
+            self.cancel_operation_once(CancelOperationRequest {
+                client_request_id: Uuid::now_v7(),
+                operation_id,
+                expected_kind: OperationKind::VoicePreview,
+            })
+            .await?;
+        }
+        let completions = self
+            .preview_completions
+            .lock()
+            .await
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        for completion in completions {
+            completion.wait().await;
+        }
+        Ok(())
+    }
+
     async fn cancel_operation_once(
         &self,
         request: CancelOperationRequest,
@@ -968,6 +1039,10 @@ impl ProviderService {
         &self,
         request: PreviewVoiceRequest,
     ) -> Result<OperationAccepted, ApiError> {
+        let _admission = self.preview_admission.lock().await;
+        if !self.accepting_previews.load(Ordering::Acquire) {
+            return Err(ApiError::from_reason(InternalReason::ResourceBusy));
+        }
         self.ensure_registry_hydrated().await?;
         let prepared = tokio::time::timeout(
             self.preview_accept_timeout,
@@ -998,6 +1073,11 @@ impl ProviderService {
         persisted_accept.map_err(|error| map_storage_error(&error))?;
 
         let operation_id = accepted.operation_id;
+        let completion = Arc::new(ProviderOperationCompletion::new());
+        let mut completions = self.preview_completions.lock().await;
+        completions.retain(|_, completion| !completion.is_finished());
+        completions.insert(operation_id, Arc::clone(&completion));
+        drop(completions);
         let previewer = Arc::clone(&self.voice_previewer);
         let preview_events = Arc::clone(&self.preview_events);
         let registry = Arc::clone(&self.registry);
@@ -1007,6 +1087,7 @@ impl ProviderService {
         #[cfg(test)]
         let fail_next_terminal_persist = Arc::clone(&self.fail_next_preview_terminal_persist);
         tokio::spawn(async move {
+            let _completion = ProviderCompletionGuard(completion);
             let context = ProviderCallContext::new(operation_timeout);
             let started_at = Instant::now();
             let result = if let Ok(result) = tokio::time::timeout(

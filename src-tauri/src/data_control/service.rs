@@ -15,7 +15,7 @@ use chrono::{SecondsFormat, Utc};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Runtime};
 use tauri_plugin_dialog::DialogExt;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
 
 use super::{
@@ -39,6 +39,7 @@ use crate::{
         AppPaths, CacheArea, InventoryCounts, Repository, SecretError, SecretVault, Storage,
         StorageError, StorageReason,
     },
+    weather::WeatherService,
 };
 
 const PREVIEW_LIFETIME: Duration = Duration::from_mins(5);
@@ -97,6 +98,13 @@ pub trait DataResetIntegration: Send + Sync {
     ///
     /// Returns a stable error when an integration cannot be removed.
     fn reset(&self) -> Result<(), ApiError>;
+}
+
+pub type DataRuntimeResetFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<(), ApiError>> + Send + 'a>>;
+
+pub trait DataRuntimeReset: Send + Sync {
+    fn quiesce(&self) -> DataRuntimeResetFuture<'_>;
 }
 
 pub struct TauriDataExportEventSink<R: Runtime> {
@@ -265,6 +273,9 @@ pub struct DataControlService {
     picker: Arc<dyn DataExportPicker>,
     events: Arc<dyn DataExportEventSink>,
     reset_integration: Arc<dyn DataResetIntegration>,
+    weather: Arc<WeatherService>,
+    lifecycle: Arc<RwLock<()>>,
+    runtime_reset: Arc<dyn DataRuntimeReset>,
     previews: Mutex<HashMap<Uuid, PreviewEntry>>,
     exports: Arc<Mutex<HashMap<Uuid, Arc<AtomicBool>>>>,
     export_requests: AsyncIdempotency<OperationAccepted>,
@@ -282,12 +293,19 @@ pub struct DataControlServiceDependencies {
     pub picker: Arc<dyn DataExportPicker>,
     pub events: Arc<dyn DataExportEventSink>,
     pub reset_integration: Arc<dyn DataResetIntegration>,
+    pub(crate) weather: Arc<WeatherService>,
+    pub runtime_reset: Arc<dyn DataRuntimeReset>,
 }
 
 impl DataControlService {
-    #[must_use]
-    pub fn new(dependencies: DataControlServiceDependencies) -> Self {
-        Self {
+    /// Creates the service after purging any export staging left by a prior crash.
+    ///
+    /// # Errors
+    ///
+    /// Returns a path error when owned export staging cannot be cleared.
+    pub fn new(dependencies: DataControlServiceDependencies) -> Result<Self, ApiError> {
+        clear_directory_contents(&dependencies.paths.exports_dir()).map_err(|_| path_error())?;
+        Ok(Self {
             repository: dependencies.repository,
             storage: dependencies.storage,
             paths: dependencies.paths,
@@ -296,13 +314,16 @@ impl DataControlService {
             picker: dependencies.picker,
             events: dependencies.events,
             reset_integration: dependencies.reset_integration,
+            weather: dependencies.weather,
+            lifecycle: Arc::new(RwLock::new(())),
+            runtime_reset: dependencies.runtime_reset,
             previews: Mutex::new(HashMap::new()),
             exports: Arc::new(Mutex::new(HashMap::new())),
             export_requests: AsyncIdempotency::new(),
             cancel_requests: AsyncIdempotency::new(),
             category_requests: AsyncIdempotency::new(),
             reset_requests: AsyncIdempotency::new(),
-        }
+        })
     }
 
     /// Returns one path-free entry for every approved lifecycle data class.
@@ -417,6 +438,23 @@ impl DataControlService {
         if entry.expires_at <= Instant::now() || entry.category != request.category {
             return Err(ApiError::from_reason(InternalReason::PreviewTokenStale));
         }
+        let _lifecycle = self.lifecycle.write().await;
+        for cancelled in self.exports.lock().await.values() {
+            cancelled.store(true, Ordering::Release);
+        }
+        clear_directory_contents(&self.paths.exports_dir()).map_err(|_| path_error())?;
+        let weather_lifecycle = matches!(
+            request.category,
+            DataDeletionCategory::ProfileAndMemories | DataDeletionCategory::MetadataCache
+        )
+        .then(|| self.weather.lock_private_lifecycle());
+        let _weather_guard = match weather_lifecycle {
+            Some(guard) => Some(guard.await),
+            None => None,
+        };
+        if request.category == DataDeletionCategory::ProfileAndMemories {
+            self.weather.clear_private_candidates().await;
+        }
         let deleted_count = self
             .repository
             .delete_category(request.category.as_str())
@@ -453,6 +491,7 @@ impl DataControlService {
                     operation_id: Uuid::now_v7(),
                     accepted_at: now_rfc3339(),
                 };
+                let _lifecycle = self.lifecycle.read().await;
                 let cancelled = Arc::new(AtomicBool::new(false));
                 self.exports
                     .lock()
@@ -464,6 +503,7 @@ impl DataControlService {
                     picker: Arc::clone(&self.picker),
                     events: Arc::clone(&self.events),
                     exports: Arc::clone(&self.exports),
+                    lifecycle: Arc::clone(&self.lifecycle),
                 };
                 let operation_id = accepted.operation_id;
                 tauri::async_runtime::spawn(async move {
@@ -528,9 +568,14 @@ impl DataControlService {
         request: DeleteAllUserDataRequest,
     ) -> Result<DeleteAllUserDataResponse, ApiError> {
         require_confirmation(&request.confirmation, RESET_CONFIRMATION)?;
+        let _lifecycle = self.lifecycle.write().await;
+        self.weather.begin_reset();
+        let _weather_guard = self.weather.lock_private_lifecycle().await;
+        self.weather.clear_private_candidates().await;
         for cancelled in self.exports.lock().await.values() {
             cancelled.store(true, Ordering::Release);
         }
+        self.runtime_reset.quiesce().await?;
         self.reset_integration.reset()?;
         self.vault
             .lock()
@@ -563,6 +608,7 @@ struct ExportWorker {
     picker: Arc<dyn DataExportPicker>,
     events: Arc<dyn DataExportEventSink>,
     exports: Arc<Mutex<HashMap<Uuid, Arc<AtomicBool>>>>,
+    lifecycle: Arc<RwLock<()>>,
 }
 
 impl ExportWorker {
@@ -571,8 +617,10 @@ impl ExportWorker {
             .paths
             .exports_dir()
             .join(format!("export-{operation_id}.jsonl"));
-        let result = self.run_inner(&temporary, &cancelled).await;
-        let _cleanup = remove_file_if_present(&temporary);
+        let mut result = self.run_inner(&temporary, &cancelled).await;
+        if remove_file_if_present(&temporary).is_err() {
+            result = Err(path_error());
+        }
         self.exports.lock().await.remove(&operation_id);
         match result {
             Ok(ExportDisposition::Completed) => {
@@ -595,12 +643,14 @@ impl ExportWorker {
         if cancelled.load(Ordering::Acquire) {
             return Ok(ExportDisposition::Cancelled);
         }
+        let lifecycle = self.lifecycle.read().await;
         let bytes = self
             .repository
             .export_user_data_jsonl()
             .await
             .map_err(|error| map_storage_error(&error))?;
         fs::write(temporary, bytes).map_err(|_| path_error())?;
+        drop(lifecycle);
         if cancelled.load(Ordering::Acquire) {
             return Ok(ExportDisposition::Cancelled);
         }

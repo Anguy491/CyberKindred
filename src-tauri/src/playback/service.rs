@@ -262,6 +262,7 @@ impl PlaybackService {
                                 })
                                 .await?;
                             self.set_active(ActiveSource::Local)?;
+                            self.system_source.deactivate().await?;
                             state
                         }
                         APPLE_SOURCE_ID => {
@@ -367,6 +368,7 @@ impl PlaybackService {
         authorization: Option<PlaybackStartAuthorization>,
     ) -> Result<PlaybackState, ApiError> {
         self.set_active(ActiveSource::Local)?;
+        self.system_source.deactivate().await?;
         self.request_local_state(|response| ActorMessage::SetQueue {
             track_ids,
             authorization,
@@ -425,6 +427,7 @@ impl PlaybackService {
     ///
     /// Returns a safe actor-availability error.
     pub async fn shutdown(&self) -> Result<(), ApiError> {
+        self.system_source.deactivate().await?;
         let (response, receiver) = oneshot::channel();
         self.local_client
             .sender
@@ -447,6 +450,9 @@ impl PlaybackService {
         &self,
         token: SystemInterruptionToken,
     ) -> Result<PlaybackState, ApiError> {
+        if self.active()? != ActiveSource::System {
+            return self.system_source.deactivate().await;
+        }
         self.system_source.finish_interruption(token).await
     }
 

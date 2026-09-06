@@ -26,9 +26,10 @@ mod weather;
 
 use chrono::Utc;
 use data_control::{
-    DataControlService, DataControlServiceDependencies, TauriDataExportEventSink,
-    TauriDataExportPicker, api_v1_delete_all_user_data, api_v1_delete_data_category,
-    api_v1_export_user_data, api_v1_get_data_inventory, api_v1_preview_data_deletion,
+    DataControlService, DataControlServiceDependencies, DataRuntimeReset, DataRuntimeResetFuture,
+    TauriDataExportEventSink, TauriDataExportPicker, api_v1_delete_all_user_data,
+    api_v1_delete_data_category, api_v1_export_user_data, api_v1_get_data_inventory,
+    api_v1_preview_data_deletion,
 };
 use diagnostics::{DiagnosticEvent, DiagnosticLog, ValidatedLogDirectory};
 use ipc::{
@@ -118,6 +119,46 @@ use weather::{
 
 struct RetentionMaintenance(tauri::async_runtime::JoinHandle<()>);
 
+impl RetentionMaintenance {
+    fn abort(&self) {
+        self.0.abort();
+    }
+
+    fn is_finished(&self) -> bool {
+        match &self.0 {
+            tauri::async_runtime::JoinHandle::Tokio(handle) => handle.is_finished(),
+        }
+    }
+}
+
+struct ApplicationRuntimeReset {
+    retention: Arc<RetentionMaintenance>,
+    scheduler: Arc<SchedulerRuntime>,
+    radio: RadioService,
+    scanner: Arc<ScannerService>,
+    provider: Arc<ProviderService>,
+    understanding: Arc<UnderstandingService>,
+    playback: PlaybackService,
+}
+
+impl DataRuntimeReset for ApplicationRuntimeReset {
+    fn quiesce(&self) -> DataRuntimeResetFuture<'_> {
+        Box::pin(async move {
+            self.retention.abort();
+            self.scheduler.abort();
+            self.radio.quiesce_for_reset().await?;
+            self.scanner.quiesce_for_reset().await?;
+            self.understanding.quiesce_for_reset().await?;
+            self.provider.quiesce_for_reset().await?;
+            self.playback.shutdown().await?;
+            while !self.retention.is_finished() || !self.scheduler.is_finished() {
+                tokio::task::yield_now().await;
+            }
+            Ok(())
+        })
+    }
+}
+
 impl Drop for RetentionMaintenance {
     fn drop(&mut self) {
         self.0.abort();
@@ -202,34 +243,36 @@ fn setup_application(
     let repository = storage.repository();
     let retention_repository = repository.clone();
     let retention_app_handle = app.handle().clone();
-    let retention_maintenance = RetentionMaintenance(tauri::async_runtime::spawn(async move {
-        run_daily_retention(
-            retention_repository,
-            || Utc::now().timestamp_millis(),
-            move |occurred_at_ms, result| {
-                let event = match result {
-                    Ok(retention) => DiagnosticEvent::MaintenanceCompleted {
-                        correlation_id: Uuid::now_v7(),
-                        occurred_at_ms,
-                        item_count: retention_item_count(&retention),
-                        bytes_removed: 0,
-                    },
-                    Err(_) => DiagnosticEvent::OperationFailed {
-                        correlation_id: Uuid::now_v7(),
-                        occurred_at_ms,
-                        duration_ms: 0,
-                        attempt: 1,
-                    },
-                };
-                if let Some(log) = retention_app_handle.try_state::<Mutex<DiagnosticLog>>()
-                    && let Ok(mut log) = log.lock()
-                {
-                    let _ = log.write(event);
-                }
-            },
-        )
-        .await;
-    }));
+    let retention_maintenance = Arc::new(RetentionMaintenance(tauri::async_runtime::spawn(
+        async move {
+            run_daily_retention(
+                retention_repository,
+                || Utc::now().timestamp_millis(),
+                move |occurred_at_ms, result| {
+                    let event = match result {
+                        Ok(retention) => DiagnosticEvent::MaintenanceCompleted {
+                            correlation_id: Uuid::now_v7(),
+                            occurred_at_ms,
+                            item_count: retention_item_count(&retention),
+                            bytes_removed: 0,
+                        },
+                        Err(_) => DiagnosticEvent::OperationFailed {
+                            correlation_id: Uuid::now_v7(),
+                            occurred_at_ms,
+                            duration_ms: 0,
+                            attempt: 1,
+                        },
+                    };
+                    if let Some(log) = retention_app_handle.try_state::<Mutex<DiagnosticLog>>()
+                        && let Ok(mut log) = log.lock()
+                    {
+                        let _ = log.write(event);
+                    }
+                },
+            )
+            .await;
+        },
+    )));
     let stored_settings = tauri::async_runtime::block_on(repository.load_provider_settings())?;
     let app_integrations = Arc::new(
         AppIntegrationService::install(
@@ -265,16 +308,18 @@ fn setup_application(
         provider_runtime.clone(),
         weather_service.clone(),
     ));
-    let provider_service = ProviderService::new(
-        repository.clone(),
-        Box::new(WindowsCredentialVault::new()?),
-        validator,
-        health_probe,
-        voice_previewer,
-        preview_events.clone(),
-        clock.clone(),
-    )
-    .with_settings_effect(Arc::clone(&app_integrations) as Arc<dyn AppSettingsEffect>);
+    let provider_service = Arc::new(
+        ProviderService::new(
+            repository.clone(),
+            Box::new(WindowsCredentialVault::new()?),
+            validator,
+            health_probe,
+            voice_previewer,
+            preview_events.clone(),
+            clock.clone(),
+        )
+        .with_settings_effect(Arc::clone(&app_integrations) as Arc<dyn AppSettingsEffect>),
+    );
     let schedule_notifications = Arc::new(TauriScheduleNotificationSink::new(app.handle().clone()));
     let scheduler_service = Arc::new(
         SchedulerService::new(
@@ -296,12 +341,12 @@ fn setup_application(
         Arc::new(SystemLibraryRootClock),
     );
     let track_catalog_service = TrackCatalogService::new(Arc::new(repository.clone()));
-    let scanner_service = ScannerService::new(
+    let scanner_service = Arc::new(ScannerService::new(
         repository.clone(),
         Arc::new(TauriScanEventSink::new(app.handle().clone())),
         Arc::new(SystemScanClock),
         process_sequence.clone(),
-    );
+    ));
     tauri::async_runtime::block_on(scanner_service.recover_and_replay())
         .map_err(|_| io::Error::other("scanner recovery unavailable"))?;
     tauri::async_runtime::block_on(repository.recover_interrupted_programs(now_ms))
@@ -324,19 +369,6 @@ fn setup_application(
     playback_service
         .apply_initial_source(stored_settings.default_source_id.as_deref())
         .map_err(|_| io::Error::other("default playback source unavailable"))?;
-    let data_control_service = DataControlService::new(DataControlServiceDependencies {
-        repository: repository.clone(),
-        storage: Arc::clone(&storage),
-        paths: paths.clone(),
-        vault: Box::new(WindowsCredentialVault::new()?),
-        playback: playback_service.clone(),
-        picker: Arc::new(TauriDataExportPicker::new(app.handle().clone())),
-        events: Arc::new(TauriDataExportEventSink::new(
-            app.handle().clone(),
-            process_sequence.clone(),
-        )),
-        reset_integration: app_integrations.clone() as Arc<dyn data_control::DataResetIntegration>,
-    });
     let program_credentials = Arc::new(RepositoryProgramCredentialSource::new(
         repository.clone(),
         Box::new(WindowsCredentialVault::new()?),
@@ -398,11 +430,11 @@ fn setup_application(
     scheduler_service
         .bind_program_starter(Arc::new(radio_service.clone()) as Arc<dyn NotificationProgramStarter>)
         .map_err(|_| io::Error::other("scheduler program binding unavailable"))?;
-    let scheduler_runtime = SchedulerRuntime::new(scheduler_service.clone().start());
+    let scheduler_runtime = Arc::new(SchedulerRuntime::new(scheduler_service.clone().start()));
     let chat_provider = OpenAiChatProvider::new(program_credentials)
         .ok()
         .map(|provider| Arc::new(provider) as Arc<dyn understanding::ChatProvider>);
-    let understanding_service = UnderstandingService::new(
+    let understanding_service = Arc::new(UnderstandingService::new(
         repository.clone(),
         chat_provider,
         Arc::new(TauriChatEventSink::new(
@@ -410,7 +442,32 @@ fn setup_application(
             process_sequence.clone(),
         )),
         clock.clone(),
-    );
+    ));
+    let runtime_reset: Arc<dyn DataRuntimeReset> = Arc::new(ApplicationRuntimeReset {
+        retention: Arc::clone(&retention_maintenance),
+        scheduler: Arc::clone(&scheduler_runtime),
+        radio: radio_service.clone(),
+        scanner: Arc::clone(&scanner_service),
+        provider: Arc::clone(&provider_service),
+        understanding: Arc::clone(&understanding_service),
+        playback: playback_service.clone(),
+    });
+    let data_control_service = DataControlService::new(DataControlServiceDependencies {
+        repository: repository.clone(),
+        storage: Arc::clone(&storage),
+        paths: paths.clone(),
+        vault: Box::new(WindowsCredentialVault::new()?),
+        playback: playback_service.clone(),
+        picker: Arc::new(TauriDataExportPicker::new(app.handle().clone())),
+        events: Arc::new(TauriDataExportEventSink::new(
+            app.handle().clone(),
+            process_sequence.clone(),
+        )),
+        reset_integration: app_integrations.clone() as Arc<dyn data_control::DataResetIntegration>,
+        weather: weather_service.clone(),
+        runtime_reset,
+    })
+    .map_err(|_| io::Error::other("data lifecycle staging unavailable"))?;
     let startup_preview_recovery =
         StartupVoicePreviewOutboxRecovery::new(repository, preview_events, clock);
     app.manage(Mutex::new(diagnostic_log));

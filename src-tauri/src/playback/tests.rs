@@ -154,6 +154,7 @@ struct FakeSystemState {
     snapshot: SystemMediaSnapshot,
     controls: Vec<SystemMediaControl>,
     refreshes: u64,
+    deactivations: u64,
     sink: Option<Arc<dyn SystemMediaEventSink>>,
 }
 
@@ -163,6 +164,12 @@ impl SystemMediaBackend for FakeSystemBackend {
     fn set_event_sink(&mut self, sink: Arc<dyn SystemMediaEventSink>) {
         if let Ok(mut state) = self.0.lock() {
             state.sink = Some(sink);
+        }
+    }
+
+    fn deactivate(&mut self) {
+        if let Ok(mut state) = self.0.lock() {
+            state.deactivations = state.deactivations.saturating_add(1);
         }
     }
 
@@ -280,6 +287,7 @@ fn system_harness() -> (Harness, Arc<Mutex<FakeSystemState>>) {
         snapshot: system_snapshot(),
         controls: Vec::new(),
         refreshes: 0,
+        deactivations: 0,
         sink: None,
     }));
     let service = PlaybackService::new_with_system_backend(
@@ -975,4 +983,79 @@ async fn tts_interruption_does_not_control_an_already_paused_session() {
         .await
         .expect("no-op finish");
     assert!(system.lock().expect("system state").controls.is_empty());
+}
+
+#[tokio::test]
+async fn tts_interruption_source_switch_deactivates_monitoring_and_revokes_resume() {
+    let (harness, system) = system_harness();
+    harness
+        .service
+        .select_music_source(SelectMusicSourceRequest {
+            client_request_id: Uuid::now_v7(),
+            source_id: "apple_music".to_owned(),
+        })
+        .await
+        .expect("system source selected");
+    system.lock().expect("system state").snapshot.status = PlaybackStateStatus::Playing;
+    harness
+        .service
+        .get_playback_state(EmptyRequest {})
+        .await
+        .expect("playing refresh");
+    let token = harness
+        .service
+        .begin_system_interruption()
+        .await
+        .expect("safe pause token");
+    harness
+        .service
+        .select_music_source(SelectMusicSourceRequest {
+            client_request_id: Uuid::now_v7(),
+            source_id: "local".to_owned(),
+        })
+        .await
+        .expect("local source selected");
+    harness
+        .service
+        .finish_system_interruption(token)
+        .await
+        .expect("stale finish is a no-op");
+    let state = system.lock().expect("system state");
+    assert_eq!(state.deactivations, 2);
+    assert_eq!(state.controls, vec![SystemMediaControl::Pause]);
+}
+
+#[tokio::test]
+#[ignore = "explicit live Apple Music Windows App checkpoint"]
+async fn live_apple_product_service_connects_and_restores_tts_interruption() {
+    assert_eq!(
+        std::env::var("CYBERKINDRED_LIVE_APPLE_MUSIC").as_deref(),
+        Ok("1"),
+        "live checkpoint requires an explicit environment opt-in"
+    );
+    let harness = harness(PlaybackService::local_capabilities());
+    let selected = harness
+        .service
+        .select_music_source(SelectMusicSourceRequest {
+            client_request_id: Uuid::now_v7(),
+            source_id: "apple_music".to_owned(),
+        })
+        .await
+        .expect("live Apple source");
+    assert_eq!(selected.state.source_id, "apple_music");
+    assert!(selected.state.current_track.is_some());
+    assert_eq!(selected.state.status, PlaybackStateStatus::Playing);
+    assert!(selected.state.capabilities.pause);
+
+    let token = harness
+        .service
+        .begin_system_interruption()
+        .await
+        .expect("live generic TTS pause");
+    let restored = harness
+        .service
+        .finish_system_interruption(token)
+        .await
+        .expect("live generic TTS restore");
+    assert_eq!(restored.status, PlaybackStateStatus::Playing);
 }

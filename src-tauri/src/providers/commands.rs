@@ -1,5 +1,6 @@
 //! Tauri command boundary for provider configuration and explicit provider actions.
 
+use std::sync::Arc;
 use tauri::State;
 
 use super::events::StartupVoicePreviewOutboxRecovery;
@@ -21,7 +22,7 @@ use crate::understanding::UnderstandingService;
 #[allow(clippy::needless_pass_by_value)]
 pub async fn api_v1_validate_and_set_secret(
     request: tauri::ipc::Request<'_>,
-    provider_service: State<'_, ProviderService>,
+    provider_service: State<'_, Arc<ProviderService>>,
 ) -> Result<ValidateSecretResponse, ApiError> {
     provider_service
         .validate_and_set_secret(parse_command_request::<ValidateSecretRequest>(&request)?)
@@ -37,7 +38,7 @@ pub async fn api_v1_validate_and_set_secret(
 #[allow(clippy::needless_pass_by_value)]
 pub async fn api_v1_delete_secret(
     request: tauri::ipc::Request<'_>,
-    provider_service: State<'_, ProviderService>,
+    provider_service: State<'_, Arc<ProviderService>>,
 ) -> Result<DeleteSecretResponse, ApiError> {
     provider_service
         .delete_secret(parse_command_request::<DeleteSecretRequest>(&request)?)
@@ -53,7 +54,7 @@ pub async fn api_v1_delete_secret(
 #[allow(clippy::needless_pass_by_value)]
 pub async fn api_v1_test_provider(
     request: tauri::ipc::Request<'_>,
-    provider_service: State<'_, ProviderService>,
+    provider_service: State<'_, Arc<ProviderService>>,
 ) -> Result<TestProviderResponse, ApiError> {
     provider_service
         .test_provider(parse_command_request::<TestProviderRequest>(&request)?)
@@ -69,7 +70,7 @@ pub async fn api_v1_test_provider(
 #[allow(clippy::needless_pass_by_value)]
 pub async fn api_v1_get_settings(
     request: tauri::ipc::Request<'_>,
-    provider_service: State<'_, ProviderService>,
+    provider_service: State<'_, Arc<ProviderService>>,
     playback_service: State<'_, crate::playback::PlaybackService>,
 ) -> Result<SettingsView, ApiError> {
     let EmptyRequest {} = parse_command_request::<EmptyRequest>(&request)?;
@@ -104,7 +105,7 @@ pub async fn api_v1_get_settings(
 #[allow(clippy::needless_pass_by_value)]
 pub async fn api_v1_update_settings(
     request: tauri::ipc::Request<'_>,
-    provider_service: State<'_, ProviderService>,
+    provider_service: State<'_, Arc<ProviderService>>,
 ) -> Result<Ack, ApiError> {
     provider_service
         .update_settings(parse_command_request::<UpdateSettingsRequest>(&request)?)
@@ -120,7 +121,7 @@ pub async fn api_v1_update_settings(
 #[allow(clippy::needless_pass_by_value)]
 pub async fn api_v1_preview_voice(
     request: tauri::ipc::Request<'_>,
-    provider_service: State<'_, ProviderService>,
+    provider_service: State<'_, Arc<ProviderService>>,
     startup_recovery: State<'_, StartupVoicePreviewOutboxRecovery>,
 ) -> Result<OperationAccepted, ApiError> {
     let request = parse_command_request::<PreviewVoiceRequest>(&request)?;
@@ -137,8 +138,8 @@ pub async fn api_v1_preview_voice(
 #[allow(clippy::needless_pass_by_value)]
 pub async fn api_v1_cancel_operation(
     request: tauri::ipc::Request<'_>,
-    provider_service: State<'_, ProviderService>,
-    understanding_service: State<'_, UnderstandingService>,
+    provider_service: State<'_, Arc<ProviderService>>,
+    understanding_service: State<'_, Arc<UnderstandingService>>,
     data_control_service: State<'_, crate::data_control::DataControlService>,
     startup_recovery: State<'_, StartupVoicePreviewOutboxRecovery>,
 ) -> Result<CancelOperationResponse, ApiError> {
@@ -165,7 +166,7 @@ pub async fn api_v1_cancel_operation(
 #[allow(clippy::unused_async)] // All public command adapters share one async boundary.
 pub async fn api_v1_list_voices(
     request: tauri::ipc::Request<'_>,
-    provider_service: State<'_, ProviderService>,
+    provider_service: State<'_, Arc<ProviderService>>,
 ) -> Result<VoicesResponse, ApiError> {
     provider_service.list_voices(parse_command_request::<ListVoicesRequest>(&request)?)
 }

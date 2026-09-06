@@ -2,7 +2,10 @@ use std::{
     collections::{HashMap, HashSet},
     future::Future,
     path::PathBuf,
-    sync::{Arc, Mutex as StdMutex},
+    sync::{
+        Arc, Mutex as StdMutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -162,6 +165,7 @@ struct ScannerRuntime {
     sequence: Arc<ProcessSequence>,
     acceptance: Mutex<()>,
     active: StdMutex<HashMap<Uuid, Arc<ActiveScan>>>,
+    accepting: AtomicBool,
 }
 
 /// API-013/API-014 application service. Construction is side-effect free; all
@@ -189,6 +193,7 @@ impl ScannerService {
                 sequence,
                 acceptance: Mutex::new(()),
                 active: StdMutex::new(HashMap::new()),
+                accepting: AtomicBool::new(true),
             }),
             start_requests: AsyncIdempotency::new(),
             cancel_requests: AsyncIdempotency::new(),
@@ -220,6 +225,9 @@ impl ScannerService {
         request: StartLibraryScanRequest,
     ) -> Result<OperationAccepted, ApiError> {
         let _acceptance = self.runtime.acceptance.lock().await;
+        if !self.runtime.accepting.load(Ordering::Acquire) {
+            return Err(ApiError::from_reason(InternalReason::ResourceBusy));
+        }
         if self
             .runtime
             .active
@@ -383,6 +391,27 @@ impl ScannerService {
                 }
             }
         }
+    }
+
+    pub(crate) async fn quiesce_for_reset(&self) -> Result<(), ApiError> {
+        let _acceptance = self.runtime.acceptance.lock().await;
+        self.runtime.accepting.store(false, Ordering::Release);
+        let operation_ids = self
+            .runtime
+            .active
+            .lock()
+            .map_err(|_| ApiError::unexpected())?
+            .keys()
+            .copied()
+            .collect::<Vec<_>>();
+        for operation_id in operation_ids {
+            self.cancel_scan_once(CancelLibraryScanRequest {
+                client_request_id: Uuid::now_v7(),
+                operation_id,
+            })
+            .await?;
+        }
+        Ok(())
     }
 }
 

@@ -8,7 +8,7 @@ use sqlx::{
 use std::{path::Path, time::Duration};
 
 pub const APPLICATION_ID: i64 = 1_129_008_708;
-pub const LATEST_SCHEMA_VERSION: i64 = 3;
+pub const LATEST_SCHEMA_VERSION: i64 = 4;
 const INITIAL_MIGRATION_NAME: &str = "initial_schema";
 const INITIAL_MIGRATION_SQL: &str = include_str!("../../migrations/V0001__initial_schema.sql");
 const SCAN_OPERATIONS_MIGRATION_NAME: &str = "scan_operations";
@@ -17,6 +17,9 @@ const SCAN_OPERATIONS_MIGRATION_SQL: &str =
 const MEMORY_LAST_USED_MIGRATION_NAME: &str = "memory_last_used";
 const MEMORY_LAST_USED_MIGRATION_SQL: &str =
     include_str!("../../migrations/V0003__memory_last_used.sql");
+const DETACHED_PROGRAM_SEGMENTS_MIGRATION_NAME: &str = "detached_program_segments";
+const DETACHED_PROGRAM_SEGMENTS_MIGRATION_SQL: &str =
+    include_str!("../../migrations/V0004__detached_program_segments.sql");
 
 #[derive(Clone, Copy)]
 struct Migration {
@@ -25,7 +28,7 @@ struct Migration {
     sql: &'static str,
 }
 
-const MIGRATIONS: [Migration; 3] = [
+const MIGRATIONS: [Migration; 4] = [
     Migration {
         version: 1,
         name: INITIAL_MIGRATION_NAME,
@@ -40,6 +43,11 @@ const MIGRATIONS: [Migration; 3] = [
         version: 3,
         name: MEMORY_LAST_USED_MIGRATION_NAME,
         sql: MEMORY_LAST_USED_MIGRATION_SQL,
+    },
+    Migration {
+        version: 4,
+        name: DETACHED_PROGRAM_SEGMENTS_MIGRATION_NAME,
+        sql: DETACHED_PROGRAM_SEGMENTS_MIGRATION_SQL,
     },
 ];
 
@@ -297,6 +305,7 @@ async fn set_user_version(
         1 => "PRAGMA user_version = 1",
         2 => "PRAGMA user_version = 2",
         3 => "PRAGMA user_version = 3",
+        4 => "PRAGMA user_version = 4",
         _ => return Err(StorageError::new(StorageReason::MigrationFailed)),
     };
     sqlx::query(statement)
@@ -618,7 +627,7 @@ mod tests {
                 .fetch_all(&storage.reader)
                 .await
                 .expect("migration history");
-        assert_eq!(migrations, vec![1, 2, 3]);
+        assert_eq!(migrations, vec![1, 2, 3, 4]);
         let added_columns: (i64, i64) = sqlx::query_as(
             "SELECT \
              EXISTS(SELECT 1 FROM pragma_table_info('memories') WHERE name = 'last_used_at_ms'), \
@@ -634,7 +643,7 @@ mod tests {
             .expect("backup directory")
             .collect::<Result<Vec<_>, _>>()
             .expect("backup entries");
-        assert_eq!(backups.len(), 2);
+        assert_eq!(backups.len(), 3);
         let mut backup_versions = Vec::new();
         for entry in backups {
             let backup = connect_validation_pool(&entry.path())
@@ -653,7 +662,7 @@ mod tests {
             backup.close().await;
         }
         backup_versions.sort_unstable();
-        assert_eq!(backup_versions, vec![1, 2]);
+        assert_eq!(backup_versions, vec![1, 2, 3]);
     }
 
     #[tokio::test]
@@ -758,7 +767,7 @@ mod tests {
             .execute(&pool)
             .await
             .expect("application id fixture");
-        sqlx::query("PRAGMA user_version = 4")
+        sqlx::query("PRAGMA user_version = 5")
             .execute(&pool)
             .await
             .expect("future version fixture");

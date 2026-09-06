@@ -788,6 +788,16 @@ impl SchedulerRuntime {
     pub(crate) fn new(handle: tauri::async_runtime::JoinHandle<()>) -> Self {
         Self(handle)
     }
+
+    pub(crate) fn abort(&self) {
+        self.0.abort();
+    }
+
+    pub(crate) fn is_finished(&self) -> bool {
+        match &self.0 {
+            tauri::async_runtime::JoinHandle::Tokio(handle) => handle.is_finished(),
+        }
+    }
 }
 
 impl Drop for SchedulerRuntime {

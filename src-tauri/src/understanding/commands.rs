@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use tauri::State;
 
 use crate::{
@@ -23,7 +24,7 @@ macro_rules! service_command {
         #[allow(clippy::needless_pass_by_value)]
         pub async fn $name(
             request: tauri::ipc::Request<'_>,
-            service: State<'_, UnderstandingService>,
+            service: State<'_, Arc<UnderstandingService>>,
         ) -> Result<$response, ApiError> {
             service
                 .$method(parse_command_request::<$request>(&request)?)
@@ -102,7 +103,7 @@ service_command!(
 /// Returns a stable validation or storage error.
 pub async fn api_v1_get_profile_view(
     request: tauri::ipc::Request<'_>,
-    service: State<'_, UnderstandingService>,
+    service: State<'_, Arc<UnderstandingService>>,
 ) -> Result<ProfileViewResponse, ApiError> {
     let EmptyRequest {} = parse_command_request::<EmptyRequest>(&request)?;
     service.get_profile_view().await

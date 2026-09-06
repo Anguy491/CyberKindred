@@ -905,18 +905,27 @@ impl Repository {
         const HALF_WINDOW_MS: i64 = 15 * 24 * 60 * 60 * 1_000;
         let window_start = now_ms.checked_sub(THIRTY_DAYS_MS).ok_or_else(read_error)?;
         let midpoint = now_ms.checked_sub(HALF_WINDOW_MS).ok_or_else(read_error)?;
+        let profile_created_at_ms: Option<i64> =
+            sqlx::query_scalar("SELECT created_at_ms FROM user_profile WHERE id = 'current'")
+                .fetch_optional(&self.writer)
+                .await
+                .map_err(|_| read_error())?;
+        let Some(profile_created_at_ms) = profile_created_at_ms else {
+            return Ok(Vec::new());
+        };
         let rows = sqlx::query(
             "SELECT feedback_type, \
                     SUM(CASE WHEN created_at_ms >= ? THEN 1 ELSE 0 END) AS recent_count, \
                     SUM(CASE WHEN created_at_ms < ? THEN 1 ELSE 0 END) AS prior_count, \
                     COUNT(*) AS sample_count \
              FROM feedback \
-             WHERE revoked_at_ms IS NULL AND created_at_ms >= ? AND created_at_ms <= ? \
+             WHERE revoked_at_ms IS NULL AND created_at_ms >= ? AND created_at_ms >= ? AND created_at_ms <= ? \
              GROUP BY feedback_type ORDER BY feedback_type ASC LIMIT 4",
         )
         .bind(midpoint)
         .bind(midpoint)
         .bind(window_start)
+        .bind(profile_created_at_ms)
         .bind(now_ms)
         .fetch_all(&self.writer)
         .await

@@ -1,6 +1,9 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use tokio::sync::Mutex;
@@ -101,6 +104,7 @@ struct RadioServiceInner {
     state: Mutex<ServiceState>,
     start_requests: AsyncIdempotency<StartProgramResponse>,
     stop_requests: AsyncIdempotency<ProgramAck>,
+    accepting: AtomicBool,
 }
 
 #[derive(Clone)]
@@ -136,6 +140,7 @@ impl RadioService {
                 state: Mutex::new(ServiceState::new()),
                 start_requests: AsyncIdempotency::new(IDEMPOTENCY_CAPACITY),
                 stop_requests: AsyncIdempotency::new(IDEMPOTENCY_CAPACITY),
+                accepting: AtomicBool::new(true),
             }),
         }
     }
@@ -150,6 +155,19 @@ impl RadioService {
             .active
             .as_ref()
             .map(|active| active.program_id)
+    }
+
+    pub(crate) async fn quiesce_for_reset(&self) -> Result<(), ApiError> {
+        let active = {
+            let state = self.inner.state.lock().await;
+            self.inner.accepting.store(false, Ordering::Release);
+            state.active.clone()
+        };
+        if let Some(active) = active {
+            active.cancel();
+            active.wait().await?;
+        }
+        Ok(())
     }
 
     /// Starts API-024 only after proving user authority, then persists identity
@@ -329,6 +347,9 @@ impl RadioService {
 
     async fn reserve(&self, active: Arc<ActiveRun>) -> Result<(), ApiError> {
         let mut state = self.inner.state.lock().await;
+        if !self.inner.accepting.load(Ordering::Acquire) {
+            return Err(ApiError::from_reason(InternalReason::ResourceBusy));
+        }
         if state.active.is_some() {
             return Err(ApiError::from_reason(
                 InternalReason::OperationAlreadyRunning,
