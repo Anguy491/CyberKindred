@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Security Steward |
-| Last Verified | 2026-09-03 |
+| Last Verified | 2026-09-06 |
 | Source of Truth For | MVP 的资产、攻击者、信任边界、安全目标、攻击面、缓解与严重度校准 |
 | Related Documents | `SECURITY.md`, `docs/architecture/ARCHITECTURE.md`, `docs/architecture/DATA-MODEL.md`, `docs/contracts/API-CONTRACT.md`, `docs/security/PRIVACY-DATA-LIFECYCLE.md` |
 
@@ -12,7 +12,7 @@
 
 CyberKindred 是 Windows 10 22H2/Windows 11 上的单用户桌面 AI 陪伴电台。正常数据流是：React WebView 收集显式用户意图，经 allowlisted Tauri IPC 进入 Rust Core；Rust Core 访问用户选择的只读音乐目录、SQLite/cache、Windows Credential Manager、Windows GSMTC 与明确配置的 HTTPS provider；本地音频引擎播放用户文件和 TTS。MVP 不监听端口、不提供外部 HTTP API、不读取屏幕/麦克风，也不自动播放日程通知。
 
-当前仓库已完成 M1、M2 与 M3，并正在封存 M4 candidate。M3 candidate 的完整安全差异审查覆盖 101 个源码 review item 和 8 个攻击面，未发现 Critical/High/Medium/Low 安全 finding；M4 对话/记忆 working-tree 安全差异审查覆盖全部变更源码，未发现可报告 finding。下表控制混合了已由 hermetic 测试证明的 M2 基础、M3 本地曲库/电台与 M4 对话/记忆实现，以及尚待后续 milestone 的设计要求；每一行明确区分 evidence 和 unknown。M2 的 credential 生命周期、terminal delivery 与 model pre-save probe 已按 Product Owner 选择完成并关闭 `RISK-016`–`RISK-018`，详见 [`M2 checkpoint`](../testing/checkpoints/M2.md)；M3 结论和递延验证见 [`M3 checkpoint`](../testing/checkpoints/M3.md)，M4 的完整结论由对应 checkpoint 封存。
+当前仓库已完成 M1–M6，M7 installable beta hardening 已激活。M6 原始 sealed scan 覆盖 45/45 个变更文件并报告 6 Medium/3 Low；candidate `ea2f2fcc4d5ff077291119936aa975b37e84fe75` 已修复全部 finding families，fresh bypass review 追加发现的一个 High reset-admission race 也已由原子准入门与任务完成等待关闭，当前无 open Critical/High。下表控制混合了已由 hermetic/live checkpoint 证明的 M2–M6 实现与 M7 尚需完成的平台、安装、压力和对抗性证据；每一行明确区分 evidence 和 unknown。各阶段结论见对应 [`checkpoints`](../testing/checkpoints/) 与风险登记。
 
 ### 1.1 Components and sources
 
@@ -58,7 +58,7 @@ flowchart LR
 | Artwork | Cover Art Archive | Validated release MBID only | CAA endpoint; HTTPS redirects only to CAA/Internet Archive host set | Receives MBID/IP | redirect IP/host validation, size/MIME/pixel limits | M3 hermetic host/redirect/size/MIME boundaries pass；live CDN evolution and decoder fuzzing remain M7 evidence |
 | City search | Open-Meteo Geocoding | Direct user search only; candidate expires in 10 minutes | `https://geocoding-api.open-meteo.com/v1/search` | Receives query/language/count/IP | exact host/parameter allowlist, 2..100 query, no background call | Result is GeoNames-backed; no GPS/IP geolocation |
 | Weather | Open-Meteo Forecast | Explicitly selected candidate | `https://api.open-meteo.com/v1/forecast` | Receives rounded coordinates/timezone/IP | exact host/parameter allowlist, 30-minute cache | Forecast does not receive search query/city label |
-| Apple companion mode | GSMTC session | User selection binds `SourceAppUserModelId` + session identity | One current system media session | Rust reads metadata/capabilities and sends enabled controls；track-aware reaction is local deterministic visible text | revision/identity recheck; user override aborts resume；no data edge to Responses/Speech | Actual Apple Music capability varies by installed version |
+| Apple companion mode | GSMTC session | User selection binds `SourceAppUserModelId` + session identity | One current system media session | Rust reads metadata/capabilities and sends enabled controls；track-aware reaction is local deterministic visible text | revision/identity/activation-generation recheck；source deactivation revokes observation and resume；user override aborts resume；no data edge to Responses/Speech | Windows 11 + Apple Music `1.1540.23042.0` live connect/pause/restore passed；cross-version and repeated override/disappearance matrix remains M7 |
 | Release | Dependency/native/font set | Lockfiles + admission policy override transitive defaults | Hash-pinned build inputs and generated SBOM/notices | Build host and final installer | deny/unknown license/advisory/checksum gates | Reproducibility and signing evidence absent until release task |
 
 ## 2. Threat model, trust boundaries, and assumptions

@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Data Architecture |
-| Last Verified | 2026-09-03 |
+| Last Verified | 2026-09-06 |
 | Source of Truth For | SQLite schema、字段、键、索引、迁移、数据目录、保留、导出与删除规则 |
 | Related Documents | [FRS](../product/FRS.md), [NFRS](../product/NFRS.md), [Architecture](ARCHITECTURE.md), [AI Orchestration](AI-ORCHESTRATION.md), [Privacy Data Lifecycle](../security/PRIVACY-DATA-LIFECYCLE.md), [Memory Schema](../contracts/schemas/memory-record.schema.json) |
 

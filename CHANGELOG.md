@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Release Steward |
-| Last Verified | 2026-09-05 |
+| Last Verified | 2026-09-06 |
 | Source of Truth For | 用户可感知变更与破坏性契约变更历史 |
 | Related Documents | `docs/operations/BUILD-RELEASE.md`, `docs/planning/BACKLOG.md` |
 
@@ -14,7 +14,10 @@
 
 ### Changed
 
-- M6 当前 checkpoint 如实记录为 `Blocked`：精确 candidate 的自动化构建/契约/Rust/React 检查通过，最终安全差异审查为 6 Medium、3 Low、零 Critical/High；真实 Apple Music Windows App 主路径仍待用户准备，且 Apple 切源授权、分类删除、Library Index 数据完整性与全部重置 quiescence 必须在 M6 修复，未自动激活 M7。
+- M6 checkpoint 以 `Passed with known gaps` 关闭：candidate `ea2f2fcc4d5ff077291119936aa975b37e84fe75` 修复原 sealed review 的 6 Medium/3 Low finding families，以及 fresh bypass review 追加发现的一个 High reset-admission race；最终无 open Critical/High。Apple Music Windows App `1.1540.23042.0` 的产品服务实机会话已完成连接、真实 track/capability 观察和一次通用 TTS pause/restore，M7 自动激活。
+- Apple source 现在在切回 Local、替换来源和 shutdown 时 await deactivation；activation generation 使旧 TTS interruption token 失效，避免继续观察或恢复已不再授权的会话。
+- 数据控制增加 producer lifecycle fences：分类删除阻止晚到天气/导出重建数据，profile 删除清位置且旧反馈不重建新画像趋势，对话删除移除 source hash；full reset 原子关闭并等待 radio、scanner、understanding、provider preview、playback、scheduler 和 retention 后再清凭据/存储/文件。
+- 增加前向 SQLite V0004：删除 Library Index 时，只有已终止的本地 track segment 可转为不含路径和媒体身份的历史 tombstone；活动 segment fail closed，避免约束回滚或丢失历史 run。
 - Apple Music 系统媒体读取改为显式选择门控：应用保持本地来源时不再启动 GSMTC discovery/轮询；只有用户点击 Apple 来源或“连接 / 重新检查会话”（以及恢复已保存的 Apple 默认来源）后才在本机绑定并监控，且仍不发送播放命令。
 - Apple 陪伴节目现在把会话失联持久化为 `paused`，可在该状态安全停止；只有原 Apple 会话重新出现且用户/外部 App 已使其进入播放状态后，陪伴监听才恢复为运行，过程中不发送播放命令。
 - 修复播放设置中的默认音乐源只保存但不生效：应用启动时静音选择已保存的 `local` 或 `apple_music` adapter；Apple 会话不可用时保留 disconnected 状态而不静默回退，并拒绝持久化未知来源 ID。

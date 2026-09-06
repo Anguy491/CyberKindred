@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Engineering Lead & Quality Engineering |
-| Last Verified | 2026-09-03 |
+| Last Verified | 2026-09-06 |
 | Source of Truth For | 每个 FR/NFR 到 UX、架构、契约、测试、任务和里程碑的逐项追踪关系 |
 | Related Documents | `docs/product/FRS.md`; `docs/product/NFRS.md`; `docs/product/UX-SPEC.md`; `docs/architecture/ARCHITECTURE.md`; `docs/contracts/API-CONTRACT.md`; `docs/testing/ACCEPTANCE-TESTS.md`; `docs/planning/BACKLOG.md` |
 
@@ -33,6 +33,8 @@ M4 的最终实现证据由 [`M4 checkpoint`](checkpoints/M4.md) 及其 [`eviden
 M5 的最终实现证据由 [`M5 checkpoint`](checkpoints/M5.md) 及其 [`evidence manifest`](../../artifacts/test-evidence/milestones/M5/manifest.json) 聚合记录。`TASK-023`–`TASK-024` 已集成：API-048/049 只在显式点击后发送城市 query，Rust 签名候选与 revision 门控位置保存，Forecast 只发送经舍入坐标和固定参数，30 分钟新鲜缓存才可进入 Context；API-032–035/EVT-007、SQLite scheduler actor、IANA/DST occurrence、10/30/60 分钟单一 snooze、15 分钟 resume 边界和带开始/稍后/忽略动作的 Windows 静音通知已完成。通知、到期或恢复不会自动调用 API-024；只有 API-035 `start` 的一次性授权能通过 notification trigger。scheduler actor 改由 Tauri async runtime 托管后，同步启动回归及 weather/schedule Windows desktop E2E 通过。最终 candidate `f33f417a8d34983f4682105380967301c8122503` 的 Rust、React、严格 IPC、契约、axe、视觉、依赖策略、静态边界和 24/24 项安全差异审查均通过且零发现。live Open-Meteo、真实 Windows toast 动作/声音观察和完整 DST/休眠/重复/离线矩阵保持 `Not Run` 并递延 M7；全部 hard gates 通过，M5 以 `Passed with known gaps` 关闭，M6 按 Product Owner stop condition 保持未激活。
 
 M6 的当前证据由 [`M6 checkpoint`](checkpoints/M6.md) 及其 [`evidence manifest`](../../artifacts/test-evidence/milestones/M6/manifest.json) 聚合。candidate `9c3add0853082c857d7de490904a94e58e69fc9` 已实现 API-016–025、Apple App GSMTC adapter、显式 discovery、真实字段/capability 映射、本地确定性反应、通用 TTS interruption、设置/托盘/自启动与 API-036/037/040–042 数据控制；自动化契约、Rust、React、构建和文档检查通过。最终 45/45 文件安全差异审查为 6 Medium、3 Low、零 Critical/High，但证明切回 Local 后 Apple observation 未撤销、切源可保留旧 TTS resume 权限、分类删除/天气 late write/export staging/Library Index 约束和 full-reset quiescence 不满足 FR-APL-005、FR-DAT-004/005 与 NFR-PRIV-003/NFR-REL-004。`TEST-APL-001/002/004` 的真实 Windows App 主路径仍 `waiting for user`；因此 checkpoint 为 `Blocked`，`TASK-027` 回退为 `Blocked`，M7 未激活。
+
+上一段保留 2026-09-05 初始 checkpoint 的历史阻塞证据，其中“当前”仅指该候选当时的状态。M6 的最终证据仍由同一 [`M6 checkpoint`](checkpoints/M6.md) 及 [`evidence manifest`](../../artifacts/test-evidence/milestones/M6/manifest.json) 聚合记录：candidate `ea2f2fcc4d5ff077291119936aa975b37e84fe75` 修复 sealed review 的 Apple 授权、分类删除、weather/export race、Library Index 完整性和 full-reset quiescence findings。Apple Music Windows App `1.1540.23042.0` 的产品服务实机会话完成连接、结构化 track/capability 观察和一次真实 generic-TTS pause/restore；Apple 数据未进入 provider。fresh bypass review 追加发现的一个 High reset-admission race 已通过四个 producer 的原子准入门及实际任务完成等待关闭，最终无 open Critical/High。全部 M6 hard gates 通过，checkpoint 为 `Passed with known gaps`，`TASK-025`–`TASK-028` 均为 `Done` 并自动激活 M7；50 次/跨版本/实机抢占与会话消失、破坏性 native reset/restart 及 `RISK-022` 对抗性证明保留为 M7 evidence。
 
 ## 2. Functional requirements
 

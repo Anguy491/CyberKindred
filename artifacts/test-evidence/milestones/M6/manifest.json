@@ -1,48 +1,49 @@
 {
   "schemaVersion": "1.0.0",
   "milestone": "M6",
-  "candidateCommit": "9c3add0853082c8578d7de490904a94e58e69fc9",
+  "candidateCommit": "ea2f2fcc4d5ff077291119936aa975b37e84fe75",
   "baselineCheckpointCommit": "33c8c06b981c67b7dac9d17588431ad48a075ef3",
-  "capturedAt": "2026-09-05",
+  "capturedAt": "2026-09-06",
   "environment": {
     "cohort": "windows-11-x64",
     "osVersionBuild": "10.0.26200",
+    "appleMusicVersion": "1.1540.23042.0",
     "rust": "1.98.0",
     "node": "24.19.0",
     "pnpm": "11.16.0",
     "containsUserIdentifiers": false,
     "liveProvidersUsed": false,
-    "physicalAudioUsed": false,
-    "appleMusicSessionUsed": false,
+    "physicalAudioUsed": true,
+    "appleMusicSessionUsed": true,
     "notificationPermissionChanged": false
   },
-  "completedTasks": ["TASK-028"],
-  "inProgressTasks": ["TASK-025", "TASK-026"],
-  "blockedTasks": ["TASK-027"],
+  "completedTasks": ["TASK-025", "TASK-026", "TASK-027", "TASK-028"],
+  "inProgressTasks": [],
+  "blockedTasks": [],
   "milestoneSmokes": [
     {
       "id": "apple-system-session-source",
-      "status": "not_run_waiting_for_user",
-      "evidence": "src-tauri/src/playback/system_media.rs; src-tauri/src/playback/service.rs; src/features/radio/RadioView.tsx; src/routes/SettingsPage.tsx",
-      "summary": "Hermetic session and UI tests pass, but the product candidate has not connected to a real Apple Music Windows App session"
+      "status": "passed_with_known_gaps",
+      "evidence": "src-tauri/src/playback/system_media.rs; src-tauri/src/playback/service.rs; src-tauri/src/playback/tests.rs",
+      "summary": "The product service connected to a real Apple Music Windows App track, observed Playing and Pause capability, and safely completed one actual pause/restore; the repeated cross-version matrix remains M7"
     },
     {
       "id": "apple-local-companion-boundary",
-      "status": "failed",
+      "status": "passed_with_known_gaps",
       "evidence": "src-tauri/src/radio/apple.rs; src-tauri/src/radio_speech_repository.rs; src-tauri/src/playback/service.rs; src-tauri/src/playback/system_media.rs",
-      "summary": "Apple data stays out of Responses and Speech, but a source switch can leave a stale TTS resume authority and switching to Local does not stop Apple observation"
+      "summary": "Apple data stays out of Responses and Speech; source deactivation and activation generation revoke stale observation/resume authority; live user-override and device matrices remain M7"
     },
     {
       "id": "privacy-data-control",
-      "status": "failed",
-      "evidence": "src-tauri/src/data_control/service.rs; src-tauri/src/storage/data_control.rs; src-tauri/src/storage/understanding.rs; src-tauri/src/weather/mod.rs; src-tauri/migrations/V0001__initial_schema.sql",
-      "summary": "Inventory and export allowlist tests pass, but deletion/reset exactness and data integrity do not"
+      "status": "passed_with_known_gaps",
+      "evidence": "src-tauri/src/data_control/service.rs; src-tauri/src/storage/data_control.rs; src-tauri/src/storage/understanding.rs; src-tauri/src/weather/mod.rs; src-tauri/migrations/V0004__detached_program_segments.sql",
+      "summary": "Inventory, export cleanup, exact category deletion, Library Index integrity and full-reset producer quiescence pass automated gates; destructive native restart observation remains M7"
     },
     {
       "id": "settings-and-windows-integration",
-      "status": "passed_with_known_gaps",
+      "status": "passed",
       "evidence": "src/routes/SettingsPage.tsx; src-tauri/src/os_integration.rs; tests/ui/settings-data.test.tsx",
-      "summary": "Settings, key masking, tray and autostart tests pass; live Apple state remains unverified"
+      "summary": "Settings, key masking, Apple state, tray, autostart and silent startup paths pass"
     }
   ],
   "checks": [
@@ -52,6 +53,11 @@
       "summary": "Contracts, lint, types, 19 files / 109 frontend tests, coverage, E2E self-tests, build and docs passed"
     },
     {
+      "command": "cargo fmt --all -- --check",
+      "status": "passed",
+      "summary": "Rust formatting passed"
+    },
+    {
       "command": "cargo clippy --workspace --all-targets --all-features -- -D warnings",
       "status": "passed",
       "summary": "Strict Rust lint passed"
@@ -59,40 +65,47 @@
     {
       "command": "cargo test --workspace --all-features",
       "status": "passed",
-      "summary": "274 passed, 2 explicit live credential canaries ignored, 0 failed"
+      "summary": "301 workspace tests passed, 3 explicit live canaries ignored, 0 failed; main library binary 276 passed and 2 ignored"
     },
     {
-      "command": "focused system-media Rust suite",
+      "command": "CYBERKINDRED_LIVE_APPLE_MUSIC=1 cargo test --workspace --all-features live_apple_product_service_connects_and_restores_tts_interruption -- --ignored --nocapture",
       "status": "passed",
-      "summary": "8 focused tests passed"
+      "summary": "One real product-service Apple session connect and generic interruption pause/restore passed without recording media text"
     },
     {
-      "command": "focused Radio/Settings UI suite",
+      "command": "Codex Security sealed diff scan plus fresh remediation bypass review",
+      "status": "passed_after_remediation",
+      "summary": "Original 6 Medium/3 Low families fixed; one additional High admission race found by fresh review and fixed; zero open Critical/High"
+    },
+    {
+      "command": "git diff --check",
       "status": "passed",
-      "summary": "15 focused tests passed"
-    },
-    {
-      "command": "Codex Security exact-range diff scan",
-      "status": "completed_with_findings",
-      "summary": "45/45 files; 6 Medium, 3 Low, zero Critical/High; 3 deferred candidates"
-    },
-    {
-      "command": "real Apple Music Windows App checkpoint path",
-      "status": "not_run_waiting_for_user",
-      "summary": "Requires a user-prepared, playing non-sensitive Apple Music App session"
+      "summary": "No whitespace errors; configured LF-to-CRLF notices only"
     }
   ],
   "securityScan": {
     "scanId": "628d9567-ff70-4332-ab6a-5ff8e23a41cc",
-    "status": "completed_sealed",
+    "status": "completed_sealed_and_remediated",
     "baseRevision": "33c8c06b981c67b7dac9d17588431ad48a075ef3",
     "headRevision": "9c3add0853082c8578d7de490904a94e58e69fc9",
+    "remediatedByRevision": "ea2f2fcc4d5ff077291119936aa975b37e84fe75",
     "reviewItems": 45,
-    "findings": {
+    "reportedFindings": {
       "critical": 0,
       "high": 0,
       "medium": 6,
       "low": 3
+    },
+    "openFindings": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0
+    },
+    "postPatchReview": {
+      "additionalHighFound": 1,
+      "additionalHighOpen": 0,
+      "summary": "The reset admission/snapshot race was closed with atomic per-service admission gates and actual completion waits"
     },
     "deferredCandidates": 3,
     "reportBytes": 45639,
@@ -102,36 +115,36 @@
     { "id": "secret-boundary", "status": "passed" },
     { "id": "file-network-permission-scope", "status": "passed" },
     { "id": "logging-redaction", "status": "passed" },
-    { "id": "explicit-sound-and-paid-action", "status": "not_run" },
+    { "id": "explicit-sound-and-paid-action", "status": "passed" },
     { "id": "public-contract-validity", "status": "passed" },
-    { "id": "data-integrity", "status": "failed" },
-    { "id": "privacy-deletion-reset-lifecycle", "status": "failed" },
+    { "id": "data-integrity", "status": "passed" },
+    { "id": "privacy-deletion-reset-lifecycle", "status": "passed" },
     { "id": "critical-high-security", "status": "passed" }
   ],
   "knownGaps": [
     {
-      "id": "m6-real-apple-session",
-      "status": "waiting_for_user",
-      "impact": "The milestone-defined product connection/control/TTS path is not verified",
-      "mitigation": "No live claim is made; fake/session-state coverage remains only supporting evidence",
-      "targetMilestone": "M6"
-    },
-    {
-      "id": "m6-security-remediation",
-      "status": "waiting_for_user_authorization",
-      "impact": "Data integrity/privacy lifecycle and Apple authorization defects remain open",
-      "mitigation": "M6 stays Blocked and M7 is not activated",
-      "targetMilestone": "M6"
-    },
-    {
-      "id": "m6-platform-security-proof",
+      "id": "m7-apple-cross-version-repeat-matrix",
       "status": "deferred",
-      "impact": "AUMID spoofability, artwork decoder amplification and unauthorized WebView reset reachability are unresolved",
-      "mitigation": "No exploitability claim is made; keep the three candidates visible",
+      "impact": "One live product run does not prove the 50-iteration, cross-version, override, disappearance, sleep and device matrix",
+      "mitigation": "Capabilities fail closed and identity/revision/generation race coverage enforces the safety invariant",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "m7-destructive-reset-restart",
+      "status": "deferred",
+      "impact": "A real user profile was not destructively reset to observe native restart onboarding",
+      "mitigation": "Temporary-root automated reset scope, credential, quiescence and preservation tests pass; use an isolated install or VM in M7",
+      "targetMilestone": "M7"
+    },
+    {
+      "id": "m7-platform-security-proof",
+      "status": "deferred",
+      "impact": "AUMID publication authority, artwork decoder amplification and unauthorized WebView reset reachability remain unproven hypotheses",
+      "mitigation": "Strict AUMID/image/Tauri command boundaries remain and no authority is expanded",
       "targetMilestone": "M7"
     }
   ],
-  "checkpointConclusion": "blocked",
-  "targetMilestone": "M6",
-  "transitionedToNextMilestone": false
+  "checkpointConclusion": "passed_with_known_gaps",
+  "targetMilestone": "M7",
+  "transitionedToNextMilestone": true
 }

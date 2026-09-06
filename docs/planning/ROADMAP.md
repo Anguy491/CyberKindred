@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Product Owner / Lead Agent |
-| Last Verified | 2026-09-05 |
+| Last Verified | 2026-09-06 |
 | Source of Truth For | 里程碑顺序、依赖与阶段退出条件 |
 | Related Documents | `../product/PRD.md`, `BACKLOG.md`, `RISK-REGISTER.md`, `../testing/TEST-STRATEGY.md`, `../architecture/adr/ADR-0007-milestone-prototype-delivery.md` |
 
@@ -74,13 +74,15 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M6 — Apple Music companion mode
 
-**Status:** Active — authorized by the Product Owner on 2026-09-05. The current [`M6 checkpoint`](../testing/checkpoints/M6.md) is `Blocked`: `TASK-025` and `TASK-026` await the real-session path, `TASK-027` is reopened for required security/data-lifecycle remediation, and `TASK-028` is `Done`. M7 is not activated.
+**Status:** Complete — `Passed with known gaps` on 2026-09-06; see [`M6 checkpoint`](../testing/checkpoints/M6.md). The Product Owner authorized remediation and prepared a real Apple Music Windows App session; the product service connected to the live session and completed an actual generic-TTS pause/restore cycle. All M6 hard gates pass, and the remaining cross-version, repeated convergence and destructive restart-empty-state matrix is tracked for M7.
 
 **Goal:** 在 capability 边界内连接 Apple Music Windows 系统媒体会话并插入安全串场。
 
 **Checkpoint criteria:** 在一台记录环境的真实 Windows App 会话演示连接、真实字段、能力门控和基础控制；通用 TTS 不携带 GSMTC 数据，用户抢占或会话消失时安全停止/不争抢。多版本矩阵和重复竞态压力可递延到 M7。
 
 ## M7 — Installable beta hardening
+
+**Status:** Active — automatically activated by the passed M6 checkpoint on 2026-09-06. Beta candidate approval, signing, publication and distribution still require the Product Owner.
 
 **Goal:** 交付本人及少量内测者可独立安装和恢复的 Windows 版本。
 

@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Privacy Steward |
-| Last Verified | 2026-09-03 |
+| Last Verified | 2026-09-06 |
 | Source of Truth For | 用户数据的来源、用途、本地存储、外发、保留、导出与删除语义 |
 | Related Documents | `docs/architecture/DATA-MODEL.md`, `docs/contracts/API-CONTRACT.md`, `docs/integrations/EXTERNAL-INTEGRATIONS.md`, `docs/security/THREAT-MODEL.md` |
 
@@ -21,7 +21,7 @@ CyberKindred 是单 Windows 用户、本地优先、BYOK 的 AI 陪伴电台。�
 | OpenAI API Key | 用户输入；认证 Responses/Speech | Windows Credential Manager，按 canonical provider origin 隔离；SQLite/WebView 只看 origin 与 configured boolean；切换当前 origin 不删除其他已验证 origin 的 credential | 仅作为 Authorization header 发往用户确认的 HTTPS origin | 直到用户通过 API-005 删除指定 origin 或全部重置 | API-004 成功切换 origin 时保留旧 origin item；API-005 立即删除指定 Credential item；全部重置枚举并删除所有 `CyberKindred/provider/*` origin items；已发请求无法由本地撤回 | 永不导出 |
 | Profile and preferences | 用户引导/Settings；称呼、节目风格、作息、初始偏好 | SQLite `user_profile`/`app_settings` | 生成内容时，必要摘要发往 LLM；不发 display name，除非它是用户明确要求的主播称呼 | 直到用户编辑、分类删除或全部重置 | 覆盖旧值；分类删除清画像/偏好，全部重置立即删除数据库而不保留 quarantine | 导出非敏感值与 schema version |
 | City search and selected location | 用户主动输入城市/邮编查询并从结果选择；天气上下文与日程 | 未选 search query/candidate 只在内存 10 分钟；选中的 city/region/country/坐标/timezone 存 SQLite；不是 GPS 轨迹 | 搜索时 Open-Meteo 收到 query/language/count/IP；Forecast 收到四位小数坐标、timezone、变量/IP。LLM 只收到天气摘要，不收到 query/坐标 | Query/candidate 10 分钟；选中值直到编辑/删除；weather cache 最多 7 天，30 分钟后不再作为新鲜上下文 | 清 search 内存、selected location 与 weather cache；日程 timezone 不自动删除 | 导出选中的 city/region/country/坐标/timezone，不导出 search query；提示坐标属于位置数据 |
-| Library roots and file identity | 用户通过 native picker 授权；定位音乐 | SQLite 保存 canonical root 与相对路径；音频保持原位只读 | 不外发路径、文件名、音频或 fingerprint | 直到移除 root/索引或重置 | 只删索引与 cache reference，永不删音乐文件 | 不导出 root、path、identity 或曲库统计；仅在 API-040 本机清单显示数量 |
+| Library roots and file identity | 用户通过 native picker 授权；定位音乐 | SQLite 保存 canonical root 与相对路径；音频保持原位只读 | 不外发路径、文件名、音频或 fingerprint | 直到移除 root/索引或重置 | 只删索引与 cache reference；已终止节目 segment 脱离 track 后仅留无路径、无媒体身份的历史 tombstone，永不删音乐文件 | 不导出 root、path、identity 或曲库统计；仅在 API-040 本机清单显示数量 |
 | Embedded music tags | 本地文件 title/artist/album/duration/genre；检索和候选生成 | SQLite track index；不改原标签 | 启用匹配时只向 MusicBrainz 发 title/artist/album/duration；候选文本可发 LLM，无音频/路径 | 跟随曲库索引；移除 root 时删除 | 删除 root 索引；原文件不变 | 不导出 track ID/tag/index |
 | MusicBrainz match | MusicBrainz 返回 MBID、标准化标签、tag、置信度 | SQLite 只存规范化结果，不存原始 body | release MBID 可发 Cover Art Archive | 成功结果保留至手动刷新/移除 track；no-match 24 小时 | 删除 track 或 metadata cache 时删除 | 不导出 |
 | Artwork and TTS cache | 本地内嵌封面、Cover Art Archive 图片、OpenAI TTS bytes；减少重复请求 | Rust-owned cache；staging 24 小时 | CAA 只收 release MBID；OpenAI 收合规的最终串场文本与声音参数。Apple track-aware 文字不进入 Speech，只有无任何 GSMTC 派生数据的通用段可 TTS | CAA/TTS 成功 cache 最多 30 天，并受 quota/LRU；staging 24 小时 | `metadata_cache` 分类清 cache 或全部重置；不影响音乐/文本记录 | 不导出二进制 cache |
