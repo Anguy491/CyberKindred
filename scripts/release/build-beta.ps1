@@ -24,6 +24,13 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "git rev-parse failed" }
     $env:SOURCE_DATE_EPOCH = (& git show -s --format=%ct HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw "git show failed" }
+    $reproducibleRustFlags = @(
+        "--remap-path-prefix=$workspaceRoot=/cyberkindred",
+        "-C",
+        "link-arg=/Brepro"
+    )
+    $env:CARGO_ENCODED_RUSTFLAGS = $reproducibleRustFlags -join [char]0x1f
+    $env:CARGO_INCREMENTAL = "0"
 
     Invoke-Checked "node" @("scripts/release/generate-release-assets.mjs")
     Invoke-Checked "node" @("scripts/release/verify-release-assets.mjs")

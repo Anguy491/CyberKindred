@@ -75,6 +75,15 @@ const commitTimestamp = Number(run("git", ["show", "-s", "--format=%ct", "HEAD"]
 const migrationVersions = readdirSync(resolve(workspaceRoot, "src-tauri/migrations"))
   .map((name) => Number(name.match(/^V(\d+)__/u)?.[1]))
   .filter(Number.isFinite);
+const rustFlags = process.env.CARGO_ENCODED_RUSTFLAGS?.split("\x1f") ?? [];
+const expectedPathRemap = `--remap-path-prefix=${workspaceRoot}=/cyberkindred`;
+if (
+  !rustFlags.includes(expectedPathRemap)
+  || !rustFlags.includes("link-arg=/Brepro")
+  || process.env.CARGO_INCREMENTAL !== "0"
+) {
+  throw new Error("release Rust build is missing deterministic path/link/incremental settings");
+}
 const installerFiles = artifactFiles.filter((path) => /-setup\.exe$/iu.test(path));
 if (installerFiles.length !== 1) {
   throw new Error(`expected one NSIS setup executable, found ${installerFiles.length}`);
@@ -129,6 +138,11 @@ const manifest = {
     rustc: run("rustc", ["--version"]).trim(),
     cargo: run("cargo", ["--version"]).trim(),
     tauri: run("pnpm", ["tauri", "--version"]).trim().split(/\r?\n/u).at(-1),
+  },
+  reproducibility: {
+    sourcePathPrefix: "/cyberkindred",
+    msvcLinkerFlag: "/Brepro",
+    cargoIncremental: false,
   },
   artifacts: artifactFiles.map((path) => ({
     file: relative(input, path).replaceAll("\\", "/"),
