@@ -27,25 +27,55 @@ function Get-FileSha256 {
     return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
 }
 
-function Assert-TrustedManifest {
-    param([System.Collections.IDictionary]$Candidate, [string]$TrustedSha256, [string]$Label)
-    if ($TrustedSha256 -cnotmatch "^[a-fA-F0-9]{64}$") {
+function Get-StreamSha256 {
+    param([System.IO.Stream]$Stream)
+    $hasher = [Security.Cryptography.SHA256]::Create()
+    try {
+        $Stream.Position = 0
+        $digest = $hasher.ComputeHash($Stream)
+        $Stream.Position = 0
+        return [Convert]::ToHexString($digest).ToLowerInvariant()
+    }
+    finally {
+        $hasher.Dispose()
+    }
+}
+
+function Read-ManifestSnapshot {
+    param([string]$Path, [string]$TrustedSha256, [string]$Label, [bool]$RequireTrusted)
+    if ($RequireTrusted -and $TrustedSha256 -cnotmatch "^[a-fA-F0-9]{64}$") {
         throw "$Label requires a 64-character out-of-band trusted manifest digest"
     }
-    if ($Candidate.manifestHash -cne $TrustedSha256.ToLowerInvariant()) {
-        throw "$Label manifest differs from the trusted out-of-band digest"
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        $manifestHash = Get-StreamSha256 $stream
+        if ($RequireTrusted -and $manifestHash -cne $TrustedSha256.ToLowerInvariant()) {
+            throw "$Label manifest differs from the trusted out-of-band digest"
+        }
+        $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8, $true, 4096, $true)
+        try {
+            $manifest = $reader.ReadToEnd() | ConvertFrom-Json
+        }
+        finally {
+            $reader.Dispose()
+        }
+        return [ordered]@{ manifest = $manifest; sha256 = $manifestHash }
+    }
+    finally {
+        $stream.Dispose()
     }
 }
 
 function Get-VerifiedCandidate {
-    param([string]$Path, [string]$Label, [bool]$RequireCurrent)
+    param([string]$Path, [string]$Label, [bool]$RequireCurrent, [string]$TrustedSha256, [bool]$RequireTrusted)
     if (-not $Path) { throw "$Label is required" }
     $root = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $Path).Path)
     $manifestPath = Join-Path $root "manifest.json"
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
         throw "$Label manifest is missing"
     }
-    $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+    $manifestSnapshot = Read-ManifestSnapshot $manifestPath $TrustedSha256 $Label $RequireTrusted
+    $manifest = $manifestSnapshot.manifest
     $package = Get-Content -Raw -LiteralPath (Join-Path $workspaceRoot "package.json") | ConvertFrom-Json
     $tauri = Get-Content -Raw -LiteralPath (Join-Path $workspaceRoot "src-tauri\tauri.conf.json") | ConvertFrom-Json
     if ($RequireCurrent) {
@@ -135,27 +165,65 @@ function Get-VerifiedCandidate {
         installerPath = $installerPath
         installerHash = $installerHash
         releaseTest = $isReleaseTest
-        manifestHash = Get-FileSha256 $manifestPath
+        manifestHash = $manifestSnapshot.sha256
     }
 }
 
 function Invoke-Installer {
-    param([string]$Path, [int[]]$ExpectedExitCodes)
-    $process = Start-Process -FilePath $Path -ArgumentList "/S" -Wait -PassThru -WindowStyle Hidden
-    if ($ExpectedExitCodes -notcontains $process.ExitCode) {
-        throw "installer $(Split-Path -Leaf $Path) exited $($process.ExitCode); expected $($ExpectedExitCodes -join ', ')"
+    param([string]$Path, [string]$ExpectedSha256, [int[]]$ExpectedExitCodes)
+    if ($ExpectedSha256 -cnotmatch "^[a-fA-F0-9]{64}$") {
+        throw "installer execution requires a manifest-bound SHA-256"
     }
-    return [ordered]@{
-        file = Split-Path -Leaf $Path
-        sha256 = Get-FileSha256 $Path
-        exitCode = $process.ExitCode
+    $source = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+    $stagingDirectory = [IO.Path]::GetFullPath((Join-Path $temporaryRoot ("CyberKindredInstallerVerification-" + [guid]::NewGuid().ToString("N"))))
+    if (-not $stagingDirectory.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        $source.Dispose()
+        throw "installer staging directory escaped the temporary root"
+    }
+    $stagedLock = $null
+    try {
+        $sourceHash = Get-StreamSha256 $source
+        if ($sourceHash -cne $ExpectedSha256.ToLowerInvariant()) {
+            throw "installer differs from its trusted manifest immediately before execution"
+        }
+        New-Item -ItemType Directory -Path $stagingDirectory | Out-Null
+        $stagedPath = Join-Path $stagingDirectory (Split-Path -Leaf $Path)
+        $destination = [IO.File]::Open($stagedPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        try {
+            $source.CopyTo($destination)
+            $destination.Flush($true)
+        }
+        finally {
+            $destination.Dispose()
+        }
+        $stagedLock = [IO.File]::Open($stagedPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        if ((Get-StreamSha256 $stagedLock) -cne $ExpectedSha256.ToLowerInvariant()) {
+            throw "staged installer hash differs before execution"
+        }
+        $process = Start-Process -FilePath $stagedPath -ArgumentList "/S" -Wait -PassThru -WindowStyle Hidden
+        if ($ExpectedExitCodes -notcontains $process.ExitCode) {
+            throw "installer $(Split-Path -Leaf $Path) exited $($process.ExitCode); expected $($ExpectedExitCodes -join ', ')"
+        }
+        return [ordered]@{
+            file = Split-Path -Leaf $Path
+            sha256 = $ExpectedSha256.ToLowerInvariant()
+            exitCode = $process.ExitCode
+        }
+    }
+    finally {
+        if ($null -ne $stagedLock) { $stagedLock.Dispose() }
+        $source.Dispose()
+        if (Test-Path -LiteralPath $stagingDirectory -PathType Container) {
+            Remove-Item -LiteralPath $stagingDirectory -Recurse -Force
+        }
     }
 }
 
-$candidate = Get-VerifiedCandidate $CandidatePath "CandidatePath" $true
+$candidate = Get-VerifiedCandidate $CandidatePath "CandidatePath" $true $TrustedManifestSha256 ([bool]$Execute)
 $previousCandidate = $null
 if ($Operation -in @("Upgrade", "RollbackGuard")) {
-    $previousCandidate = Get-VerifiedCandidate $PreviousCandidatePath "PreviousCandidatePath" $false
+    $previousCandidate = Get-VerifiedCandidate $PreviousCandidatePath "PreviousCandidatePath" $false $PreviousTrustedManifestSha256 ([bool]$Execute)
     if ($previousCandidate.manifest.identifier -cne $candidate.manifest.identifier) {
         throw "current and previous candidates use different identifiers"
     }
@@ -172,13 +240,6 @@ if ($Execute -and -not ($candidate.releaseTest -or $hasDisposableSentinel)) {
 if ($Execute -and $previousCandidate -and -not ($previousCandidate.releaseTest -or $hasDisposableSentinel)) {
     throw "refusing previous installer mutation: production candidates require the protected machine-wide disposable-VM marker"
 }
-if ($Execute) {
-    Assert-TrustedManifest $candidate $TrustedManifestSha256 "CandidatePath"
-    if ($previousCandidate) {
-        Assert-TrustedManifest $previousCandidate $PreviousTrustedManifestSha256 "PreviousCandidatePath"
-    }
-}
-
 $steps = @()
 if ($Operation -eq "Plan") {
     $steps += [ordered]@{
@@ -188,14 +249,13 @@ if ($Operation -eq "Plan") {
         executed = $false
     }
 } elseif ($Operation -eq "Install") {
-    $steps += Invoke-Installer $candidate.installerPath @(0)
+    $steps += Invoke-Installer $candidate.installerPath $candidate.installerHash @(0)
 } elseif ($Operation -eq "Upgrade") {
-    $steps += Invoke-Installer $previousCandidate.installerPath @(0)
-    $steps += Invoke-Installer $candidate.installerPath @(0)
+    $steps += Invoke-Installer $previousCandidate.installerPath $previousCandidate.installerHash @(0)
+    $steps += Invoke-Installer $candidate.installerPath $candidate.installerHash @(0)
 } elseif ($Operation -eq "RollbackGuard") {
-    $steps += Invoke-Installer $candidate.installerPath @(0)
-    $process = Start-Process -FilePath $previousCandidate.installerPath -ArgumentList "/S" -Wait -PassThru -WindowStyle Hidden
-    if ($process.ExitCode -ne 1) { throw "downgrade did not return the expected NSIS rejection code 1" }
+    $steps += Invoke-Installer $candidate.installerPath $candidate.installerHash @(0)
+    $downgrade = Invoke-Installer $previousCandidate.installerPath $previousCandidate.installerHash @(1)
     $installedRoot = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA $candidate.manifest.productName))
     $installedApplication = Join-Path $installedRoot "cyberkindred.exe"
     $candidateApplication = @($candidate.manifest.artifacts | Where-Object { $_.file -ceq "cyberkindred.exe" })
@@ -207,7 +267,7 @@ if ($Operation -eq "Plan") {
     $steps += [ordered]@{
         file = Split-Path -Leaf $previousCandidate.installerPath
         sha256 = $previousCandidate.installerHash
-        exitCode = $process.ExitCode
+        exitCode = $downgrade.exitCode
         expected = "NSIS exit 1 with the current candidate executable preserved"
     }
 } elseif ($Operation -eq "Uninstall") {
@@ -219,11 +279,10 @@ if ($Operation -eq "Plan") {
         (Split-Path -Parent $uninstaller) -cne $expectedRoot) {
         throw "uninstaller must be the exact manifest-bound LocalAppData product uninstaller"
     }
-    if ($TrustedUninstallerSha256 -cnotmatch "^[a-fA-F0-9]{64}$" -or
-        (Get-FileSha256 $uninstaller) -cne $TrustedUninstallerSha256.ToLowerInvariant()) {
-        throw "uninstaller differs from the trusted post-install digest"
+    if ($TrustedUninstallerSha256 -cnotmatch "^[a-fA-F0-9]{64}$") {
+        throw "uninstaller requires the trusted post-install digest"
     }
-    $steps += Invoke-Installer $uninstaller @(0)
+    $steps += Invoke-Installer $uninstaller $TrustedUninstallerSha256 @(0)
 }
 
 $evidence = [ordered]@{

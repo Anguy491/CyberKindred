@@ -2,6 +2,7 @@
 param(
     [switch]$Development,
     [switch]$ReleaseTest,
+    [switch]$SnapshotBuild,
     [string]$OutputRoot,
     [ValidateSet("x86_64-pc-windows-msvc")]
     [string]$Target = "x86_64-pc-windows-msvc"
@@ -16,6 +17,135 @@ function Invoke-Checked {
     if ($LASTEXITCODE -ne 0) {
         throw "$Command failed with exit code $LASTEXITCODE"
     }
+}
+
+function Assert-ReleaseOutputPath {
+    param([string]$Path, [string]$Root)
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    $allowedRoot = [IO.Path]::GetFullPath((Join-Path $Root "target\release-artifacts"))
+    if (-not $fullPath.StartsWith($allowedRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "release output must be below $allowedRoot"
+    }
+    return $fullPath
+}
+
+function Assert-SafeBuildSnapshot {
+    param([string]$Path, [bool]$RequireRegistered = $true)
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+    $expectedPrefix = Join-Path $temporaryRoot "cyberkindred-build-snapshot-"
+    if (-not $fullPath.StartsWith($expectedPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "refusing unsafe build snapshot path: $fullPath"
+    }
+    if (Test-Path -LiteralPath $fullPath) {
+        $item = Get-Item -Force -LiteralPath $fullPath
+        if (-not $item.PSIsContainer -or $item.LinkType) {
+            throw "refusing cleanup of a non-directory or reparse-point build snapshot: $fullPath"
+        }
+    }
+    if ($RequireRegistered) {
+        $registered = @(
+            & git -C $workspaceRoot worktree list --porcelain |
+                Where-Object { $_.StartsWith("worktree ", [StringComparison]::Ordinal) } |
+                ForEach-Object { [IO.Path]::GetFullPath($_.Substring(9)) } |
+                Where-Object { $_.Equals($fullPath, [StringComparison]::OrdinalIgnoreCase) }
+        )
+        if ($registered.Count -ne 1) {
+            throw "refusing cleanup because the path is not the registered build snapshot: $fullPath"
+        }
+    }
+    return $fullPath
+}
+
+if (-not $Development -and -not $SnapshotBuild) {
+    Push-Location $workspaceRoot
+    try {
+        Invoke-Checked "node" @("scripts/release/generate-release-assets.mjs")
+        Invoke-Checked "node" @("scripts/release/verify-release-assets.mjs")
+        Invoke-Checked "node" @("scripts/release/preflight.mjs")
+        $sourceCommit = (& git rev-parse HEAD).Trim()
+        if ($LASTEXITCODE -ne 0) { throw "git rev-parse failed" }
+        if ((& git status --porcelain=v1 --untracked-files=all).Count -gt 0) {
+            throw "release snapshot requires a clean checkout"
+        }
+        $package = Get-Content -Raw -LiteralPath "package.json" | ConvertFrom-Json
+        $shortCommit = (& git rev-parse --short=12 HEAD).Trim()
+        if (-not $OutputRoot) {
+            $directoryName = [string]$package.version
+            if ($ReleaseTest) { $directoryName = "$directoryName-release-test-$shortCommit" }
+            $OutputRoot = Join-Path $workspaceRoot "target\release-artifacts\$directoryName"
+        }
+        $OutputRoot = Assert-ReleaseOutputPath $OutputRoot $workspaceRoot
+        if (Test-Path -LiteralPath $OutputRoot) {
+            throw "release output already exists: $OutputRoot"
+        }
+    }
+    finally {
+        Pop-Location
+    }
+
+    $snapshotRoot = Join-Path ([IO.Path]::GetFullPath([IO.Path]::GetTempPath())) ("cyberkindred-build-snapshot-" + [guid]::NewGuid().ToString("N"))
+    $snapshotRegistered = $false
+    try {
+        Assert-SafeBuildSnapshot $snapshotRoot $false | Out-Null
+        Invoke-Checked "git" @("-c", "core.longpaths=true", "-C", $workspaceRoot, "worktree", "add", "--detach", $snapshotRoot, $sourceCommit)
+        $snapshotRegistered = $true
+        Push-Location $snapshotRoot
+        try {
+            Invoke-Checked "pnpm" @("install", "--frozen-lockfile")
+            $snapshotOutput = Join-Path $snapshotRoot "target\release-artifacts\candidate"
+            $arguments = @(
+                "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                (Join-Path $snapshotRoot "scripts\release\build-beta.ps1"),
+                "-SnapshotBuild", "-OutputRoot", $snapshotOutput, "-Target", $Target
+            )
+            if ($ReleaseTest) { $arguments += "-ReleaseTest" }
+            Invoke-Checked "powershell" $arguments
+        }
+        finally {
+            Pop-Location
+        }
+
+        Push-Location $workspaceRoot
+        try {
+            $finalCommit = (& git rev-parse HEAD).Trim()
+            if ($LASTEXITCODE -ne 0) { throw "git rev-parse failed after build" }
+            if ($finalCommit -cne $sourceCommit -or (& git status --porcelain=v1 --untracked-files=all).Count -gt 0) {
+                throw "source checkout changed during the isolated build; refusing to publish the local candidate"
+            }
+        }
+        finally {
+            Pop-Location
+        }
+
+        $outputParent = Split-Path -Parent $OutputRoot
+        if (-not (Test-Path -LiteralPath $outputParent -PathType Container)) {
+            New-Item -ItemType Directory -Path $outputParent | Out-Null
+        }
+        Copy-Item -LiteralPath $snapshotOutput -Destination $OutputRoot -Recurse
+        $trustedManifestHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $OutputRoot "manifest.json")).Hash.ToLowerInvariant()
+        Invoke-Checked "powershell" @(
+            "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+            (Join-Path $workspaceRoot "scripts\release\verify-release.ps1"),
+            "-CandidatePath", $OutputRoot, "-TrustedManifestSha256", $trustedManifestHash,
+            "-SkipTests"
+        )
+        Write-Output "Local unsigned beta candidate: $OutputRoot"
+        Write-Output "Trusted manifest SHA-256 (record outside the candidate directory): $trustedManifestHash"
+    }
+    finally {
+        if ($snapshotRegistered) {
+            try {
+                Assert-SafeBuildSnapshot $snapshotRoot | Out-Null
+                Invoke-Checked "git" @("-c", "core.longpaths=true", "-C", $snapshotRoot, "clean", "-ffdx")
+                Invoke-Checked "git" @("-c", "core.longpaths=true", "worktree", "remove", "--force", $snapshotRoot)
+            }
+            catch {
+                Write-Warning "build snapshot cleanup failed for $snapshotRoot`: $($_.Exception.Message)"
+            }
+        }
+    }
+    return
 }
 
 Push-Location $workspaceRoot
@@ -73,11 +203,7 @@ try {
         if ($Development) { $directoryName = "$directoryName-development" }
         $OutputRoot = Join-Path $workspaceRoot "target\release-artifacts\$directoryName"
     }
-    $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
-    $allowedRoot = [IO.Path]::GetFullPath((Join-Path $workspaceRoot "target\release-artifacts"))
-    if (-not $OutputRoot.StartsWith($allowedRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "release output must be below $allowedRoot"
-    }
+    $OutputRoot = Assert-ReleaseOutputPath $OutputRoot $workspaceRoot
     if (Test-Path -LiteralPath $OutputRoot) {
         if (@(Get-ChildItem -Force -LiteralPath $OutputRoot).Count -gt 0) {
             throw "release output already exists and is not empty: $OutputRoot"

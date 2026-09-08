@@ -82,7 +82,7 @@ try {
         Invoke-Checked "powershell" @(
             "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
             (Join-Path $worktree "scripts\release\build-beta.ps1"),
-            "-OutputRoot", $output, "-Target", $Target
+            "-SnapshotBuild", "-OutputRoot", $output, "-Target", $Target
         ) $worktree
     }
 

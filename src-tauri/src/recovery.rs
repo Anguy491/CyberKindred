@@ -1,7 +1,10 @@
 use std::{
     future::Future,
     pin::Pin,
-    sync::Arc,
+    sync::{
+        Arc, Mutex as TransitionLock,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -9,11 +12,6 @@ use chrono::{SecondsFormat, TimeZone, Utc};
 use serde::Serialize;
 use tauri::{Emitter, Runtime};
 use tokio::sync::Mutex;
-
-#[cfg(windows)]
-use cyberkindred_windows_power_observer::{PowerEvent, PowerObserver};
-#[cfg(windows)]
-use std::sync::Mutex as StdMutex;
 
 use crate::{
     ipc::{ApiError, EventEnvelope, InternalReason, ProcessSequence},
@@ -26,6 +24,8 @@ use crate::{
     understanding::UnderstandingService,
     weather::WeatherService,
 };
+#[cfg(windows)]
+use cyberkindred_windows_power_observer::{PowerEvent, PowerObserver};
 
 const SUSPEND_DEADLINE: Duration = Duration::from_secs(2);
 const SUSPEND_QUIESCE_DEADLINE: Duration = Duration::from_millis(1_500);
@@ -34,6 +34,11 @@ const RESUME_GAP_THRESHOLD: Duration = Duration::from_secs(2);
 pub(crate) const APP_RESUMED_EVENT: &str = "cyberkindred://v1/app/resumed";
 
 type RecoveryFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+struct ResumeHint {
+    slept_at: Option<String>,
+    occurred_at: String,
+}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -72,7 +77,8 @@ impl<R: Runtime> RecoveryEventSink for TauriRecoveryEventSink<R> {
 trait RecoveryBackend: Send + Sync {
     fn begin_suspend(&self);
     fn suspend(&self) -> RecoveryFuture<'_, Result<(), ApiError>>;
-    fn resume(&self) -> RecoveryFuture<'_, Result<(), ApiError>>;
+    fn reconcile_resume(&self) -> RecoveryFuture<'_, Result<ResumeHint, ApiError>>;
+    fn finish_resume(&self, hint: ResumeHint);
 }
 
 struct ApplicationRecoveryBackend {
@@ -136,7 +142,7 @@ impl RecoveryBackend for ApplicationRecoveryBackend {
         })
     }
 
-    fn resume(&self) -> RecoveryFuture<'_, Result<(), ApiError>> {
+    fn reconcile_resume(&self) -> RecoveryFuture<'_, Result<ResumeHint, ApiError>> {
         Box::pin(async move {
             let resumed_at_ms = Utc::now().timestamp_millis();
             self.storage
@@ -151,25 +157,27 @@ impl RecoveryBackend for ApplicationRecoveryBackend {
                 .record_power_resume(resumed_at_ms)
                 .await
                 .map_err(|error| map_storage_error(&error))?;
-            let slept_at = slept_at_ms.map(format_timestamp).transpose()?;
-            let occurred_at = format_timestamp(resumed_at_ms)?;
-
-            // Restoring admission performs no provider request and starts no
-            // sound. Any paid/text/TTS retry still needs a fresh user command.
-            self.playback.resume_after_suspend();
-            self.weather.resume_after_suspend();
-            self.understanding.resume_after_suspend();
-            self.provider.resume_after_suspend();
-            self.radio.resume_after_suspend();
-            self.scanner.resume_after_suspend();
-
-            // EVT-010 is a process-local hint. Reconciliation and admission
-            // reopening are authoritative and must not be rolled back when a
-            // window is closing or has no active event listener.
-            publish_resume_hint(self.events.as_ref(), slept_at, occurred_at);
-
-            Ok(())
+            Ok(ResumeHint {
+                slept_at: slept_at_ms.map(format_timestamp).transpose()?,
+                occurred_at: format_timestamp(resumed_at_ms)?,
+            })
         })
+    }
+
+    fn finish_resume(&self, hint: ResumeHint) {
+        // Restoring admission performs no provider request and starts no
+        // sound. Any paid/text/TTS retry still needs a fresh user command.
+        self.playback.resume_after_suspend();
+        self.weather.resume_after_suspend();
+        self.understanding.resume_after_suspend();
+        self.provider.resume_after_suspend();
+        self.radio.resume_after_suspend();
+        self.scanner.resume_after_suspend();
+
+        // EVT-010 is a process-local hint. Reconciliation and admission
+        // reopening are authoritative and must not be rolled back when a
+        // window is closing or has no active event listener.
+        publish_resume_hint(self.events.as_ref(), hint.slept_at, hint.occurred_at);
     }
 }
 
@@ -187,6 +195,8 @@ enum PowerLifecycleState {
 pub(crate) struct RecoveryCoordinator {
     backend: Arc<dyn RecoveryBackend>,
     state: Mutex<PowerLifecycleState>,
+    admission_transition: TransitionLock<()>,
+    suspend_pending: AtomicBool,
     suspend_deadline: Duration,
 }
 
@@ -216,11 +226,18 @@ impl RecoveryCoordinator {
                 events,
             }),
             state: Mutex::new(PowerLifecycleState::Active),
+            admission_transition: TransitionLock::new(()),
+            suspend_pending: AtomicBool::new(false),
             suspend_deadline: SUSPEND_DEADLINE,
         })
     }
 
     fn begin_suspend(&self) {
+        let _transition = self
+            .admission_transition
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.suspend_pending.store(true, Ordering::Release);
         self.backend.begin_suspend();
     }
 
@@ -231,10 +248,12 @@ impl RecoveryCoordinator {
 
     async fn finish_prepare_suspend(&self) -> Result<(), ApiError> {
         let mut state = self.state.lock().await;
-        if matches!(
-            *state,
-            PowerLifecycleState::Suspending | PowerLifecycleState::Suspended
-        ) {
+        if !self.suspend_pending.swap(false, Ordering::AcqRel)
+            && matches!(
+                *state,
+                PowerLifecycleState::Suspending | PowerLifecycleState::Suspended
+            )
+        {
             return Ok(());
         }
         *state = PowerLifecycleState::Suspending;
@@ -248,22 +267,35 @@ impl RecoveryCoordinator {
 
     async fn resume(&self) -> Result<(), ApiError> {
         let mut state = self.state.lock().await;
-        if matches!(*state, PowerLifecycleState::Active) {
+        if matches!(*state, PowerLifecycleState::Active)
+            && !self.suspend_pending.load(Ordering::Acquire)
+        {
             return Ok(());
         }
         *state = PowerLifecycleState::Resuming;
-        let result = self.backend.resume().await;
-        *state = if result.is_ok() {
-            PowerLifecycleState::Active
-        } else {
-            PowerLifecycleState::Suspended
+        let hint = match self.backend.reconcile_resume().await {
+            Ok(hint) => hint,
+            Err(error) => {
+                *state = PowerLifecycleState::Suspended;
+                return Err(error);
+            }
         };
-        result
+        let _transition = self
+            .admission_transition
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if self.suspend_pending.load(Ordering::Acquire) {
+            *state = PowerLifecycleState::Suspended;
+            return Err(ApiError::from_reason(InternalReason::ResourceBusy));
+        }
+        self.backend.finish_resume(hint);
+        *state = PowerLifecycleState::Active;
+        Ok(())
     }
 
-    /// Handles both a real event-loop resume and the conservative clock-gap
-    /// fallback. Calling suspend first makes this safe even when Windows did
-    /// not expose a pre-suspend event through Tauri.
+    /// Handles the conservative clock-gap/non-Windows fallback. Calling
+    /// suspend first keeps the fallback fail-closed when no pre-suspend edge
+    /// was observed.
     pub(crate) async fn reconcile_after_resume(&self) -> Result<(), ApiError> {
         let suspend = self.prepare_suspend().await;
         let resume = self.resume().await;
@@ -285,7 +317,7 @@ impl std::error::Error for RecoveryRuntimeError {}
 pub(crate) struct RecoveryRuntime {
     watchdog: tauri::async_runtime::JoinHandle<()>,
     #[cfg(windows)]
-    power_observer: StdMutex<Option<PowerObserver>>,
+    power_observer: TransitionLock<Option<PowerObserver>>,
 }
 
 impl RecoveryRuntime {
@@ -333,7 +365,7 @@ impl RecoveryRuntime {
         Ok(Arc::new(Self {
             watchdog,
             #[cfg(windows)]
-            power_observer: StdMutex::new(Some(power_observer)),
+            power_observer: TransitionLock::new(Some(power_observer)),
         }))
     }
 
@@ -443,15 +475,22 @@ mod tests {
             })
         }
 
-        fn resume(&self) -> RecoveryFuture<'_, Result<(), ApiError>> {
+        fn reconcile_resume(&self) -> RecoveryFuture<'_, Result<ResumeHint, ApiError>> {
             Box::pin(async move {
                 self.calls.lock().expect("calls").push("resume_silent");
                 if let Some(gate) = &self.resume_gate {
                     gate.notified().await;
                 }
-                self.admission_closed.store(false, Ordering::Release);
-                Ok(())
+                Ok(ResumeHint {
+                    slept_at: None,
+                    occurred_at: "2026-09-08T10:00:00.000Z".to_owned(),
+                })
             })
+        }
+
+        fn finish_resume(&self, _hint: ResumeHint) {
+            self.calls.lock().expect("calls").push("finish_resume");
+            self.admission_closed.store(false, Ordering::Release);
         }
     }
 
@@ -459,6 +498,8 @@ mod tests {
         RecoveryCoordinator {
             backend,
             state: Mutex::new(PowerLifecycleState::Active),
+            admission_transition: TransitionLock::new(()),
+            suspend_pending: AtomicBool::new(false),
             suspend_deadline: deadline,
         }
     }
@@ -473,7 +514,7 @@ mod tests {
             .expect("recovery");
         assert_eq!(
             backend.calls.lock().expect("calls").as_slice(),
-            ["begin_suspend", "suspend", "resume_silent"]
+            ["begin_suspend", "suspend", "resume_silent", "finish_resume"]
         );
         assert_eq!(backend.paid_calls.load(Ordering::Acquire), 0);
         assert_eq!(backend.audible_calls.load(Ordering::Acquire), 0);
@@ -494,7 +535,7 @@ mod tests {
         assert_eq!(error.error_id, ErrorId::ResourceBusy);
         assert_eq!(
             backend.calls.lock().expect("calls").as_slice(),
-            ["begin_suspend", "suspend", "resume_silent"]
+            ["begin_suspend", "suspend", "resume_silent", "finish_resume"]
         );
         assert_eq!(backend.paid_calls.load(Ordering::Acquire), 0);
         assert_eq!(backend.audible_calls.load(Ordering::Acquire), 0);
@@ -520,6 +561,52 @@ mod tests {
         resume_gate.notify_one();
         resume.await.expect("resume task").expect("resume");
         assert!(!backend.admission_closed.load(Ordering::Acquire));
+    }
+
+    #[tokio::test]
+    async fn rapid_suspend_during_resume_never_reopens_admission() {
+        let resume_gate = Arc::new(Notify::new());
+        let backend = Arc::new(FakeBackend {
+            resume_gate: Some(Arc::clone(&resume_gate)),
+            ..FakeBackend::default()
+        });
+        let coordinator = Arc::new(coordinator(Arc::clone(&backend), Duration::from_secs(1)));
+        coordinator
+            .prepare_suspend()
+            .await
+            .expect("initial suspend");
+
+        let resume = {
+            let coordinator = Arc::clone(&coordinator);
+            tokio::spawn(async move { coordinator.resume().await })
+        };
+        tokio::task::yield_now().await;
+        coordinator.begin_suspend();
+        assert!(backend.admission_closed.load(Ordering::Acquire));
+        resume_gate.notify_one();
+        let error = resume
+            .await
+            .expect("resume task")
+            .expect_err("pending suspend aborts resume");
+        assert_eq!(error.error_id, ErrorId::ResourceBusy);
+        assert!(backend.admission_closed.load(Ordering::Acquire));
+        assert!(
+            !backend
+                .calls
+                .lock()
+                .expect("calls")
+                .contains(&"finish_resume")
+        );
+
+        coordinator
+            .finish_prepare_suspend()
+            .await
+            .expect("pending suspend quiesces");
+        assert!(backend.admission_closed.load(Ordering::Acquire));
+        assert_eq!(
+            *coordinator.state.lock().await,
+            PowerLifecycleState::Suspended
+        );
     }
 
     #[test]

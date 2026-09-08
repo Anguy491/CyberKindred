@@ -11,8 +11,10 @@ describe("M7 release provenance policy", () => {
   it("requires an out-of-band manifest digest before installer execution", () => {
     const installer = script("scripts/release/test-installer.ps1");
     expect(installer).toContain("TrustedManifestSha256");
-    expect(installer).toContain("Assert-TrustedManifest $candidate");
+    expect(installer).toContain("Read-ManifestSnapshot $manifestPath $TrustedSha256 $Label $RequireTrusted");
     expect(installer).toContain("manifest differs from the trusted out-of-band digest");
+    expect(installer).toContain("installer differs from its trusted manifest immediately before execution");
+    expect(installer).toContain("Start-Process -FilePath $stagedPath");
     expect(installer).not.toContain("[string]$DisposableSentinel");
   });
 
@@ -31,6 +33,16 @@ describe("M7 release provenance policy", () => {
     expect(manifest).toContain("statusSha256: sha256(sourceStatus)");
     expect(verifier).toContain("TrustedManifestSha256");
     expect(verifier).toContain("development or dirty artifacts cannot pass release verification");
+    expect(verifier).toContain("Read-TrustedManifest $manifestPath $TrustedSha256");
+    expect(verifier).toContain("Assert-UnsignedExecutableSnapshot");
+  });
+
+  it("builds release candidates from an isolated exact-HEAD snapshot", () => {
+    const builder = script("scripts/release/build-beta.ps1");
+    expect(builder).toContain("worktree\", \"add\", \"--detach\", $snapshotRoot, $sourceCommit");
+    expect(builder).toContain("source checkout changed during the isolated build");
+    expect(builder).toContain("Assert-SafeBuildSnapshot $snapshotRoot");
+    expect(builder).toContain("-CandidatePath\", $OutputRoot, \"-TrustedManifestSha256\", $trustedManifestHash");
   });
 
   it("compares both complete artifact and build-input inventories", () => {

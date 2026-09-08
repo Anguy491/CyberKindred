@@ -17,6 +17,92 @@ function Invoke-Checked {
     }
 }
 
+function Get-StreamSha256 {
+    param([System.IO.Stream]$Stream)
+    $hasher = [Security.Cryptography.SHA256]::Create()
+    try {
+        $Stream.Position = 0
+        $digest = $hasher.ComputeHash($Stream)
+        $Stream.Position = 0
+        return [Convert]::ToHexString($digest).ToLowerInvariant()
+    }
+    finally {
+        $hasher.Dispose()
+    }
+}
+
+function Get-LockedFileSha256 {
+    param([string]$Path)
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        return Get-StreamSha256 $stream
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
+function Read-TrustedManifest {
+    param([string]$Path, [string]$TrustedSha256)
+    if ($TrustedSha256 -cnotmatch "^[a-fA-F0-9]{64}$") {
+        throw "a 64-character out-of-band TrustedManifestSha256 is required"
+    }
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        $actual = Get-StreamSha256 $stream
+        if ($actual -cne $TrustedSha256.ToLowerInvariant()) {
+            throw "candidate manifest differs from the trusted out-of-band digest"
+        }
+        $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8, $true, 4096, $true)
+        try {
+            return $reader.ReadToEnd() | ConvertFrom-Json
+        }
+        finally {
+            $reader.Dispose()
+        }
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
+function Assert-UnsignedExecutableSnapshot {
+    param([System.IO.Stream]$Source, [string]$FileName, [string]$ExpectedSha256)
+    $temporaryRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+    $stagingDirectory = [IO.Path]::GetFullPath((Join-Path $temporaryRoot ("CyberKindredSignatureVerification-" + [guid]::NewGuid().ToString("N"))))
+    if (-not $stagingDirectory.StartsWith($temporaryRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "signature staging directory escaped the temporary root"
+    }
+    $stagedLock = $null
+    try {
+        New-Item -ItemType Directory -Path $stagingDirectory | Out-Null
+        $stagedPath = Join-Path $stagingDirectory $FileName
+        $destination = [IO.File]::Open($stagedPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        try {
+            $Source.Position = 0
+            $Source.CopyTo($destination)
+            $destination.Flush($true)
+        }
+        finally {
+            $destination.Dispose()
+        }
+        $stagedLock = [IO.File]::Open($stagedPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        if ((Get-StreamSha256 $stagedLock) -cne $ExpectedSha256) {
+            throw "signature snapshot hash differs from the trusted artifact"
+        }
+        $signature = Get-AuthenticodeSignature -LiteralPath $stagedPath
+        if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::NotSigned) {
+            throw "unsigned beta executable has unexpected signature status: $FileName ($($signature.Status))"
+        }
+    }
+    finally {
+        if ($null -ne $stagedLock) { $stagedLock.Dispose() }
+        if (Test-Path -LiteralPath $stagingDirectory -PathType Container) {
+            Remove-Item -LiteralPath $stagingDirectory -Recurse -Force
+        }
+    }
+}
+
 function Assert-CandidateManifest {
     param([string]$Path, [string]$TrustedSha256)
     $resolved = [IO.Path]::GetFullPath($Path)
@@ -24,14 +110,7 @@ function Assert-CandidateManifest {
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
         throw "candidate manifest is missing: $manifestPath"
     }
-    if ($TrustedSha256 -cnotmatch "^[a-fA-F0-9]{64}$") {
-        throw "a 64-character out-of-band TrustedManifestSha256 is required"
-    }
-    $actualManifestHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $manifestPath).Hash.ToLowerInvariant()
-    if ($actualManifestHash -cne $TrustedSha256.ToLowerInvariant()) {
-        throw "candidate manifest differs from the trusted out-of-band digest"
-    }
-    $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+    $manifest = Read-TrustedManifest $manifestPath $TrustedSha256
     $package = Get-Content -Raw -LiteralPath (Join-Path $workspaceRoot "package.json") | ConvertFrom-Json
     $tauri = Get-Content -Raw -LiteralPath (Join-Path $workspaceRoot "src-tauri\tauri.conf.json") | ConvertFrom-Json
     $head = (& git -C $workspaceRoot rev-parse HEAD).Trim()
@@ -66,9 +145,9 @@ function Assert-CandidateManifest {
         if (-not (Test-Path -LiteralPath $snapshotPath -PathType Leaf)) {
             throw "configuration snapshot is missing: $($config.snapshot)"
         }
-        $actualConfigHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $configPath).Hash.ToLowerInvariant()
+        $actualConfigHash = Get-LockedFileSha256 $configPath
         if ($actualConfigHash -ne $config.sha256) { throw "configuration hash differs: $($config.file)" }
-        $snapshotHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $snapshotPath).Hash.ToLowerInvariant()
+        $snapshotHash = Get-LockedFileSha256 $snapshotPath
         if ($snapshotHash -ne $config.sha256) { throw "configuration snapshot hash differs: $($config.snapshot)" }
     }
     $configurationFiles = @($manifest.configuration | ForEach-Object { $_.file })
@@ -94,13 +173,16 @@ function Assert-CandidateManifest {
         if (-not (Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
             throw "manifest artifact is missing: $($artifact.file)"
         }
-        $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $artifactPath).Hash.ToLowerInvariant()
-        if ($actual -ne $artifact.sha256) { throw "artifact hash differs: $($artifact.file)" }
-        if ([IO.Path]::GetExtension($artifactPath) -ieq ".exe") {
-            $signature = Get-AuthenticodeSignature -LiteralPath $artifactPath
-            if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::NotSigned) {
-                throw "unsigned beta executable has unexpected signature status: $($artifact.file) ($($signature.Status))"
+        $artifactStream = [IO.File]::Open($artifactPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        try {
+            $actual = Get-StreamSha256 $artifactStream
+            if ($actual -ne $artifact.sha256) { throw "artifact hash differs: $($artifact.file)" }
+            if ([IO.Path]::GetExtension($artifactPath) -ieq ".exe") {
+                Assert-UnsignedExecutableSnapshot $artifactStream (Split-Path -Leaf $artifactPath) $artifact.sha256
             }
+        }
+        finally {
+            $artifactStream.Dispose()
         }
     }
     $manifestInstaller = @($manifest.artifacts | Where-Object { $_.file -eq $manifest.installer.file })
@@ -128,6 +210,7 @@ try {
         # fixture writers from saturating the release host and becoming nondeterministic.
         Invoke-Checked "cargo" @("test", "--workspace", "--all-features", "--locked", "--", "--test-threads=1")
     }
+    Invoke-Checked "node" $preflightArguments
     if ($CandidatePath) { Assert-CandidateManifest $CandidatePath $TrustedManifestSha256 }
     if ($Development) {
         Write-Output "Development verification completed; no candidate was release-approved."
