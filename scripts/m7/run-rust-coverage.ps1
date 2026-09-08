@@ -4,6 +4,7 @@ Set-StrictMode -Version Latest
 $workspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $coverageToolchain = "nightly-2026-09-01"
 $originalTarget = $env:CARGO_LLVM_COV_TARGET_DIR
+$originalTestThreads = $env:RUST_TEST_THREADS
 
 Push-Location $workspaceRoot
 try {
@@ -13,6 +14,7 @@ try {
     }
 
     New-Item -ItemType Directory -Force -Path "coverage" | Out-Null
+    $env:RUST_TEST_THREADS = "1"
 
     $env:CARGO_LLVM_COV_TARGET_DIR = "target/llvm-cov-cyberkindred"
     & cargo "+$coverageToolchain" llvm-cov -p cyberkindred --all-features --branch --no-rustc-wrapper --json --output-path "coverage/rust-cyberkindred.json"
@@ -32,6 +34,12 @@ finally {
     }
     else {
         $env:CARGO_LLVM_COV_TARGET_DIR = $originalTarget
+    }
+    if ($null -eq $originalTestThreads) {
+        Remove-Item Env:RUST_TEST_THREADS -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:RUST_TEST_THREADS = $originalTestThreads
     }
     Pop-Location
 }

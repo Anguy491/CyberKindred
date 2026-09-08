@@ -113,7 +113,9 @@ try {
         Invoke-Checked "pnpm" @("build")
     } else {
         Invoke-Checked "pnpm" @("check")
-        Invoke-Checked "cargo" @("test", "--workspace", "--all-features", "--locked")
+        # The suite creates many isolated SQLite databases. Serial execution keeps
+        # fixture writers from saturating the release host and becoming nondeterministic.
+        Invoke-Checked "cargo" @("test", "--workspace", "--all-features", "--locked", "--", "--test-threads=1")
     }
     if ($CandidatePath) { Assert-CandidateManifest $CandidatePath }
     Write-Output "Release verification completed."
