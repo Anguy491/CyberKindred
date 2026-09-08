@@ -1,7 +1,7 @@
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, relative, resolve } from "node:path";
 
-import { hashFile, readJson, run, sha256, workspaceRoot, writeJson } from "./lib.mjs";
+import { hashFile, readJson, run, sha256, workspaceRoot } from "./lib.mjs";
 
 function argument(name, fallback) {
   const index = process.argv.indexOf(name);
@@ -95,6 +95,24 @@ if (installerFiles.length !== 1) {
   throw new Error(`expected one NSIS setup executable, found ${installerFiles.length}`);
 }
 const installerFile = installerFiles[0];
+const expectedArtifactFiles = [
+  relative(input, installerFile).replaceAll("\\", "/"),
+  "THIRD-PARTY-NOTICES.txt",
+  "build-inputs/tauri.conf.json",
+  "cyberkindred.cdx.json",
+  "cyberkindred.exe",
+  "cyberkindred.pdb",
+  "license-manifest.json",
+];
+if (overrideConfigPath) {
+  expectedArtifactFiles.push("build-inputs/tauri.release-test.conf.json");
+}
+const actualArtifactFiles = artifactFiles.map((path) => relative(input, path).replaceAll("\\", "/"));
+if (
+  expectedArtifactFiles.sort().join("\0") !== actualArtifactFiles.sort().join("\0")
+) {
+  throw new Error("release artifact inventory differs from the fixed product inventory");
+}
 const configPaths = [baseConfigPath, overrideConfigPath].filter(Boolean);
 const configSnapshots = new Map([
   [baseConfigPath, resolve(input, "build-inputs/tauri.conf.json")],
@@ -164,5 +182,7 @@ const manifest = {
   })),
   buildInputs,
 };
-writeJson(output, manifest);
+const serializedManifest = `${JSON.stringify(manifest, null, 2)}\n`;
+writeFileSync(output, serializedManifest, { encoding: "utf8", flag: "wx" });
 console.log(`Artifact manifest written: ${basename(output)} (${manifest.artifacts.length} artifacts, ${buildInputs.length} cached Tauri build inputs).`);
+console.log(`Artifact manifest content SHA-256: ${sha256(serializedManifest)}`);

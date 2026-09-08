@@ -44,6 +44,118 @@ function Get-LockedFileSha256 {
     }
 }
 
+function New-SealedCandidateArchive {
+    param([string]$CandidateRoot, [string]$ArchivePath)
+    if (Test-Path -LiteralPath $ArchivePath) {
+        throw "sealed candidate archive already exists"
+    }
+    $resolvedRoot = [IO.Path]::GetFullPath($CandidateRoot)
+    $entries = @(Get-ChildItem -Force -Recurse -LiteralPath $resolvedRoot)
+    if (@($entries | Where-Object { ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 }).Count -gt 0) {
+        throw "candidate contains a reparse point before sealing"
+    }
+    $files = @($entries | Where-Object { -not $_.PSIsContainer } | Sort-Object FullName)
+    Add-Type -AssemblyName System.IO.Compression
+    $archiveStream = [IO.File]::Open($ArchivePath, [IO.FileMode]::CreateNew, [IO.FileAccess]::ReadWrite, [IO.FileShare]::Read)
+    try {
+        $archive = [IO.Compression.ZipArchive]::new(
+            $archiveStream,
+            [IO.Compression.ZipArchiveMode]::Create,
+            $true
+        )
+        try {
+            foreach ($file in $files) {
+                $relative = (($file.FullName.Substring($resolvedRoot.Length)) -replace '^[\\/]+', '').Replace("\", "/")
+                if (-not $relative -or $relative.StartsWith("/", [StringComparison]::Ordinal) -or $relative.Contains("../")) {
+                    throw "unsafe sealed candidate entry: $relative"
+                }
+                $entry = $archive.CreateEntry($relative, [IO.Compression.CompressionLevel]::NoCompression)
+                $source = [IO.File]::Open($file.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+                try {
+                    $destination = $entry.Open()
+                    try {
+                        $source.CopyTo($destination)
+                    }
+                    finally {
+                        $destination.Dispose()
+                    }
+                }
+                finally {
+                    $source.Dispose()
+                }
+            }
+        }
+        finally {
+            $archive.Dispose()
+        }
+        $archiveStream.Flush($true)
+        return Get-StreamSha256 $archiveStream
+    }
+    finally {
+        $archiveStream.Dispose()
+    }
+}
+
+function Expand-VerifiedCandidateArchive {
+    param([string]$ArchivePath, [string]$ExpectedSha256, [string]$DestinationRoot)
+    if ($ExpectedSha256 -cnotmatch '^[a-f0-9]{64}$') {
+        throw "sealed candidate archive requires a fixed SHA-256"
+    }
+    $destination = [IO.Path]::GetFullPath($DestinationRoot)
+    $source = [IO.File]::Open($ArchivePath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        if ((Get-StreamSha256 $source) -cne $ExpectedSha256) {
+            throw "sealed candidate archive differs from the isolated build digest"
+        }
+        Add-Type -AssemblyName System.IO.Compression
+        $archive = [IO.Compression.ZipArchive]::new(
+            $source,
+            [IO.Compression.ZipArchiveMode]::Read,
+            $true
+        )
+        try {
+            $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+            foreach ($entry in $archive.Entries) {
+                if (-not $entry.Name) {
+                    throw "sealed candidate archive contains a directory entry"
+                }
+                $relative = $entry.FullName.Replace("/", [IO.Path]::DirectorySeparatorChar)
+                $target = [IO.Path]::GetFullPath((Join-Path $destination $relative))
+                if (-not $target.StartsWith($destination + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+                    throw "sealed candidate archive entry escapes staging"
+                }
+                if (-not $seen.Add($target)) {
+                    throw "sealed candidate archive contains duplicate paths"
+                }
+                $parent = Split-Path -Parent $target
+                if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
+                    [IO.Directory]::CreateDirectory($parent) | Out-Null
+                }
+                $entrySource = $entry.Open()
+                try {
+                    $entryDestination = [IO.File]::Open($target, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+                    try {
+                        $entrySource.CopyTo($entryDestination)
+                        $entryDestination.Flush($true)
+                    }
+                    finally {
+                        $entryDestination.Dispose()
+                    }
+                }
+                finally {
+                    $entrySource.Dispose()
+                }
+            }
+        }
+        finally {
+            $archive.Dispose()
+        }
+    }
+    finally {
+        $source.Dispose()
+    }
+}
+
 function Assert-ReleaseOutputPath {
     param([string]$Path, [string]$Root)
     $fullPath = [IO.Path]::GetFullPath($Path)
@@ -167,7 +279,8 @@ if (-not $Development -and -not $SnapshotBuild) {
                 Where-Object {
                     $_ -notmatch '^Local unsigned beta candidate:' -and
                     $_ -notmatch '^Isolated release build output:' -and
-                    $_ -notmatch '^Trusted manifest SHA-256 \(record outside the candidate directory\):'
+                    $_ -notmatch '^Trusted manifest SHA-256 \(record outside the candidate directory\):' -and
+                    $_ -notmatch '^Sealed candidate archive SHA-256:'
                 } |
                 ForEach-Object { Write-Output $_ }
             $digestLines = @($innerOutput | Where-Object { $_ -match '^Trusted manifest SHA-256 \(record outside the candidate directory\): ([a-f0-9]{64})$' })
@@ -177,6 +290,14 @@ if (-not $Development -and -not $SnapshotBuild) {
             $trustedManifestHash = [regex]::Match(
                 [string]$digestLines[0],
                 '^Trusted manifest SHA-256 \(record outside the candidate directory\): ([a-f0-9]{64})$'
+            ).Groups[1].Value
+            $archiveDigestLines = @($innerOutput | Where-Object { $_ -match '^Sealed candidate archive SHA-256: ([a-f0-9]{64})$' })
+            if ($archiveDigestLines.Count -ne 1) {
+                throw "isolated build did not return exactly one sealed candidate archive digest"
+            }
+            $trustedArchiveHash = [regex]::Match(
+                [string]$archiveDigestLines[0],
+                '^Sealed candidate archive SHA-256: ([a-f0-9]{64})$'
             ).Groups[1].Value
         }
         finally {
@@ -206,9 +327,7 @@ if (-not $Development -and -not $SnapshotBuild) {
         $candidateStaging = Join-Path $allowedOutputRoot (".candidate-staging-" + [guid]::NewGuid().ToString("N"))
         Assert-SafeReleaseStaging $candidateStaging $allowedOutputRoot | Out-Null
         [IO.Directory]::CreateDirectory($candidateStaging) | Out-Null
-        Get-ChildItem -Force -LiteralPath $snapshotOutput | ForEach-Object {
-            Copy-Item -LiteralPath $_.FullName -Destination $candidateStaging -Recurse
-        }
+        Expand-VerifiedCandidateArchive ($snapshotOutput + ".sealed.zip") $trustedArchiveHash $candidateStaging
         Invoke-Checked "powershell" @(
             "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
             (Join-Path $workspaceRoot "scripts\release\verify-release.ps1"),
@@ -354,17 +473,34 @@ try {
         Copy-Item -LiteralPath $pdb -Destination $OutputRoot
     }
 
-    Invoke-Checked "node" (@(
+    $allManifestArguments = @(
         "scripts/release/artifact-manifest.mjs", "--input", $OutputRoot,
         "--output", (Join-Path $OutputRoot "manifest.json")
-    ) + $manifestArguments)
-    $trustedManifestHash = Get-LockedFileSha256 (Join-Path $OutputRoot "manifest.json")
+    ) + $manifestArguments
+    $manifestOutput = @(& node @allManifestArguments)
+    if ($LASTEXITCODE -ne 0) { throw "artifact manifest generation failed with exit code $LASTEXITCODE" }
+    $manifestOutput | ForEach-Object { Write-Output $_ }
+    $manifestDigestLines = @($manifestOutput | Where-Object { $_ -match '^Artifact manifest content SHA-256: ([a-f0-9]{64})$' })
+    if ($manifestDigestLines.Count -ne 1) {
+        throw "artifact manifest generator did not return exactly one content digest"
+    }
+    $trustedManifestHash = [regex]::Match(
+        [string]$manifestDigestLines[0],
+        '^Artifact manifest content SHA-256: ([a-f0-9]{64})$'
+    ).Groups[1].Value
+    $sealedArchiveHash = $null
+    if ($SnapshotBuild) {
+        $sealedArchiveHash = New-SealedCandidateArchive $OutputRoot ($OutputRoot + ".sealed.zip")
+    }
     if ($SnapshotBuild) {
         Write-Output "Isolated release build output: $OutputRoot"
     } else {
         Write-Output "Local unsigned beta candidate: $OutputRoot"
     }
     Write-Output "Trusted manifest SHA-256 (record outside the candidate directory): $trustedManifestHash"
+    if ($SnapshotBuild) {
+        Write-Output "Sealed candidate archive SHA-256: $sealedArchiveHash"
+    }
     if ($Development) {
         Write-Warning "This candidate came from a dirty development tree and is not release-eligible."
     }

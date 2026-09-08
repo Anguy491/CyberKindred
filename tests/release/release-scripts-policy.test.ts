@@ -36,6 +36,7 @@ describe("M7 release provenance policy", () => {
     expect(verifier).toContain("Read-TrustedManifest $manifestPath $TrustedSha256");
     expect(verifier).toContain("Assert-UnsignedExecutableSnapshot");
     expect(verifier).toContain("candidate file inventory differs from the trusted manifest");
+    expect(verifier).toContain("candidate manifest differs from the fixed product artifact inventory");
     expect(verifier).toContain("candidate contains a reparse point");
   });
 
@@ -45,11 +46,18 @@ describe("M7 release provenance policy", () => {
     expect(builder).toContain("source checkout changed during the isolated build");
     expect(builder).toContain("Assert-SafeBuildSnapshot $snapshotRoot");
     expect(builder).toContain("isolated build did not return exactly one trusted manifest digest");
+    expect(builder).toContain("isolated build did not return exactly one sealed candidate archive digest");
+    expect(builder).toContain("Expand-VerifiedCandidateArchive ($snapshotOutput + \".sealed.zip\") $trustedArchiveHash $candidateStaging");
+    expect(builder).toContain("New-SealedCandidateArchive $OutputRoot ($OutputRoot + \".sealed.zip\")");
     expect(builder).toContain("-CandidatePath\", $candidateStaging, \"-TrustedManifestSha256\", $trustedManifestHash");
     expect(builder).toContain("[IO.Directory]::Move($candidateStaging, $OutputRoot)");
     expect(builder).toContain("-SnapshotBuild is restricted to a registered linked worktree");
     expect(builder).toContain("-SnapshotBuild requires a detached exact-commit worktree");
     expect(builder).not.toContain("[Convert]::ToHexString");
+    const manifest = script("scripts/release/artifact-manifest.mjs");
+    expect(manifest).toContain("flag: \"wx\"");
+    expect(manifest).toContain("Artifact manifest content SHA-256");
+    expect(manifest).toContain("release artifact inventory differs from the fixed product inventory");
   });
 
   it("compares both complete artifact and build-input inventories", () => {

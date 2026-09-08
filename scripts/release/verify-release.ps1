@@ -195,6 +195,25 @@ function Assert-CandidateManifest {
     if ($inventoryDifference.Count -gt 0) {
         throw "candidate file inventory differs from the trusted manifest"
     }
+    $expectedArtifactFiles = @(
+        [string]$manifest.installer.file,
+        "THIRD-PARTY-NOTICES.txt",
+        "build-inputs/tauri.conf.json",
+        "cyberkindred.cdx.json",
+        "cyberkindred.exe",
+        "cyberkindred.pdb",
+        "license-manifest.json"
+    )
+    if ($manifest.releaseTest -eq $true) {
+        $expectedArtifactFiles += "build-inputs/tauri.release-test.conf.json"
+    }
+    $expectedArtifactFiles = @($expectedArtifactFiles | Sort-Object -CaseSensitive)
+    $fixedInventoryDifference = @(
+        Compare-Object -CaseSensitive -ReferenceObject $expectedArtifactFiles -DifferenceObject $manifestArtifactFiles
+    )
+    if ($fixedInventoryDifference.Count -gt 0) {
+        throw "candidate manifest differs from the fixed product artifact inventory"
+    }
     foreach ($artifact in $manifest.artifacts) {
         $artifactPath = [IO.Path]::GetFullPath((Join-Path $resolved $artifact.file))
         if (-not $artifactPath.StartsWith($resolved + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
