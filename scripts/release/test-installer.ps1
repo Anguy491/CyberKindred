@@ -4,9 +4,11 @@ param(
     [string]$Operation = "Plan",
     [Parameter(Mandatory = $true)]
     [string]$CandidatePath,
+    [string]$TrustedManifestSha256,
     [string]$PreviousCandidatePath,
+    [string]$PreviousTrustedManifestSha256,
     [string]$UninstallerPath,
-    [string]$DisposableSentinel,
+    [string]$TrustedUninstallerSha256,
     [string]$EvidencePath,
     [switch]$Execute
 )
@@ -14,16 +16,25 @@ param(
 $ErrorActionPreference = "Stop"
 $workspaceRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 $sentinelValue = "CYBERKINDRED_DISPOSABLE_VM_V1"
+$sentinelRegistryPath = "HKLM:\SOFTWARE\CyberKindred\TestEnvironment"
 $releaseTestIdentifier = "com.cyberkindred.release-test"
 $releaseTestProduct = "CyberKindred Release Test"
-$hasDisposableSentinel = $false
-if ($DisposableSentinel -and (Test-Path -LiteralPath $DisposableSentinel -PathType Leaf)) {
-    $hasDisposableSentinel = (Get-Content -Raw -LiteralPath $DisposableSentinel).Trim() -ceq $sentinelValue
-}
+$sentinelMarker = Get-ItemPropertyValue -LiteralPath $sentinelRegistryPath -Name "Marker" -ErrorAction SilentlyContinue
+$hasDisposableSentinel = $sentinelMarker -ceq $sentinelValue
 
 function Get-FileSha256 {
     param([string]$Path)
     return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+}
+
+function Assert-TrustedManifest {
+    param([System.Collections.IDictionary]$Candidate, [string]$TrustedSha256, [string]$Label)
+    if ($TrustedSha256 -cnotmatch "^[a-fA-F0-9]{64}$") {
+        throw "$Label requires a 64-character out-of-band trusted manifest digest"
+    }
+    if ($Candidate.manifestHash -cne $TrustedSha256.ToLowerInvariant()) {
+        throw "$Label manifest differs from the trusted out-of-band digest"
+    }
 }
 
 function Get-VerifiedCandidate {
@@ -47,6 +58,9 @@ function Get-VerifiedCandidate {
     }
     if ($manifest.unsigned -ne $true -or $manifest.webView2InstallMode -ne "embedBootstrapper") {
         throw "$Label is not an unsigned embedBootstrapper candidate"
+    }
+    if ($manifest.releaseEligible -ne $true -or $manifest.development -ne $false -or $manifest.dirty -ne $false) {
+        throw "$Label is development, dirty, or not release eligible"
     }
     if ($manifest.installerPolicy.installMode -ne "currentUser" -or
         $manifest.installerPolicy.allowDowngrades -ne $false) {
@@ -107,12 +121,21 @@ function Get-VerifiedCandidate {
         $releaseTestConfig.Count -eq 1 -and
         $baseConfig.Count -eq 1
     )
+    if (-not $isReleaseTest -and (
+        $manifest.identifier -cne $tauri.identifier -or
+        $manifest.productName -cne $tauri.productName -or
+        $manifest.configuration.Count -ne 1 -or
+        $baseConfig.Count -ne 1
+    )) {
+        throw "$Label production identity/configuration binding is invalid"
+    }
     return [ordered]@{
         root = $root
         manifest = $manifest
         installerPath = $installerPath
         installerHash = $installerHash
         releaseTest = $isReleaseTest
+        manifestHash = Get-FileSha256 $manifestPath
     }
 }
 
@@ -144,10 +167,16 @@ if ($Operation -ne "Plan" -and -not $Execute) {
     throw "mutating installer operations require the explicit -Execute switch"
 }
 if ($Execute -and -not ($candidate.releaseTest -or $hasDisposableSentinel)) {
-    throw "refusing installer mutation: candidate is not bound to the repository release-test config and no disposable-VM sentinel was supplied"
+    throw "refusing installer mutation: production candidates require the protected machine-wide disposable-VM marker"
 }
 if ($Execute -and $previousCandidate -and -not ($previousCandidate.releaseTest -or $hasDisposableSentinel)) {
-    throw "refusing previous installer mutation: candidate is not release-test bound"
+    throw "refusing previous installer mutation: production candidates require the protected machine-wide disposable-VM marker"
+}
+if ($Execute) {
+    Assert-TrustedManifest $candidate $TrustedManifestSha256 "CandidatePath"
+    if ($previousCandidate) {
+        Assert-TrustedManifest $previousCandidate $PreviousTrustedManifestSha256 "PreviousCandidatePath"
+    }
 }
 
 $steps = @()
@@ -166,23 +195,33 @@ if ($Operation -eq "Plan") {
 } elseif ($Operation -eq "RollbackGuard") {
     $steps += Invoke-Installer $candidate.installerPath @(0)
     $process = Start-Process -FilePath $previousCandidate.installerPath -ArgumentList "/S" -Wait -PassThru -WindowStyle Hidden
-    if ($process.ExitCode -eq 0) { throw "downgrade unexpectedly succeeded" }
+    if ($process.ExitCode -ne 1) { throw "downgrade did not return the expected NSIS rejection code 1" }
+    $installedRoot = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA $candidate.manifest.productName))
+    $installedApplication = Join-Path $installedRoot "cyberkindred.exe"
+    $candidateApplication = @($candidate.manifest.artifacts | Where-Object { $_.file -ceq "cyberkindred.exe" })
+    if ($candidateApplication.Count -ne 1 -or
+        -not (Test-Path -LiteralPath $installedApplication -PathType Leaf) -or
+        (Get-FileSha256 $installedApplication) -cne $candidateApplication[0].sha256) {
+        throw "downgrade rejection did not preserve the installed candidate executable"
+    }
     $steps += [ordered]@{
         file = Split-Path -Leaf $previousCandidate.installerPath
         sha256 = $previousCandidate.installerHash
         exitCode = $process.ExitCode
-        expected = "nonzero downgrade rejection"
+        expected = "NSIS exit 1 with the current candidate executable preserved"
     }
 } elseif ($Operation -eq "Uninstall") {
     if (-not $UninstallerPath) { throw "UninstallerPath is required" }
     $uninstaller = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $UninstallerPath).Path)
     if (-not (Test-Path -LiteralPath $uninstaller -PathType Leaf)) { throw "UninstallerPath is not a file" }
-    if (-not $hasDisposableSentinel) {
-        $expectedRoot = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA $releaseTestProduct))
-        if ((Split-Path -Leaf $uninstaller) -cne "uninstall.exe" -or
-            (Split-Path -Parent $uninstaller) -cne $expectedRoot) {
-            throw "release-test uninstaller must be the exact isolated LocalAppData product uninstaller"
-        }
+    $expectedRoot = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA $candidate.manifest.productName))
+    if ((Split-Path -Leaf $uninstaller) -cne "uninstall.exe" -or
+        (Split-Path -Parent $uninstaller) -cne $expectedRoot) {
+        throw "uninstaller must be the exact manifest-bound LocalAppData product uninstaller"
+    }
+    if ($TrustedUninstallerSha256 -cnotmatch "^[a-fA-F0-9]{64}$" -or
+        (Get-FileSha256 $uninstaller) -cne $TrustedUninstallerSha256.ToLowerInvariant()) {
+        throw "uninstaller differs from the trusted post-install digest"
     }
     $steps += Invoke-Installer $uninstaller @(0)
 }
@@ -191,7 +230,7 @@ $evidence = [ordered]@{
     schemaVersion = 1
     identifier = $candidate.manifest.identifier
     productName = $candidate.manifest.productName
-    candidateManifestSha256 = Get-FileSha256 (Join-Path $candidate.root "manifest.json")
+    candidateManifestSha256 = $candidate.manifestHash
     operation = $Operation
     isolation = if ($candidate.releaseTest) {
         "manifest-bound-release-test"
@@ -200,7 +239,7 @@ $evidence = [ordered]@{
     } else {
         "verified-plan-only"
     }
-    executed = [bool]$Execute
+    executed = [bool]($Execute -and $Operation -ne "Plan")
     steps = $steps
 }
 if ($EvidencePath) {

@@ -2,7 +2,8 @@
 param(
     [switch]$Development,
     [switch]$SkipTests,
-    [string]$CandidatePath
+    [string]$CandidatePath,
+    [string]$TrustedManifestSha256
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,11 +18,18 @@ function Invoke-Checked {
 }
 
 function Assert-CandidateManifest {
-    param([string]$Path)
+    param([string]$Path, [string]$TrustedSha256)
     $resolved = [IO.Path]::GetFullPath($Path)
     $manifestPath = Join-Path $resolved "manifest.json"
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
         throw "candidate manifest is missing: $manifestPath"
+    }
+    if ($TrustedSha256 -cnotmatch "^[a-fA-F0-9]{64}$") {
+        throw "a 64-character out-of-band TrustedManifestSha256 is required"
+    }
+    $actualManifestHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $manifestPath).Hash.ToLowerInvariant()
+    if ($actualManifestHash -cne $TrustedSha256.ToLowerInvariant()) {
+        throw "candidate manifest differs from the trusted out-of-band digest"
     }
     $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
     $package = Get-Content -Raw -LiteralPath (Join-Path $workspaceRoot "package.json") | ConvertFrom-Json
@@ -29,6 +37,9 @@ function Assert-CandidateManifest {
     $head = (& git -C $workspaceRoot rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw "git rev-parse failed" }
     if ($manifest.commit -cne $head) { throw "candidate commit is not the current HEAD" }
+    if ($manifest.releaseEligible -ne $true -or $manifest.development -ne $false -or $manifest.dirty -ne $false) {
+        throw "development or dirty artifacts cannot pass release verification"
+    }
     if ($manifest.version -cne $package.version -or $manifest.version -cne $tauri.version) {
         throw "candidate version differs from package/Tauri version"
     }
@@ -108,7 +119,7 @@ try {
     Invoke-Checked "node" $preflightArguments
     Invoke-Checked "cargo" @("audit", "--file", "Cargo.lock")
     Invoke-Checked "cargo" @("deny", "--all-features", "check")
-    Invoke-Checked "pnpm" @("audit", "--prod", "--audit-level", "high")
+    Invoke-Checked "pnpm" @("audit", "--audit-level", "high")
     if ($SkipTests) {
         Invoke-Checked "pnpm" @("build")
     } else {
@@ -117,8 +128,12 @@ try {
         # fixture writers from saturating the release host and becoming nondeterministic.
         Invoke-Checked "cargo" @("test", "--workspace", "--all-features", "--locked", "--", "--test-threads=1")
     }
-    if ($CandidatePath) { Assert-CandidateManifest $CandidatePath }
-    Write-Output "Release verification completed."
+    if ($CandidatePath) { Assert-CandidateManifest $CandidatePath $TrustedManifestSha256 }
+    if ($Development) {
+        Write-Output "Development verification completed; no candidate was release-approved."
+    } else {
+        Write-Output "Release verification completed."
+    }
 } finally {
     Pop-Location
 }

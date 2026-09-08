@@ -87,14 +87,23 @@ try {
         Get-Content -Raw -LiteralPath (Join-Path $_ "target\release-artifacts\repro\manifest.json") |
             ConvertFrom-Json
     }
-    $first = @($manifests[0].artifacts)
-    $secondByFile = @{}
-    foreach ($artifact in $manifests[1].artifacts) { $secondByFile[$artifact.file] = $artifact.sha256 }
-    $differences = @($first | Where-Object { $secondByFile[$_.file] -ne $_.sha256 })
-    if ($differences.Count -gt 0) {
-        throw "reproducibility mismatch: $($differences.file -join ', ')"
+    foreach ($field in @("commit", "version", "target", "schemaDatabaseVersion", "identifier", "productName", "releaseEligible")) {
+        if ($manifests[0].$field -cne $manifests[1].$field) {
+            throw "reproducibility manifest metadata differs: $field"
+        }
     }
-    Write-Output "Reproducible artifact hashes verified for commit $commit ($($first.Count) compared files)."
+    $first = @($manifests[0].artifacts | ForEach-Object { "$($_.file)`t$($_.bytes)`t$($_.sha256)" } | Sort-Object)
+    $second = @($manifests[1].artifacts | ForEach-Object { "$($_.file)`t$($_.bytes)`t$($_.sha256)" } | Sort-Object)
+    $firstBuildInputs = @($manifests[0].buildInputs | ForEach-Object { "$($_.path)`t$($_.bytes)`t$($_.sha256)" } | Sort-Object)
+    $secondBuildInputs = @($manifests[1].buildInputs | ForEach-Object { "$($_.path)`t$($_.bytes)`t$($_.sha256)" } | Sort-Object)
+    $differences = @(
+        Compare-Object -CaseSensitive -ReferenceObject $first -DifferenceObject $second
+        Compare-Object -CaseSensitive -ReferenceObject $firstBuildInputs -DifferenceObject $secondBuildInputs
+    )
+    if ($differences.Count -gt 0) {
+        throw "reproducibility mismatch: artifact or build-input inventories differ"
+    }
+    Write-Output "Reproducible artifact and build-input hashes verified for commit $commit ($($first.Count) artifacts, $($firstBuildInputs.Count) build inputs)."
 } finally {
     foreach ($worktree in $worktrees) {
         if (Test-Path -LiteralPath $worktree) {

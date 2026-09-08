@@ -9,6 +9,7 @@ function argument(name, fallback) {
 }
 
 const packageJson = readJson(resolve(workspaceRoot, "package.json"));
+const development = process.argv.includes("--development");
 const input = resolve(argument("--input", resolve(workspaceRoot, "target/release-artifacts", packageJson.version)));
 const output = resolve(argument("--output", resolve(input, "manifest.json")));
 const overrideConfigArgument = argument("--config");
@@ -71,6 +72,7 @@ const buildInputs = statSync(localTools, { throwIfNoEntry: false })?.isDirectory
   }))
   : [];
 const commit = run("git", ["rev-parse", "HEAD"]).trim();
+const sourceStatus = run("git", ["status", "--porcelain=v1", "--untracked-files=all"]).trim();
 const commitTimestamp = Number(run("git", ["show", "-s", "--format=%ct", "HEAD"]).trim());
 const migrationVersions = readdirSync(resolve(workspaceRoot, "src-tauri/migrations"))
   .map((name) => Number(name.match(/^V(\d+)__/u)?.[1]))
@@ -118,6 +120,9 @@ const manifest = {
   releaseTest:
     effectiveConfig.identifier === "com.cyberkindred.release-test"
     && effectiveConfig.productName === "CyberKindred Release Test",
+  development,
+  dirty: sourceStatus.length > 0,
+  releaseEligible: !development && sourceStatus.length === 0,
   webView2InstallMode: effectiveConfig.bundle?.windows?.webviewInstallMode?.type,
   installerPolicy: {
     installMode: effectiveConfig.bundle?.windows?.nsis?.installMode,

@@ -1,0 +1,40 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+const workspaceRoot = resolve(import.meta.dirname, "../..");
+
+function script(path: string): string {
+  return readFileSync(resolve(workspaceRoot, path), "utf8");
+}
+
+describe("M7 release provenance policy", () => {
+  it("requires an out-of-band manifest digest before installer execution", () => {
+    const installer = script("scripts/release/test-installer.ps1");
+    expect(installer).toContain("TrustedManifestSha256");
+    expect(installer).toContain("Assert-TrustedManifest $candidate");
+    expect(installer).toContain("manifest differs from the trusted out-of-band digest");
+    expect(installer).not.toContain("[string]$DisposableSentinel");
+  });
+
+  it("uses a protected VM marker and authenticates the exact uninstaller", () => {
+    const installer = script("scripts/release/test-installer.ps1");
+    expect(installer).toContain("HKLM:\\SOFTWARE\\CyberKindred\\TestEnvironment");
+    expect(installer).toContain("TrustedUninstallerSha256");
+    expect(installer).toContain("exact manifest-bound LocalAppData product uninstaller");
+  });
+
+  it("rejects dirty development artifacts from release verification", () => {
+    const manifest = script("scripts/release/artifact-manifest.mjs");
+    const verifier = script("scripts/release/verify-release.ps1");
+    expect(manifest).toContain("releaseEligible: !development && sourceStatus.length === 0");
+    expect(manifest).toContain("dirty: sourceStatus.length > 0");
+    expect(verifier).toContain("TrustedManifestSha256");
+    expect(verifier).toContain("development or dirty artifacts cannot pass release verification");
+  });
+
+  it("compares both complete artifact and build-input inventories", () => {
+    const reproducibility = script("scripts/release/test-reproducibility.ps1");
+    expect(reproducibility).toContain("Compare-Object -CaseSensitive -ReferenceObject $first -DifferenceObject $second");
+    expect(reproducibility).toContain("Compare-Object -CaseSensitive -ReferenceObject $firstBuildInputs -DifferenceObject $secondBuildInputs");
+  });
+});

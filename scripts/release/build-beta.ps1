@@ -44,6 +44,7 @@ try {
         "tauri", "build", "--target", $Target, "--bundles", "nsis", "--ci", "--no-sign"
     )
     $manifestArguments = @()
+    if ($Development) { $manifestArguments += "--development" }
     if ($ReleaseTest) {
         $releaseTestConfig = "scripts/release/tauri.release-test.conf.json"
         $tauriArguments += @("--config", $releaseTestConfig)
@@ -110,7 +111,9 @@ try {
         "scripts/release/artifact-manifest.mjs", "--input", $OutputRoot,
         "--output", (Join-Path $OutputRoot "manifest.json")
     ) + $manifestArguments)
+    $trustedManifestHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $OutputRoot "manifest.json")).Hash.ToLowerInvariant()
     Write-Output "Local unsigned beta candidate: $OutputRoot"
+    Write-Output "Trusted manifest SHA-256 (record outside the candidate directory): $trustedManifestHash"
     if ($Development) {
         Write-Warning "This candidate came from a dirty development tree and is not release-eligible."
     }
