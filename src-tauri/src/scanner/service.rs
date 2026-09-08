@@ -40,7 +40,7 @@ const IDEMPOTENCY_CAPACITY: usize = 256;
 const MAX_REQUESTED_ROOTS: usize = 256;
 const MAX_ACTIVE_SCANS: usize = 4;
 const SCAN_BATCH_SIZE: usize = 100;
-const PROGRESS_INTERVAL: Duration = Duration::from_millis(500);
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(450);
 const RECOVERY_BATCH: u32 = 100;
 const MAX_RECOVERY_OPERATIONS: usize = 1_000;
 

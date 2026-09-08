@@ -39,13 +39,36 @@ export function summarizeCoverage(typeScriptSummary, rustExport, thresholds) {
     lines: requireMetric(typeScriptSummary?.total?.lines, "typescript.lines"),
     branches: requireMetric(typeScriptSummary?.total?.branches, "typescript.branches"),
   };
-  if (!Array.isArray(rustExport?.data) || rustExport.data.length !== 1) {
-    throw new Error("rust.data must contain exactly one llvm-cov export");
+  const rustExports = Array.isArray(rustExport) ? rustExport : [rustExport];
+  if (rustExports.length === 0) {
+    throw new Error("at least one Rust llvm-cov export is required");
   }
-  const rustTotals = rustExport.data[0]?.totals;
+  const rustReports = rustExports.map((report, index) => {
+    if (!Array.isArray(report?.data) || report.data.length !== 1) {
+      throw new Error(`rust[${index}].data must contain exactly one llvm-cov export`);
+    }
+    const totals = report.data[0]?.totals;
+    return {
+      lines: requireMetric(totals?.lines, `rust[${index}].lines`),
+      branches: requireMetric(totals?.branches, `rust[${index}].branches`),
+    };
+  });
   const rust = {
-    lines: requireMetric(rustTotals?.lines, "rust.lines"),
-    branches: requireMetric(rustTotals?.branches, "rust.branches"),
+    lines: rustReports.reduce(
+      (sum, report) => ({
+        total: sum.total + report.lines.total,
+        covered: sum.covered + report.lines.covered,
+      }),
+      { total: 0, covered: 0 },
+    ),
+    branches: rustReports.reduce(
+      (sum, report) => ({
+        total: sum.total + report.branches.total,
+        covered: sum.covered + report.branches.covered,
+      }),
+      { total: 0, covered: 0 },
+    ),
+    reports: rustReports.length,
   };
   const minimumLines = Number(thresholds.lines);
   const minimumBranches = Number(thresholds.branches);
@@ -117,8 +140,8 @@ function safeOutputPath(value) {
 
 function main() {
   const typeScriptPath = requiredArgument("--typescript");
-  const rustPath = requiredArgument("--rust");
-  const result = summarizeCoverage(readJson(typeScriptPath), readJson(rustPath), {
+  const rustPaths = requiredArgument("--rust").split(",").filter(Boolean);
+  const result = summarizeCoverage(readJson(typeScriptPath), rustPaths.map(readJson), {
     lines: argument("--min-lines", "80"),
     branches: argument("--min-branches", "70"),
   });

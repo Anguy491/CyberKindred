@@ -55,6 +55,21 @@ test("TEST-MAINT-002 rejects missing branch data instead of reporting a false pa
         rust({ count: 1, covered: 1 }, undefined),
         { lines: 80, branches: 70 },
       ),
-    /rust\.branches is missing/u,
+    /rust\[0\]\.branches is missing/u,
   );
+});
+
+test("TEST-MAINT-002 adds multiple Rust package reports without averaging them", () => {
+  const result = summarizeCoverage(
+    typescript({ total: 10, covered: 10 }, { total: 10, covered: 10 }),
+    [
+      rust({ count: 90, covered: 70 }, { count: 90, covered: 60 }),
+      rust({ count: 10, covered: 10 }, { count: 10, covered: 10 }),
+    ],
+    { lines: 80, branches: 70 },
+  );
+  assert.equal(result.rust.reports, 2);
+  assert.equal(result.repository.lines.percent, 81.82);
+  assert.equal(result.repository.branches.percent, 72.73);
+  assert.equal(result.status, "passed");
 });

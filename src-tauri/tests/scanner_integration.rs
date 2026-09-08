@@ -34,6 +34,7 @@ use cyberkindred_lib::{
     },
     storage::{AppPaths, Storage},
 };
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use sqlx::{ConnectOptions, Connection, Row, sqlite::SqliteConnectOptions};
 use tempfile::TempDir;
@@ -92,6 +93,7 @@ impl LibraryRootPicker for FixedPicker {
 #[derive(Default)]
 struct RecordingEvents {
     events: Mutex<Vec<ScanEvent>>,
+    observed_at: Mutex<Vec<(Uuid, ScanEventState, Instant)>>,
     changed: Notify,
     fail_terminal_once: AtomicBool,
 }
@@ -106,6 +108,17 @@ impl RecordingEvents {
 
     fn fail_next_terminal(&self) {
         self.fail_terminal_once.store(true, Ordering::Release);
+    }
+
+    fn observations(&self, operation_id: Uuid) -> Vec<(ScanEventState, Instant)> {
+        self.observed_at
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .filter_map(|(recorded_id, state, observed_at)| {
+                (*recorded_id == operation_id).then_some((*state, *observed_at))
+            })
+            .collect()
     }
 
     async fn wait_for_terminal(&self, operation_id: Uuid) -> ScanEvent {
@@ -135,10 +148,15 @@ impl ScanEventSink for RecordingEvents {
         if event.state.is_terminal() && self.fail_terminal_once.swap(false, Ordering::AcqRel) {
             return Err(cyberkindred_lib::ipc::ApiError::unexpected());
         }
+        let observation = (event.operation_id, event.state, Instant::now());
         self.events
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(event);
+        self.observed_at
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(observation);
         self.changed.notify_one();
         Ok(())
     }
@@ -326,9 +344,13 @@ struct ScannerFixture {
 
 impl ScannerFixture {
     async fn create() -> Self {
+        Self::create_with_library(copy_licensed_fixtures).await
+    }
+
+    async fn create_with_library(populate: impl FnOnce(&Path)) -> Self {
         let temp = tempfile::tempdir().unwrap_or_else(|error| panic!("temporary root: {error}"));
         let library_root = temp.path().join("licensed-library");
-        copy_licensed_fixtures(&library_root);
+        populate(&library_root);
         let app_data = temp.path().join("app-data");
         let app_cache = temp.path().join("app-cache");
         let app_logs = temp.path().join("app-logs");
@@ -410,6 +432,25 @@ fn copy_licensed_fixtures(destination: &Path) {
         b"CyberKindred generated unsupported scanner fixture\n",
     )
     .unwrap_or_else(|error| panic!("write unsupported fixture: {error}"));
+}
+
+fn copy_m7_hundred_track_fixture(destination: &Path) {
+    let source = licensed_fixture_source();
+    for index in 0..100_usize {
+        let source_name = SUPPORTED_FIXTURES[index % SUPPORTED_FIXTURES.len()];
+        let extension = Path::new(source_name)
+            .extension()
+            .and_then(std::ffi::OsStr::to_str)
+            .unwrap_or_else(|| panic!("fixture extension for {source_name}"));
+        let directory = destination.join(format!("disc-{:02}", index / 10));
+        fs::create_dir_all(&directory)
+            .unwrap_or_else(|error| panic!("create M7 fixture directory: {error}"));
+        fs::copy(
+            source.join(source_name),
+            directory.join(format!("track-{index:03}.{extension}")),
+        )
+        .unwrap_or_else(|error| panic!("copy M7 fixture {index}: {error}"));
+    }
 }
 
 fn licensed_fixture_source() -> PathBuf {
@@ -576,6 +617,247 @@ fn track_map(tracks: Vec<TrackFacts>) -> BTreeMap<String, TrackFacts> {
         .into_iter()
         .map(|track| (track.relative_path.clone(), track))
         .collect()
+}
+
+#[derive(Debug)]
+struct ScanMeasurement {
+    terminal: ScanEvent,
+    elapsed: Duration,
+    running_events: usize,
+    maximum_progress_gap: Duration,
+}
+
+async fn measure_scan(fixture: &ScannerFixture) -> ScanMeasurement {
+    let started_at = Instant::now();
+    let accepted = fixture
+        .service
+        .start_scan(StartLibraryScanRequest {
+            client_request_id: Uuid::now_v7(),
+            root_ids: vec![fixture.root_id],
+        })
+        .await
+        .unwrap_or_else(|_| panic!("accept measured scan"));
+    let terminal = fixture
+        .events
+        .wait_for_terminal(accepted.operation_id)
+        .await;
+    let finished_at = Instant::now();
+    let observations = fixture.events.observations(accepted.operation_id);
+    let mut previous = started_at;
+    let mut maximum_progress_gap = Duration::ZERO;
+    let mut running_events = 0_usize;
+    for (state, observed_at) in observations {
+        if state != ScanEventState::Running {
+            continue;
+        }
+        running_events += 1;
+        maximum_progress_gap = maximum_progress_gap.max(observed_at.duration_since(previous));
+        previous = observed_at;
+    }
+    maximum_progress_gap = maximum_progress_gap.max(finished_at.duration_since(previous));
+    ScanMeasurement {
+        terminal,
+        elapsed: finished_at.duration_since(started_at),
+        running_events,
+        maximum_progress_gap,
+    }
+}
+
+fn assert_scan_performance(measurement: &ScanMeasurement, label: &str) {
+    assert_eq!(measurement.terminal.state, ScanEventState::Completed);
+    assert!(
+        measurement.elapsed <= Duration::from_secs(120),
+        "{label} exceeded the two-minute scan limit: {:?}",
+        measurement.elapsed
+    );
+    assert!(
+        measurement.running_events > 0,
+        "{label} did not publish running progress"
+    );
+    if measurement.elapsed > Duration::from_millis(500) {
+        assert!(
+            measurement.maximum_progress_gap <= Duration::from_millis(500),
+            "{label} progress gap exceeded 500 ms: {:?}",
+            measurement.maximum_progress_gap
+        );
+    }
+}
+
+struct ThreeScanEvidence {
+    baseline: BTreeMap<String, TrackFacts>,
+    elapsed_ms: Vec<u128>,
+    progress_gap_ms: Vec<u128>,
+    running_events: Vec<usize>,
+}
+
+async fn run_three_hundred_track_scans(fixture: &ScannerFixture) -> ThreeScanEvidence {
+    let mut baseline = None;
+    let mut elapsed_ms = Vec::with_capacity(3);
+    let mut progress_gap_ms = Vec::with_capacity(3);
+    let mut running_events = Vec::with_capacity(3);
+    for run in 1..=3 {
+        let measurement = measure_scan(fixture).await;
+        assert_scan_performance(&measurement, &format!("full scan {run}"));
+        assert_eq!(measurement.terminal.scanned, 100);
+        assert_eq!(measurement.terminal.discovered, 100);
+        assert_eq!(measurement.terminal.failed, 0);
+        let tracks = track_map(load_tracks(fixture).await);
+        assert_eq!(tracks.len(), 100);
+        assert!(
+            tracks
+                .values()
+                .all(|track| track.availability == "available")
+        );
+        assert_eq!(
+            tracks
+                .values()
+                .map(|track| track.format.as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["aac", "flac", "m4a", "mp3", "ogg", "wav"])
+        );
+        if let Some(expected) = &baseline {
+            assert_eq!(
+                &tracks, expected,
+                "unchanged scan {run} changed catalog facts"
+            );
+        } else {
+            baseline = Some(tracks);
+        }
+        elapsed_ms.push(measurement.elapsed.as_millis());
+        progress_gap_ms.push(measurement.maximum_progress_gap.as_millis());
+        running_events.push(measurement.running_events);
+    }
+    ThreeScanEvidence {
+        baseline: baseline.unwrap_or_else(|| panic!("three scans produce a baseline")),
+        elapsed_ms,
+        progress_gap_ms,
+        running_events,
+    }
+}
+
+async fn cancel_and_rescan_hundred_tracks(
+    fixture: &ScannerFixture,
+    baseline: &BTreeMap<String, TrackFacts>,
+) -> (u128, ScanMeasurement) {
+    let accepted = fixture
+        .service
+        .start_scan(StartLibraryScanRequest {
+            client_request_id: Uuid::now_v7(),
+            root_ids: vec![fixture.root_id],
+        })
+        .await
+        .unwrap_or_else(|_| panic!("accept cancellable M7 scan"));
+    let cancel_started = Instant::now();
+    let response = fixture
+        .service
+        .cancel_scan(CancelLibraryScanRequest {
+            client_request_id: Uuid::now_v7(),
+            operation_id: accepted.operation_id,
+        })
+        .await
+        .unwrap_or_else(|_| panic!("cancel M7 scan"));
+    let cancel_ms = cancel_started.elapsed().as_millis();
+    assert!(cancel_ms <= 1_000, "cancel acceptance exceeded one second");
+    assert_eq!(response.state, CancelLibraryScanState::Cancelled);
+    let terminal = fixture
+        .events
+        .wait_for_terminal(accepted.operation_id)
+        .await;
+    assert_eq!(terminal.state, ScanEventState::Cancelled);
+    assert_eq!(
+        load_operation_state(fixture, accepted.operation_id).await,
+        "cancelled"
+    );
+    assert_eq!(
+        &track_map(load_tracks(fixture).await),
+        baseline,
+        "cancellation changed the committed catalog"
+    );
+
+    let recovery = measure_scan(fixture).await;
+    assert_scan_performance(&recovery, "post-cancel unchanged rescan");
+    assert_eq!(recovery.terminal.scanned, 100);
+    assert_eq!(recovery.terminal.discovered, 100);
+    assert_eq!(recovery.terminal.failed, 0);
+    assert_eq!(&track_map(load_tracks(fixture).await), baseline);
+    (cancel_ms, recovery)
+}
+
+async fn scan_after_mutation(fixture: &ScannerFixture, label: &str) -> ScanMeasurement {
+    let measurement = measure_scan(fixture).await;
+    assert_scan_performance(&measurement, label);
+    assert_eq!(measurement.terminal.failed, 0);
+    measurement
+}
+
+async fn exercise_m7_scan_mutations(fixture: &ScannerFixture) -> serde_json::Value {
+    let source = licensed_fixture_source();
+    let added_path = fixture.library_root.join("disc-10/track-100.aac");
+    fs::create_dir_all(
+        added_path
+            .parent()
+            .unwrap_or_else(|| panic!("added fixture parent")),
+    )
+    .unwrap_or_else(|error| panic!("create added fixture directory: {error}"));
+    fs::copy(source.join("tone.aac"), &added_path)
+        .unwrap_or_else(|error| panic!("add fixture track: {error}"));
+    let added = scan_after_mutation(fixture, "added-track rescan").await;
+    let after_add = track_map(load_tracks(fixture).await);
+    assert_eq!(after_add.len(), 101);
+    assert_eq!(after_add["disc-10/track-100.aac"].availability, "available");
+
+    let modified_name = "disc-00/track-000.mp3";
+    let modified_id = after_add[modified_name].id;
+    let original_size = after_add[modified_name].file_size_bytes;
+    let modified_path = fixture.library_root.join(modified_name);
+    let mut bytes = fs::read(&modified_path)
+        .unwrap_or_else(|error| panic!("read modified M7 fixture: {error}"));
+    bytes.extend_from_slice(b"cyberkindred-m7-generated-padding");
+    fs::write(&modified_path, bytes)
+        .unwrap_or_else(|error| panic!("write modified M7 fixture: {error}"));
+    let modified = scan_after_mutation(fixture, "modified-track rescan").await;
+    let after_modify = track_map(load_tracks(fixture).await);
+    assert_eq!(after_modify[modified_name].id, modified_id);
+    assert!(after_modify[modified_name].file_size_bytes > original_size);
+
+    let moved_name = "disc-00/track-001.flac";
+    let moved_id = after_modify[moved_name].id;
+    let moved_path = fixture.library_root.join("moved/track-001.flac");
+    fs::create_dir_all(
+        moved_path
+            .parent()
+            .unwrap_or_else(|| panic!("moved fixture parent")),
+    )
+    .unwrap_or_else(|error| panic!("create move directory: {error}"));
+    fs::rename(fixture.library_root.join(moved_name), &moved_path)
+        .unwrap_or_else(|error| panic!("move M7 fixture: {error}"));
+    let moved = scan_after_mutation(fixture, "moved-track rescan").await;
+    let after_move = track_map(load_tracks(fixture).await);
+    assert!(!after_move.contains_key(moved_name));
+    assert_eq!(after_move["moved/track-001.flac"].id, moved_id);
+
+    let deleted_name = "disc-00/track-002.m4a";
+    let deleted_id = after_move[deleted_name].id;
+    fs::remove_file(fixture.library_root.join(deleted_name))
+        .unwrap_or_else(|error| panic!("delete M7 fixture: {error}"));
+    let deleted = scan_after_mutation(fixture, "deleted-track rescan").await;
+    let after_delete = track_map(load_tracks(fixture).await);
+    assert_eq!(after_delete[deleted_name].id, deleted_id);
+    assert_eq!(after_delete[deleted_name].availability, "missing");
+    assert_eq!(
+        after_delete
+            .values()
+            .filter(|track| track.availability == "available")
+            .count(),
+        100
+    );
+
+    json!({
+        "addMs": added.elapsed.as_millis(),
+        "modifyMs": modified.elapsed.as_millis(),
+        "moveMs": moved.elapsed.as_millis(),
+        "deleteMs": deleted.elapsed.as_millis()
+    })
 }
 
 fn assert_event_contains_no_absolute_path(event: &ScanEvent, forbidden: &Path) {
@@ -948,6 +1230,53 @@ async fn scanner_fr_lib_003_incremental_scan_preserves_unchanged_modified_and_mo
             .filter(|track| track.availability == "available")
             .count(),
         5
+    );
+}
+
+// TEST-LIB-002; FR-LIB-002; NFR-PERF-002.
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "M7 100-track six-format end-to-end scan performance scenario"]
+async fn m7_test_lib_002_hundred_tracks_three_scans_cancel_and_incremental_mutations() {
+    let fixture = ScannerFixture::create_with_library(copy_m7_hundred_track_fixture).await;
+    let full_scans = run_three_hundred_track_scans(&fixture).await;
+    let worst_full_scan_ms = full_scans
+        .elapsed_ms
+        .iter()
+        .copied()
+        .max()
+        .unwrap_or_default();
+    assert!(worst_full_scan_ms <= 120_000);
+
+    let (cancel_acceptance_ms, unchanged_rescan) =
+        cancel_and_rescan_hundred_tracks(&fixture, &full_scans.baseline).await;
+    let mutation_rescans = exercise_m7_scan_mutations(&fixture).await;
+    fixture
+        .storage
+        .verify_integrity()
+        .await
+        .unwrap_or_else(|error| panic!("M7 scanner database integrity: {error}"));
+
+    println!(
+        "{}",
+        json!({
+            "schemaVersion": 1,
+            "testId": "TEST-LIB-002",
+            "fixture": "temporary-copies-of-project-licensed-six-format-assets",
+            "tracks": 100,
+            "formats": ["aac", "flac", "m4a", "mp3", "ogg", "wav"],
+            "fullScanMs": full_scans.elapsed_ms,
+            "worstFullScanMs": worst_full_scan_ms,
+            "fullScanProgressGapMs": full_scans.progress_gap_ms,
+            "fullScanRunningEvents": full_scans.running_events,
+            "progressCadenceRequired": worst_full_scan_ms > 500,
+            "cancelAcceptanceMs": cancel_acceptance_ms,
+            "unchangedRescanMs": unchanged_rescan.elapsed.as_millis(),
+            "mutationRescanMs": mutation_rescans,
+            "networkUsed": false,
+            "audioDeviceOpened": false,
+            "uiMainThreadMeasured": false,
+            "result": "completed"
+        })
     );
 }
 
