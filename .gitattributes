@@ -1,0 +1,2 @@
+src-tauri/resources/licenses/*.json text eol=lf
+src-tauri/resources/licenses/*.txt text eol=lf

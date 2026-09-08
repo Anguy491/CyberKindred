@@ -15,6 +15,44 @@ function Invoke-Checked {
     }
 }
 
+function Assert-SafeReproWorktree {
+    param([string]$Worktree, [bool]$RequireRegistered = $true)
+
+    $fullPath = [IO.Path]::GetFullPath($Worktree)
+    $expectedPrefix = Join-Path $tempRoot "cyberkindred-repro-"
+    if (-not $fullPath.StartsWith($expectedPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "refusing unsafe worktree path: $fullPath"
+    }
+    if (Test-Path -LiteralPath $fullPath) {
+        $item = Get-Item -Force -LiteralPath $fullPath
+        if (-not $item.PSIsContainer -or $item.LinkType) {
+            throw "refusing cleanup of a non-directory or reparse-point worktree: $fullPath"
+        }
+    }
+    if ($RequireRegistered) {
+        $registered = @(
+            & git -C $workspaceRoot worktree list --porcelain |
+                Where-Object { $_.StartsWith("worktree ", [StringComparison]::Ordinal) } |
+                ForEach-Object { [IO.Path]::GetFullPath($_.Substring(9)) } |
+                Where-Object { $_.Equals($fullPath, [StringComparison]::OrdinalIgnoreCase) }
+        )
+        if ($registered.Count -ne 1) {
+            throw "refusing cleanup because the path is not the registered repro worktree: $fullPath"
+        }
+    }
+    return $fullPath
+}
+
+function Remove-ReproWorktree {
+    param([string]$Worktree)
+
+    $fullPath = Assert-SafeReproWorktree $Worktree
+    # Git for Windows needs long-path handling for pnpm's content-addressed tree.
+    # The worktree assertion above makes this destructive cleanup path-specific.
+    Invoke-Checked "git" @("-c", "core.longpaths=true", "-C", $fullPath, "clean", "-ffdx") $workspaceRoot
+    Invoke-Checked "git" @("-c", "core.longpaths=true", "worktree", "remove", "--force", $fullPath) $workspaceRoot
+}
+
 Push-Location $workspaceRoot
 try {
     if ((& git status --porcelain=v1 --untracked-files=all).Count -gt 0) {
@@ -34,9 +72,7 @@ $worktrees = @(
 
 try {
     foreach ($worktree in $worktrees) {
-        if (-not $worktree.StartsWith((Join-Path $tempRoot "cyberkindred-repro-"), [StringComparison]::OrdinalIgnoreCase)) {
-            throw "refusing unsafe worktree path: $worktree"
-        }
+        Assert-SafeReproWorktree $worktree $false | Out-Null
         Invoke-Checked "git" @("worktree", "add", "--detach", $worktree, $commit) $workspaceRoot
         Invoke-Checked "pnpm" @("install", "--frozen-lockfile") $worktree
         $output = Join-Path $worktree "target\release-artifacts\repro"
@@ -61,9 +97,12 @@ try {
     Write-Output "Reproducible artifact hashes verified for commit $commit ($($first.Count) compared files)."
 } finally {
     foreach ($worktree in $worktrees) {
-        if ($worktree.StartsWith((Join-Path $tempRoot "cyberkindred-repro-"), [StringComparison]::OrdinalIgnoreCase) -and
-            (Test-Path -LiteralPath $worktree)) {
-            & git -C $workspaceRoot worktree remove --force $worktree
+        if (Test-Path -LiteralPath $worktree) {
+            try {
+                Remove-ReproWorktree $worktree
+            } catch {
+                Write-Warning "Repro worktree cleanup failed for $worktree`: $($_.Exception.Message)"
+            }
         }
     }
 }
