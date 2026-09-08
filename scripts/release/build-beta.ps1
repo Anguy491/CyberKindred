@@ -19,6 +19,31 @@ function Invoke-Checked {
     }
 }
 
+function Get-StreamSha256 {
+    param([System.IO.Stream]$Stream)
+    $hasher = [Security.Cryptography.SHA256]::Create()
+    try {
+        $Stream.Position = 0
+        $digest = $hasher.ComputeHash($Stream)
+        $Stream.Position = 0
+        return ([BitConverter]::ToString($digest)).Replace("-", "").ToLowerInvariant()
+    }
+    finally {
+        $hasher.Dispose()
+    }
+}
+
+function Get-LockedFileSha256 {
+    param([string]$Path)
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        return Get-StreamSha256 $stream
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
 function Assert-ReleaseOutputPath {
     param([string]$Path, [string]$Root)
     $fullPath = [IO.Path]::GetFullPath($Path)
@@ -57,6 +82,22 @@ function Assert-SafeBuildSnapshot {
     return $fullPath
 }
 
+function Assert-SafeReleaseStaging {
+    param([string]$Path, [string]$AllowedRoot)
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    $expectedPrefix = Join-Path ([IO.Path]::GetFullPath($AllowedRoot)) ".candidate-staging-"
+    if (-not $fullPath.StartsWith($expectedPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "refusing unsafe candidate staging path: $fullPath"
+    }
+    if (Test-Path -LiteralPath $fullPath) {
+        $item = Get-Item -Force -LiteralPath $fullPath
+        if (-not $item.PSIsContainer -or $item.LinkType) {
+            throw "candidate staging path must be a real local directory: $fullPath"
+        }
+    }
+    return $fullPath
+}
+
 if (-not $Development -and -not $SnapshotBuild) {
     Push-Location $workspaceRoot
     try {
@@ -86,6 +127,7 @@ if (-not $Development -and -not $SnapshotBuild) {
 
     $snapshotRoot = Join-Path ([IO.Path]::GetFullPath([IO.Path]::GetTempPath())) ("cyberkindred-build-snapshot-" + [guid]::NewGuid().ToString("N"))
     $snapshotRegistered = $false
+    $candidateStaging = $null
     try {
         Assert-SafeBuildSnapshot $snapshotRoot $false | Out-Null
         Invoke-Checked "git" @("-c", "core.longpaths=true", "-C", $workspaceRoot, "worktree", "add", "--detach", $snapshotRoot, $sourceCommit)
@@ -100,7 +142,22 @@ if (-not $Development -and -not $SnapshotBuild) {
                 "-SnapshotBuild", "-OutputRoot", $snapshotOutput, "-Target", $Target
             )
             if ($ReleaseTest) { $arguments += "-ReleaseTest" }
-            Invoke-Checked "powershell" $arguments
+            $innerOutput = @(& powershell @arguments)
+            if ($LASTEXITCODE -ne 0) { throw "isolated build failed with exit code $LASTEXITCODE" }
+            $innerOutput |
+                Where-Object {
+                    $_ -notmatch '^Local unsigned beta candidate:' -and
+                    $_ -notmatch '^Trusted manifest SHA-256 \(record outside the candidate directory\):'
+                } |
+                ForEach-Object { Write-Output $_ }
+            $digestLines = @($innerOutput | Where-Object { $_ -match '^Trusted manifest SHA-256 \(record outside the candidate directory\): ([a-f0-9]{64})$' })
+            if ($digestLines.Count -ne 1) {
+                throw "isolated build did not return exactly one trusted manifest digest"
+            }
+            $trustedManifestHash = [regex]::Match(
+                [string]$digestLines[0],
+                '^Trusted manifest SHA-256 \(record outside the candidate directory\): ([a-f0-9]{64})$'
+            ).Groups[1].Value
         }
         finally {
             Pop-Location
@@ -118,22 +175,44 @@ if (-not $Development -and -not $SnapshotBuild) {
             Pop-Location
         }
 
-        $outputParent = Split-Path -Parent $OutputRoot
-        if (-not (Test-Path -LiteralPath $outputParent -PathType Container)) {
-            New-Item -ItemType Directory -Path $outputParent | Out-Null
+        $allowedOutputRoot = [IO.Path]::GetFullPath((Join-Path $workspaceRoot "target\release-artifacts"))
+        if (-not (Test-Path -LiteralPath $allowedOutputRoot -PathType Container)) {
+            New-Item -ItemType Directory -Path $allowedOutputRoot | Out-Null
         }
-        Copy-Item -LiteralPath $snapshotOutput -Destination $OutputRoot -Recurse
-        $trustedManifestHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $OutputRoot "manifest.json")).Hash.ToLowerInvariant()
+        $allowedRootItem = Get-Item -Force -LiteralPath $allowedOutputRoot
+        if (-not $allowedRootItem.PSIsContainer -or $allowedRootItem.LinkType) {
+            throw "release artifact root must be a real local directory"
+        }
+        $candidateStaging = Join-Path $allowedOutputRoot (".candidate-staging-" + [guid]::NewGuid().ToString("N"))
+        Assert-SafeReleaseStaging $candidateStaging $allowedOutputRoot | Out-Null
+        [IO.Directory]::CreateDirectory($candidateStaging) | Out-Null
+        Get-ChildItem -Force -LiteralPath $snapshotOutput | ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination $candidateStaging -Recurse
+        }
         Invoke-Checked "powershell" @(
             "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
             (Join-Path $workspaceRoot "scripts\release\verify-release.ps1"),
-            "-CandidatePath", $OutputRoot, "-TrustedManifestSha256", $trustedManifestHash,
+            "-CandidatePath", $candidateStaging, "-TrustedManifestSha256", $trustedManifestHash,
             "-SkipTests"
         )
+        if (Test-Path -LiteralPath $OutputRoot) {
+            throw "release output appeared during verification; refusing to overwrite it: $OutputRoot"
+        }
+        [IO.Directory]::Move($candidateStaging, $OutputRoot)
+        $candidateStaging = $null
         Write-Output "Local unsigned beta candidate: $OutputRoot"
         Write-Output "Trusted manifest SHA-256 (record outside the candidate directory): $trustedManifestHash"
     }
     finally {
+        if ($candidateStaging -and (Test-Path -LiteralPath $candidateStaging)) {
+            try {
+                Assert-SafeReleaseStaging $candidateStaging (Join-Path $workspaceRoot "target\release-artifacts") | Out-Null
+                Remove-Item -LiteralPath $candidateStaging -Recurse -Force
+            }
+            catch {
+                Write-Warning "candidate staging cleanup failed for $candidateStaging`: $($_.Exception.Message)"
+            }
+        }
         if ($snapshotRegistered) {
             try {
                 Assert-SafeBuildSnapshot $snapshotRoot | Out-Null
@@ -238,7 +317,7 @@ try {
         "scripts/release/artifact-manifest.mjs", "--input", $OutputRoot,
         "--output", (Join-Path $OutputRoot "manifest.json")
     ) + $manifestArguments)
-    $trustedManifestHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $OutputRoot "manifest.json")).Hash.ToLowerInvariant()
+    $trustedManifestHash = Get-LockedFileSha256 (Join-Path $OutputRoot "manifest.json")
     Write-Output "Local unsigned beta candidate: $OutputRoot"
     Write-Output "Trusted manifest SHA-256 (record outside the candidate directory): $trustedManifestHash"
     if ($Development) {

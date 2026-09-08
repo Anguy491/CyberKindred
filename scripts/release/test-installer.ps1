@@ -34,7 +34,7 @@ function Get-StreamSha256 {
         $Stream.Position = 0
         $digest = $hasher.ComputeHash($Stream)
         $Stream.Position = 0
-        return [Convert]::ToHexString($digest).ToLowerInvariant()
+        return ([BitConverter]::ToString($digest)).Replace("-", "").ToLowerInvariant()
     }
     finally {
         $hasher.Dispose()

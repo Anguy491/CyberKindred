@@ -35,6 +35,8 @@ describe("M7 release provenance policy", () => {
     expect(verifier).toContain("development or dirty artifacts cannot pass release verification");
     expect(verifier).toContain("Read-TrustedManifest $manifestPath $TrustedSha256");
     expect(verifier).toContain("Assert-UnsignedExecutableSnapshot");
+    expect(verifier).toContain("candidate file inventory differs from the trusted manifest");
+    expect(verifier).toContain("candidate contains a reparse point");
   });
 
   it("builds release candidates from an isolated exact-HEAD snapshot", () => {
@@ -42,7 +44,10 @@ describe("M7 release provenance policy", () => {
     expect(builder).toContain("worktree\", \"add\", \"--detach\", $snapshotRoot, $sourceCommit");
     expect(builder).toContain("source checkout changed during the isolated build");
     expect(builder).toContain("Assert-SafeBuildSnapshot $snapshotRoot");
-    expect(builder).toContain("-CandidatePath\", $OutputRoot, \"-TrustedManifestSha256\", $trustedManifestHash");
+    expect(builder).toContain("isolated build did not return exactly one trusted manifest digest");
+    expect(builder).toContain("-CandidatePath\", $candidateStaging, \"-TrustedManifestSha256\", $trustedManifestHash");
+    expect(builder).toContain("[IO.Directory]::Move($candidateStaging, $OutputRoot)");
+    expect(builder).not.toContain("[Convert]::ToHexString");
   });
 
   it("compares both complete artifact and build-input inventories", () => {

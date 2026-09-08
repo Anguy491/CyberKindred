@@ -24,7 +24,7 @@ function Get-StreamSha256 {
         $Stream.Position = 0
         $digest = $hasher.ComputeHash($Stream)
         $Stream.Position = 0
-        return [Convert]::ToHexString($digest).ToLowerInvariant()
+        return ([BitConverter]::ToString($digest)).Replace("-", "").ToLowerInvariant()
     }
     finally {
         $hasher.Dispose()
@@ -106,6 +106,20 @@ function Assert-UnsignedExecutableSnapshot {
 function Assert-CandidateManifest {
     param([string]$Path, [string]$TrustedSha256)
     $resolved = [IO.Path]::GetFullPath($Path)
+    if ($resolved.StartsWith("\\", [StringComparison]::Ordinal)) {
+        throw "candidate verification requires a local path"
+    }
+    $rootItem = Get-Item -Force -LiteralPath $resolved
+    if (-not $rootItem.PSIsContainer -or $rootItem.LinkType) {
+        throw "candidate root must be a real local directory"
+    }
+    $reparseEntries = @(
+        Get-ChildItem -Force -Recurse -LiteralPath $resolved |
+            Where-Object { ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 }
+    )
+    if ($reparseEntries.Count -gt 0) {
+        throw "candidate contains a reparse point"
+    }
     $manifestPath = Join-Path $resolved "manifest.json"
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
         throw "candidate manifest is missing: $manifestPath"
@@ -164,6 +178,22 @@ function Assert-CandidateManifest {
         $configurationFiles.Count -ne 1 -or
         $configurationFiles[0] -cne "src-tauri/tauri.conf.json") {
         throw "production candidate identity differs from Tauri config"
+    }
+    $manifestArtifactFiles = @($manifest.artifacts | ForEach-Object { [string]$_.file } | Sort-Object -CaseSensitive)
+    if ($manifestArtifactFiles.Count -ne @($manifestArtifactFiles | Select-Object -Unique).Count) {
+        throw "artifact manifest contains duplicate file names"
+    }
+    $actualArtifactFiles = @(
+        Get-ChildItem -Force -Recurse -LiteralPath $resolved -File |
+            ForEach-Object { (($_.FullName.Substring($resolved.Length)) -replace '^[\\/]+', '').Replace("\", "/") } |
+            Where-Object { $_ -cne "manifest.json" } |
+            Sort-Object -CaseSensitive
+    )
+    $inventoryDifference = @(
+        Compare-Object -CaseSensitive -ReferenceObject $manifestArtifactFiles -DifferenceObject $actualArtifactFiles
+    )
+    if ($inventoryDifference.Count -gt 0) {
+        throw "candidate file inventory differs from the trusted manifest"
     }
     foreach ($artifact in $manifest.artifacts) {
         $artifactPath = [IO.Path]::GetFullPath((Join-Path $resolved $artifact.file))
