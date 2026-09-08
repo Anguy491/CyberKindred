@@ -1024,6 +1024,15 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "cyberkindred-windows-power-observer",
+      "version": "0.1.0",
+      "license": "LicenseRef-Proprietary",
+      "source": "workspace",
+      "purl": "pkg:cargo/cyberkindred-windows-power-observer@0.1.0",
+      "licenseTexts": []
+    },
+    {
+      "ecosystem": "cargo",
       "name": "cyberkindred",
       "version": "0.1.0",
       "license": "LicenseRef-Proprietary",

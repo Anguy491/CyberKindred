@@ -2394,6 +2394,29 @@
     },
     {
       "type": "library",
+      "bom-ref": "pkg:cargo/cyberkindred-windows-power-observer@0.1.0",
+      "name": "cyberkindred-windows-power-observer",
+      "version": "0.1.0",
+      "purl": "pkg:cargo/cyberkindred-windows-power-observer@0.1.0",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "LicenseRef-Proprietary"
+        }
+      ],
+      "properties": [
+        {
+          "name": "cyberkindred:ecosystem",
+          "value": "cargo"
+        },
+        {
+          "name": "cyberkindred:source",
+          "value": "workspace"
+        }
+      ]
+    },
+    {
+      "type": "library",
       "bom-ref": "pkg:cargo/darling_core@0.23.0",
       "name": "darling_core",
       "version": "0.23.0",
@@ -17811,11 +17834,18 @@
       ]
     },
     {
+      "ref": "pkg:cargo/cyberkindred-windows-power-observer@0.1.0",
+      "dependsOn": [
+        "pkg:cargo/windows@0.62.2"
+      ]
+    },
+    {
       "ref": "pkg:cargo/cyberkindred@0.1.0",
       "dependsOn": [
         "pkg:cargo/chrono-tz@0.10.4",
         "pkg:cargo/chrono@0.4.45",
         "pkg:cargo/cyberkindred-windows-credential@0.1.0",
+        "pkg:cargo/cyberkindred-windows-power-observer@0.1.0",
         "pkg:cargo/hex@0.4.3",
         "pkg:cargo/infer@0.22.0",
         "pkg:cargo/jsonschema@0.52.1",
