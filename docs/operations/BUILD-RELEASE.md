@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Release Steward |
-| Last Verified | 2026-09-02 |
+| Last Verified | 2026-09-08 |
 | Source of Truth For | 版本、可复现构建、NSIS 制品、校验与回滚 |
 | Related Documents | `DEVELOPMENT-GUIDE.md`, `../testing/TEST-STRATEGY.md`, `../planning/ROADMAP.md` |
 
@@ -32,6 +32,17 @@ This checklist applies to M7 beta/release artifacts. M1–M6 milestone candidate
 4. `pnpm tauri build` 生成 NSIS；记录 Rust/Node/pnpm/Windows SDK/WebView2 版本。
 5. 对 installer 和主 executable 计算 SHA-256；验证安装、首次启动、卸载和数据保留/删除选项。
 6. 将制品、hash、test evidence 和 release notes 放在版本化本地 release 目录；未经用户授权不上传。
+
+M7 automation uses these repository-owned entry points:
+
+- `pnpm release:preflight` validates the fixed Windows x64 toolchain, clean tree, locked inputs, per-user/no-downgrade NSIS policy, embedded WebView2 bootstrapper and absence of live-provider secrets.
+- `pnpm release:verify` runs the release asset, dependency, frontend, serialized Rust, documentation and optional candidate checks. It does not turn a failed coverage or manual gate into a pass.
+- `pnpm release:build` first creates a random detached worktree at the exact clean HEAD and builds only there. The manifest generator hashes the exact serialized bytes it writes, and the internal builder seals the fixed artifact inventory plus that manifest into a locked ZIP stream whose digest is returned to the outer process. The outer process accepts only that pre-existing archive digest, extracts into a random non-reparse local staging directory, verifies against the pre-existing manifest digest, publishes with a destination-must-not-exist directory move, then verifies the final directory again. It writes an unsigned local artifact set and manifest below `target/release-artifacts/`; the manifest binds commit, schema, config snapshots, toolchain, hashes and build inputs. Rust release compilation fixes `SOURCE_DATE_EPOCH`, remaps the checkout path to `/cyberkindred`, passes MSVC `/Brepro` and disables incremental output.
+- `pnpm release:repro` builds two detached temporary worktrees, compares all seven artifact hashes and removes only validated registered worktrees with Git long-path handling.
+- `scripts/release/test-installer.ps1` is dry-run by default. Mutation requires an out-of-band manifest SHA-256 and either the manifest-bound `com.cyberkindred.release-test` identity or a protected machine-wide marker provisioned into a disposable VM; production identity is rejected without that marker. Uninstall also verifies a separately recorded post-install uninstaller digest.
+- `pnpm coverage:release` uses stable Rust 1.98 for the product and a fixed `nightly-2026-09-01` only for `cargo-llvm-cov` branch instrumentation. The merged `coverage-summary.json` is authoritative; a nonzero threshold exit remains a release blocker.
+
+An output directory from `release:build` is a **validation artifact** until the M7 checkpoint says all objective and manual beta gates pass. Script success, an NSIS filename, or a manifest with `releaseEligible: true` only describes build-input eligibility and must not be presented as beta approval.
 
 ## Signing and distribution
 

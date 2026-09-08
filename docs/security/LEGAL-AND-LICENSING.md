@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Release Steward |
-| Last Verified | 2026-09-02 |
+| Last Verified | 2026-09-08 |
 | Source of Truth For | MVP 内测的本地音乐责任、服务条款边界、归因、字体与依赖许可门槛 |
 | Related Documents | `docs/integrations/EXTERNAL-INTEGRATIONS.md`, `docs/architecture/DEPENDENCY-POLICY.md`, `docs/operations/BUILD-RELEASE.md`, `docs/security/PRIVACY-DATA-LIFECYCLE.md` |
 
@@ -94,6 +94,10 @@ MVP 在城市搜索结果显示 `Location data by GeoNames via Open-Meteo`，在
 5. license/deny/advisory 扫描报告；unknown、denied、checksum drift 或缺失 notice 使构建失败。
 
 更新依赖时重新运行审查；transitive dependency 与 binary redistributable（WebView2 bootstrapper、NSIS plugin、native codec、DLL）不能因“不直接 import”而跳过。
+
+### 9.3 M7 local audit record
+
+The M7 generator produced a deterministic CycloneDX inventory with 449 components and 449 dependency records, 253 unique notice texts and four locally bundled font records. `cargo audit` reported zero vulnerabilities, `cargo deny` passed advisories/bans/licenses/sources, and the production pnpm audit reported zero vulnerabilities at the High threshold. These are engineering compliance checks, not legal approval. The unsigned validation artifact remains non-distributable while the M7 checkpoint is blocked, and `RISK-012` stays open until the release steward completes the intended beta-use review.
 
 ## 10. Product names, privacy and claims
 

@@ -82,7 +82,7 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 ## M7 — Installable beta hardening
 
-**Status:** Active — automatically activated by the passed M6 checkpoint on 2026-09-06. Beta candidate approval, signing, publication and distribution still require the Product Owner.
+**Status:** Blocked — checkpointed on 2026-09-08; see [`M7 checkpoint`](../testing/checkpoints/M7.md). The implementation and an unsigned local validation artifact exist, but the 80% line / 70% branch coverage gate, the real 10-minute audio run, the Win10/Win11 install matrix, Narrator and native recovery/resource evidence are not complete. No artifact is beta-qualified, signed, published or distributed.
 
 **Goal:** 交付本人及少量内测者可独立安装和恢复的 Windows 版本。
 

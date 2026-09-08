@@ -34,6 +34,9 @@
 | RISK-020 | 分类删除不能精确清除派生/位置数据且 Library Index 删除可回滚 | H | H | 画像删除后偏好/位置仍生效、对话 hash 残留、天气 late write 重建缓存，或 retained segment 使 track 删除违反约束 | 分类 ownership 与 weather/export lifecycle fence 已实现；V0004 允许已终止本地 segment 在删索引后成为无身份 tombstone，删除/完整性/原文件边界回归通过 | Data/Security | Closed |
 | RISK-021 | 全部重置缺少所有副作用生产者的 quiescence barrier | M | H | reset 成功后仍有播放、Speech、provider、扫描、日程或通知任务运行/晚到 | fail-closed coordinator 以原子准入锁关闭并 await radio、scanner、understanding、provider preview、playback、scheduler 与 retention，再删凭据、关闭存储并清理文件；独立复核追加竞态已修复 | Core/Data | Closed |
 | RISK-022 | Apple AUMID、artwork decoder 与 WebView destructive IPC 的平台安全事实未证实 | M | M | 非 Apple 会话可匹配、压缩图片放大导致 WebView2 DoS，或未授权 renderer 可调用 API-037 | 在干净 Windows VM 使用 crafted GSMTC/image harness；执行全仓 renderer/capability review；在证实前保留严格边界且不扩大来源/协议/命令权限 | Security/QA | Open |
+| RISK-023 | M7 核心域覆盖率低于批准的 beta 门槛 | H | H | 聚合覆盖率低于 80% lines 或 70% branches；最近有效结果为 74.21% / 59.58% | 优先补齐恢复状态机、安装/数据清除、provider 边界及 Apple 竞态分支；继续使用固定 nightly 仅生成 Rust branch report，默认产品工具链保持 stable 1.98 | Lead/QA | Open |
+| RISK-024 | 缺少可隔离的 Windows 发布验收矩阵与人工设备证据 | H | H | Win10/Win11 VM、Narrator、真实音频、休眠/设备/通知、WPR 或 destructive release-test 场景为 Not Run | 只在 disposable standard-user VM、隔离应用 ID/目录和测试凭据中执行；保留 fail-closed capability、默认静音与 release-test sentinel，用户提供环境前不修改真实系统状态 | Release/QA | Open |
+| RISK-025 | Windows 工具链输出尚未证明逐字节可复现 | M | M | 第三次独立 worktree 比较中主 EXE 已一致，但 PDB 与 NSIS installer SHA-256 仍不一致 | 已固定 `SOURCE_DATE_EPOCH`、LF 生成资产、Rust 路径重映射、MSVC `/Brepro` 与 non-incremental release build；blocker budget 已耗尽，需新的 PDB/NSIS nondeterminism 诊断方案后才能恢复 | Release | Open |
 
 ## M1 observations
 
@@ -53,3 +56,9 @@
 - `RISK-019`–`RISK-021` are closed by candidate `ea2f2fcc4d5ff077291119936aa975b37e84fe75`. The original sealed scan `628d9567-ff70-4332-ab6a-5ff8e23a41cc` reported 6 Medium/3 Low; all nine finding families were remediated. A fresh independent bypass review found one additional High reset-admission race, which was then closed with per-service atomic admission gates and actual task-completion waits; strict lint and the complete Rust suite pass with zero open Critical/High.
 - `RISK-022` remains open and preserves three platform questions without promoting them to verified vulnerabilities: AUMID publication authority, WebView2 image-decoder bounds and a concrete unauthorized renderer path to API-037. Strict AUMID matching, bounded artwork handling and existing Tauri command allowlists remain the mitigation until M7 VM/adversarial evidence exists.
 - Apple Music Windows App `1.1540.23042.0` on the recorded Windows 11 host exposed a live track and pause capability; the product `PlaybackService` completed an actual generic-TTS pause/restore without recording media text. The 50-iteration convergence, cross-version, user-override/session-disappearance and sleep/device matrix remains M7 evidence under `RISK-001`/`RISK-002`.
+
+## M7 observations
+
+- `RISK-023` is a current hard blocker: TypeScript reached 77.86% lines / 70.33% branches; the latest completed three-package Rust measurement reached 73.99% / 53.20%, and the repository aggregate was 74.21% / 59.58%. The final release-script/recovery follow-up did not consume a fourth unchanged coverage attempt; no lower threshold or unit-test substitution was accepted.
+- `RISK-024` consolidates the unexecuted physical/VM matrix. The current Windows 11 development host is not treated as a disposable standard-user VM, and no destructive install/reset, permission change, non-test sound or paid-provider call was performed.
+- `RISK-025` records the reproducibility blocker separately from ordinary build success. Per-user NSIS generation and manifest hashing pass, but a successful build is not evidence of identical output hashes.

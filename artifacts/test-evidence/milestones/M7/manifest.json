@@ -1,0 +1,111 @@
+{
+  "schemaVersion": "1.0.0",
+  "milestone": "M7",
+  "technicalCandidateCommit": "1d2a5f9b0e3078ab4ecbdb88b9600fd2d82cee2e",
+  "baselineCommit": "8584350b159adf037bf21c5ea6798af78c27d03e",
+  "capturedAt": "2026-09-08",
+  "checkpointConclusion": "blocked",
+  "environment": {
+    "cohort": "windows-11-x64-development-host",
+    "osVersionBuild": "10.0.26200",
+    "rust": "1.98.0",
+    "coverageOnlyRust": "nightly-2026-09-01",
+    "node": "24.19.0",
+    "pnpm": "11.16.0",
+    "containsUserIdentifiers": false,
+    "liveProvidersUsed": false,
+    "physicalAudioUsed": false,
+    "productionInstallerExecuted": false,
+    "productionDataReset": false,
+    "notificationPermissionChanged": false
+  },
+  "completedImplementationSlices": ["TASK-029", "TASK-030", "TASK-031", "TASK-032"],
+  "blockedTasks": ["TASK-029", "TASK-030", "TASK-031", "TASK-032"],
+  "checks": [
+    { "id": "frontend", "status": "passed", "passed": 118, "failed": 0, "files": 20 },
+    { "id": "desktop-e2e-harness-self-test", "status": "passed", "passed": 9, "failed": 0 },
+    { "id": "recovery-focused-rust", "status": "passed", "passed": 13, "failed": 0 },
+    { "id": "serialized-rust-workspace", "status": "passed", "passed": 314, "failed": 0, "ignored": 7, "mainLibraryPassed": 286, "mainLibraryIgnored": 2 },
+    { "id": "clean-checkout-build-a", "status": "passed", "commit": "dc4425df3cdfbb194981441b1c52fd1ca0e6ae82" },
+    { "id": "clean-checkout-build-b", "status": "passed", "commit": "dc4425df3cdfbb194981441b1c52fd1ca0e6ae82" },
+    { "id": "clean-checkout-pnpm-c", "status": "passed", "commit": "53542c4768bd1572a2e11c7079b72a890da9f61c" },
+    { "id": "clean-checkout-pnpm-d", "status": "passed", "commit": "53542c4768bd1572a2e11c7079b72a890da9f61c" },
+    { "id": "migrations-v0-v4", "status": "passed" },
+    {
+      "id": "TEST-LIB-002",
+      "status": "partial",
+      "files": 100,
+      "formats": 6,
+      "fullScanMs": [827, 130, 131],
+      "maxProgressGapMs": [447, 128, 129],
+      "cancelMs": 0,
+      "incrementalMs": { "unchanged": 128, "add": 134, "modify": 127, "move": 136, "delete": 130 },
+      "uiMainThreadMeasured": false
+    },
+    {
+      "id": "TEST-RAD-005",
+      "status": "partial",
+      "acceleratedTenMinuteRuns": { "passed": 10, "total": 10, "tracks": 40, "transitions": 30 },
+      "virtualThirtyMinuteGuard": { "passed": true, "tracks": 12, "transitions": 11 },
+      "realTenMinuteAudio": "not_run"
+    },
+    {
+      "id": "ten-thousand-row-engineering-guard",
+      "status": "passed_non_blocking",
+      "rows": 10000,
+      "insertMs": 2362,
+      "enumerateMs": 4,
+      "paginateMs": 540,
+      "candidateMs": 81,
+      "totalMs": 5500
+    },
+    { "id": "cargo-audit", "status": "passed", "vulnerabilities": 0, "allowedWarnings": 8 },
+    { "id": "cargo-deny", "status": "passed" },
+    { "id": "pnpm-production-audit-high", "status": "passed", "vulnerabilities": 0 },
+    { "id": "release-assets", "status": "passed", "components": 449, "dependencyRecords": 449, "uniqueNoticeTexts": 253, "fonts": 4 },
+    { "id": "sealed-release-test-flow", "status": "passed_validation_only", "commit": "1d2a5f9b0e3078ab4ecbdb88b9600fd2d82cee2e", "artifacts": 8, "manifestSha256": "45b9118976546c3861767aa08818cc48b83adbfaa00ca02223e0b85e76104c11", "retained": false },
+    { "id": "release-coverage", "status": "failed" },
+    { "id": "security-diff-scan", "status": "passed", "candidate": "1d2a5f9b0e3078ab4ecbdb88b9600fd2d82cee2e", "initialScanId": "7f9e5a9c-006e-4929-ada2-e778049602cf", "open": { "critical": 0, "high": 0, "medium": 0, "low": 0 } }
+  ],
+  "coverage": {
+    "thresholds": { "lines": 80, "branches": 70 },
+    "typeScript": { "lines": { "covered": 1403, "total": 1802, "percent": 77.86 }, "branches": { "covered": 1534, "total": 2181, "percent": 70.33 } },
+    "rustMeasuredCommit": "0c2d4773f8dc7ad4a8212a1372c3c76e71546a2a",
+    "rust": { "lines": { "covered": 21996, "total": 29729, "percent": 73.99 }, "branches": { "covered": 1959, "total": 3682, "percent": 53.20 } },
+    "repository": { "lines": { "covered": 23399, "total": 31531, "percent": 74.21 }, "branches": { "covered": 3493, "total": 5863, "percent": 59.58 } },
+    "status": "failed"
+  },
+  "retainedValidationArtifact": {
+    "relativeDirectory": "target/release-artifacts/0.1.0-validation-51a6b42",
+    "boundCommit": "51a6b42014e52f107c2fb2652e6977fb5efec94b",
+    "unsigned": true,
+    "betaQualified": false,
+    "installer": { "file": "CyberKindred_0.1.0_x64-setup.exe", "bytes": 9909390, "sha256": "928f3e2b5843436721980964446ce262c579df830be0d82df6ad6ac1e2af437d" },
+    "executableSha256": "9a214fdc4bf2883ba6e5658491859327df78f8f85d6b4a3b3db961204e3c1efd",
+    "pdbSha256": "e1ee9d0b5cc8d160ed4cab590c4eaf06778ede6b8f9ade26471dd9046c525a34",
+    "sbomSha256": "bf705161e9277cadd3a27b924be9a0fa7ea7efd44312517b3bc79588421bcc6c",
+    "licenseManifestSha256": "510f1974e898797899afc0078c5b202961271cf32ac1724b4e26226e8f0c3c78",
+    "noticesSha256": "6ebf47b9dde375db8d9baee699f7a79d4e59bf253761977ed2246048d43d7595",
+    "artifactManifestSha256": "fd6c0b1a0b694f3d8c41456bb5a4b8f192838c82ca9189171079eff52245708b"
+  },
+  "blockedAcceptance": {
+    "allApplicableP0P1Complete": false,
+    "failed": ["TEST-MAINT-002"],
+    "partial": ["TEST-LIB-002", "TEST-RAD-005", "TEST-A11Y-001", "TEST-COMPAT-002", "TEST-REL-001", "TEST-SCH-002", "TEST-DAT-004"],
+    "notRunWaitingForUserEnvironment": ["TEST-APL-001", "TEST-APL-002", "TEST-APL-003", "TEST-APL-004", "TEST-COMPAT-001", "TEST-RESOURCE-001", "TEST-SET-003", "TEST-AI-001"]
+  },
+  "hardGates": [
+    { "id": "secret-boundary", "status": "passed_automated" },
+    { "id": "file-network-permission-scope", "status": "passed_automated" },
+    { "id": "logging-redaction", "status": "passed_automated" },
+    { "id": "explicit-sound-and-paid-action", "status": "passed_automated_only" },
+    { "id": "public-contract-validity", "status": "passed" },
+    { "id": "data-integrity", "status": "passed_automated" },
+    { "id": "coverage", "status": "failed" },
+    { "id": "byte-for-byte-reproducibility", "status": "failed", "attempts": 3, "stableExecutable": true, "stablePdb": false, "stableNsisInstaller": false },
+    { "id": "release-platform-matrix", "status": "not_run" },
+    { "id": "critical-high-security", "status": "passed_independent_exact_candidate", "open": { "critical": 0, "high": 0, "medium": 0, "low": 0 } }
+  ],
+  "releaseEligible": false,
+  "transitionedToNextMilestone": false
+}

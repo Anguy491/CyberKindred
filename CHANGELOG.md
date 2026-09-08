@@ -14,6 +14,10 @@
 
 ### Changed
 
+- M7 `TASK-029`–`TASK-032` 集成恢复协调、离线/provider 独立降级、休眠后静音恢复、键盘焦点/live region/44 px target/缩放与减少动画、per-user NSIS/release-test 隔离身份、固定 WebView2 bootstrapper、SBOM/NOTICE/制品哈希与 release verification scripts。
+- 增加许可六格式 100 首三轮扫描/取消/增量矩阵、10 次加速 10 分钟与 30 分钟虚拟节目守卫、10,000 条合成数据库基准、迁移 V0–V4、coverage aggregation、release asset/installer safety guards；扫描进度心跳由 500 ms 调整为 450 ms 以满足最坏间隔门槛。
+- 发布信任链改为 exact-HEAD detached build、同一 manifest buffer digest、锁定 sealed ZIP stream digest、固定 artifact inventory、受控 staging/final 双验证；精确技术候选 `1d2a5f9` 的独立安全复审为 open Critical/High/Medium/Low `0/0/0/0`。
+- M7 checkpoint 如实记录为 `Blocked`，未生成可分发 beta：最近一次有效仓库聚合覆盖率 74.21% lines / 59.58% branches 未达到 80% / 70%，真实 Windows install/audio/Narrator/recovery/resource 矩阵仍未运行。保留的 unsigned NSIS 仅为本地 validation artifact；未 push、签名、上传、安装或分发。
 - Product Owner 将 M7 beta 的规模与稳定性硬门槛调整为固定 100 首六格式曲库端到端扫描（3 次取最差、≤2 分钟）以及 1 次真实加 10 次加速的 10 分钟节目；PRD 用户成功目标同步为连续收听至少 10 分钟。10,000 条合成目录/数据库性能与 30 分钟虚拟时序保留为非阻断工程守卫，不再宣称 beta 支持 10,000 首或以 30 分钟实播作为发布条件。
 - M6 checkpoint 以 `Passed with known gaps` 关闭：candidate `ea2f2fcc4d5ff077291119936aa975b37e84fe75` 修复原 sealed review 的 6 Medium/3 Low finding families，以及 fresh bypass review 追加发现的一个 High reset-admission race；最终无 open Critical/High。Apple Music Windows App `1.1540.23042.0` 的产品服务实机会话已完成连接、真实 track/capability 观察和一次通用 TTS pause/restore，M7 自动激活。
 - Apple source 现在在切回 Local、替换来源和 shutdown 时 await deactivation；activation generation 使旧 TTS interruption token 失效，避免继续观察或恢复已不再授权的会话。

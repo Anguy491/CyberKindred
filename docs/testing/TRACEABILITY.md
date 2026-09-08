@@ -38,6 +38,8 @@ M6 的当前证据由 [`M6 checkpoint`](checkpoints/M6.md) 及其 [`evidence man
 
 Product Owner 于 2026-09-08 调整 M7 质量规模：`NFR-PERF-002`/`TEST-LIB-002` 的发布硬门槛为 100 首六格式文件端到端扫描，`NFR-REL-001`/`TEST-RAD-005` 为 1 次真实及 10 次加速的 10 分钟节目。10,000 条合成目录/数据库规模与 30 分钟虚拟时序仍作为非阻断工程守卫记录，不构成 beta 支持声明；最终证据由 `TASK-032` 聚合。
 
+M7 的 2026-09-08 证据由 [`M7 checkpoint`](checkpoints/M7.md) 与 [`evidence manifest`](../../artifacts/test-evidence/milestones/M7/manifest.json) 聚合。`TASK-029`–`TASK-032` 的实现切片已集成：恢复协调器、provider 独立降级、无自动付费/出声恢复、键盘/live-region/响应式 hardening、per-user NSIS、release-test 隔离身份、SBOM/NOTICE、100 首六格式扫描及 10 次加速节目守卫均有自动化证据。M7 仍为 `Blocked`：`TEST-MAINT-002` 最近一次有效聚合为 74.21% lines / 59.58% branches，`TEST-LIB-002` 未取得 UI main-thread trace，`TEST-RAD-005` 缺少真实 10 分钟音频/WPR，且 `TEST-APL-001`–`004`、`TEST-COMPAT-001/002`、`TEST-A11Y-001`、`TEST-RESOURCE-001` 与 native `TEST-SET-003`/`TEST-DAT-004` 的 release-candidate 环境矩阵未运行。自动测试不替代这些 Windows/音频/人工场景，local unsigned validation artifact 不构成 beta 放行。
+
 ## 2. Functional requirements
 
 ### 2.1 Onboarding

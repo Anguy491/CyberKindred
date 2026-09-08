@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Core Architecture & Security |
-| Last Verified | 2026-09-02 |
+| Last Verified | 2026-09-08 |
 | Source of Truth For | 允许、条件允许和禁止的依赖类别，版本锁定、许可证与新增生产依赖审批流程 |
 | Related Documents | [Architecture](ARCHITECTURE.md), [ADR-0001](adr/ADR-0001-tauri-react-rust.md), [ADR-0004](adr/ADR-0004-provider-abstractions.md), [Threat Model](../security/THREAT-MODEL.md), [Legal and Licensing](../security/LEGAL-AND-LICENSING.md), [Development Guide](../operations/DEVELOPMENT-GUIDE.md) |
 
@@ -50,7 +50,7 @@ UI 字体 `Space Grotesk`、`Space Mono`、`Doto` 作为本地静态资产按 SI
 | `rodio` | 本地 output/sink | 只在 playback actor 中持有。 |
 | `symphonia` | MP3/FLAC/M4A/MP4/AAC/WAV/OGG probe/decode | 只启用所需 codec/container；不写原文件。 |
 | `lofty` | 本地 tag/embedded cover 读取 | 只读打开；metadata 修改功能不进入 v1。 |
-| `windows` (`windows-rs`) | GSMTC、Credential Manager、power/必要 Win32 API | feature 精确到所用 namespace；所有 handle RAII。Credential Manager FFI 的 `unsafe` 只允许存在于内部 `crates/windows-credential` infrastructure crate，经窄 safe API 暴露；产品 crate 继续 `forbid(unsafe_code)`。 |
+| `windows` (`windows-rs`) | GSMTC、Credential Manager、power/必要 Win32 API | feature 精确到所用 namespace；所有 handle RAII。Credential Manager 与 Windows power notification FFI 的 `unsafe` 只允许分别存在于内部 `crates/windows-credential`、`crates/windows-power-observer` infrastructure crate，经窄 safe API 暴露；产品 crate 继续 `forbid(unsafe_code)`。Power observer 只创建无界面的顶层消息窗口、注册 suspend/resume 通知并分类电源消息，不获得音频、文件、网络或 credential 权限。 |
 | `uuid` (`v7`, `serde`) | 主键/request ID | ID 在 Rust 生成，不信任 UI 提供的 owner ID。 |
 | `chrono`, `chrono-tz` | UTC、IANA timezone、DST 日程计算 | 数据库存 UTC ms + IANA zone；不依赖 OS locale 字符串运算。 |
 | `sha2`, `hex` | cache/source/content hash | 不作为密码哈希；不把 secret 放入普通 hash。 |
@@ -119,6 +119,8 @@ UI 字体 `Space Grotesk`、`Space Mono`、`Doto` 作为本地静态资产按 SI
 | `cargo-nextest` | Rust test runner | 可选执行工具，不改变测试语义。 |
 
 测试包同样固定：`vitest 4.1.11`、`@vitest/coverage-v8 4.1.11`、`@testing-library/dom 10.4.1`、`@testing-library/react 16.3.3`、`@testing-library/user-event 14.6.6`、`@testing-library/jest-dom 7.0.1`、`jsdom 30.0.1`、`ajv 8.20.0`、`ajv-formats 3.0.1`、`playwright 1.62.1`、`axe-core/@axe-core/playwright 4.13.0`；Rust dev-dependencies 固定 `proptest 1.11.0`、`wiremock 0.6.5`、`tempfile 3.27.0`、`insta 1.48.0`。Desktop E2E client 固定为 repository-owned Node 24 built-in harness，不解析 WebdriverIO/Selenium npm tree；AJV 仅在 Node contract suite 中编译 schema，禁止把其动态代码生成器导入 `src/` 或 WebView bundle。CI toolchain binary 固定为 `tauri-driver 2.0.6`、`cargo-nextest 0.9.143`、`cargo-deny 0.20.2`、`cargo-audit 0.22.2` 与 `cargo-llvm-cov 0.9.0`；M2 在工具清单记录 registry source、安装版本与本机 executable SHA-256，它们不进入应用依赖图。
+
+M7 keeps the product compiler at Rust `1.98.0`; branch coverage alone uses fixed `nightly-2026-09-01` because stable LLVM instrumentation cannot emit the required branch report. This nightly is invoked explicitly by `scripts/m7/run-rust-coverage.ps1`, is not the repository default, and cannot alter production build policy. Windows notifications use the reviewed direct runtime dependency `notify-rust 4.18.0`; audio playback keeps `rodio 0.22.2` with only `playback`, while `symphonia 0.6.1` is the single direct decoder family with only the six supported-format features enabled. Release locking, SBOM and notices must preserve that single-version policy.
 
 M2 `RISK-015` review removed the pinned WebdriverIO 9.31.5 development chain after the locked tree reported unmitigated High advisories. The replacement preserves direct Windows `tauri-driver` coverage through the standardized W3C protocol, adds no dependency or application capability, and keeps renderer-only Playwright evidence explicitly separate.
 

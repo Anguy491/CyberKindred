@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Support Steward |
-| Last Verified | 2026-09-02 |
+| Last Verified | 2026-09-08 |
 | Source of Truth For | 本地故障诊断、恢复、备份和数据清除 |
 | Related Documents | `../architecture/DATA-MODEL.md`, `../security/PRIVACY-DATA-LIFECYCLE.md`, `BUILD-RELEASE.md` |
 
@@ -56,6 +56,19 @@
 ## Metadata or weather outage
 
 只使用仍在各 provider 新鲜期内的缓存；缓存不存在或已过期时省略增强/天气。MusicBrainz 429 必须停止请求并 backoff，不能提高并发绕过限制。外部服务恢复不应改变用户原始标签。
+
+## Offline, suspend and resume
+
+- On Windows, the internal `windows-power-observer` safe boundary owns a hidden top-level message window, registers suspend/resume notifications and synchronously closes admission on `PBT_APMSUSPEND` before bounded quiescence. Resume messages start reconciliation; the 500 ms clock-gap watchdog remains a conservative fallback when Windows supplies no usable edge. The path closes new radio/scanner/provider work, checkpoints durable state and cancels in-flight paid or audible operations; all writes remain bounded and idempotent.
+- Resume is silent: reconcile storage integrity and schedules first, reopen admission only after reconciliation, and refresh only free status. Do not replay a text request, provider preview, Speech segment, notification start action or music `Play` command.
+- An interrupted local or Apple program remains explicitly interrupted/paused until the user starts or resumes it. Provider failures stay isolated; local library, settings, approved-memory management, export and scoped reset remain available offline.
+- If recovery cannot prove integrity, keep sound/network admission closed and enter recovery mode. Never repair the user's database by destructive reset; copy data first and use the documented backup/integrity path.
+
+## Isolated installer verification
+
+- `scripts/release/test-installer.ps1` is a dry-run unless `-Execute` is supplied. Execution requires an out-of-band trusted manifest SHA-256 and either the manifest-bound `com.cyberkindred.release-test` identity or a machine-wide `HKLM\SOFTWARE\CyberKindred\TestEnvironment` marker provisioned into a disposable VM image. The script never creates or weakens that marker. Uninstall additionally requires the exact post-install uninstaller SHA-256 recorded outside the install directory.
+- Use a standard-user Win10 22H2 or Win11 VM, temporary test data and canary credentials. Record install, first launch, upgrade/no-downgrade, data retention, uninstall and rollback; do not point the harness at the production identifier or a real user profile.
+- A locally built unsigned NSIS is a validation artifact until the M7 checkpoint passes. Do not distribute it, and do not disable SmartScreen or other system protections to make a test pass.
 
 ## Backup, export and reset
 
