@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Engineering Lead |
-| Last Verified | 2026-09-06 |
+| Last Verified | 2026-09-08 |
 | Source of Truth For | milestone 内可认领的开发切片、依赖、范围、快速自检和交付状态 |
 | Related Documents | `docs/planning/ROADMAP.md`; `docs/testing/TEST-STRATEGY.md`; `docs/testing/TRACEABILITY.md`; `docs/testing/ACCEPTANCE-TESTS.md`; `AGENTS.md` |
 
@@ -39,7 +39,7 @@
 | TASK-015 | M3 | FR-RAD-002, FR-LIB-006; NFR-REL-003, NFR-COST-002 | TASK-011, TASK-014 | candidate engine, deterministic planner, ProgramPlan validation | Rust 先按偏好/时间/反馈/冷却筛出最多 200 个真实 ID；模型不可用或返回非法 ID 时产生可播确定性计划。 | `cargo test candidate_ program_plan_`; execute TEST-LIB-004 | Done |
 | TASK-016 | M3 | FR-RAD-002, FR-CHAT-001; NFR-PRIV-004, NFR-COST-002, NFR-REL-003 | TASK-005, TASK-008, TASK-015 | LLMProvider, context builder, structured-output retry | 实现 OpenAI Responses provider、`store:false`、24k/4k 预算、Context 顺序、schema+领域校验；结构化失败只重试一次且请求可取消。 | `cargo test llm_provider_ context_builder_`; request allowlist capture | Done |
 | TASK-017 | M3 | FR-ONB-005, FR-RAD-007, FR-SET-002; NFR-COST-001, NFR-COST-002 | TASK-008, TASK-014 | TTSProvider, bounded cache metadata/LRU/lease, TTS actor, API-038 voice-preview cancel slice, text fallback | 用户触发固定短句预览与节目段生成 speech；播放中再次点击可取消；每段≤500 字符、缓存按内容哈希且有 preview/segment ownership、失败不重播并保留文字，TTS 关闭零请求。 | `cargo test tts_provider_ tts_actor_ tts_cache_`; execute TEST-ONB-003 and TEST-SET-002 | Done |
-| TASK-018 | M3 | FR-RAD-001, FR-RAD-003, FR-RAD-006, FR-RAD-007; NFR-REL-001, NFR-REL-003 | TASK-015, TASK-016, TASK-017 | program runner, API-024/025, EVT-002/003 | 节目 runner 执行开场、2–3 首串场、歌曲、停止和降级；每个长期任务可取消且无孤儿；30 分钟稳定性门槛通过。 | `cargo test program_runner_`; execute TEST-RAD-001/003/004/005 | Done |
+| TASK-018 | M3 | FR-RAD-001, FR-RAD-003, FR-RAD-006, FR-RAD-007; NFR-REL-001, NFR-REL-003 | TASK-015, TASK-016, TASK-017 | program runner, API-024/025, EVT-002/003 | 节目 runner 执行开场、2–3 首串场、歌曲、停止和降级；每个长期任务可取消且无孤儿；为 M7 的 10 分钟稳定性门槛提供可测试运行路径。 | `cargo test program_runner_`; execute TEST-RAD-001/003/004/005 | Done |
 | TASK-019 | M3 | FR-RAD-001, FR-RAD-003, FR-RAD-004, FR-RAD-007; NFR-A11Y-001, NFR-PERF-003 | TASK-009, TASK-014, TASK-018 | Radio UI, Now Playing, program controls/states | 展示权威 Now Playing、来源、能力、计划/段状态及内联降级；键盘/Narrator 可操作，窗口重载按快照+revision 恢复。 | `pnpm test:e2e -- radio`; `pnpm test:axe`; execute TEST-RAD-001/002/004 | Done |
 | TASK-020 | M4 | FR-RAD-005, FR-CHAT-001, FR-CHAT-002, FR-CHAT-003; NFR-COST-001 | TASK-016, TASK-018, TASK-019 | API-026, API-027, API-038, EVT-004, EVT-011, chat and feedback UI | 文字请求可发送/取消；无能力声明遵守人格边界；反馈立即持久化并调整节目，取消不产生 AI 回复或提案。 | `cargo test chat_ feedback_`; `pnpm test:e2e -- chat-feedback`; execute TEST-CHAT-001/002/003 | Done |
 | TASK-021 | M4 | FR-MEM-001, FR-MEM-002, FR-MEM-003, FR-MEM-004; NFR-PRIV-005 | TASK-007, TASK-016 | memory/profile domain, API-028..031, API-039, API-044, API-045, EVT-006 | proposal/approved/disabled 严格隔离，维护 nullable `lastUsedAt`，支持审批/编辑/拒绝/停用/删除和画像编辑，删除抑制旧摘要复活并在下一次 Context 生效。 | `cargo test memory_ context_memory_ profile_`; execute TEST-MEM-001/002/003 | Done |
@@ -53,16 +53,18 @@
 | TASK-029 | M7 | FR-RAD-007, FR-WEA-002; NFR-OFF-001, NFR-OFF-002, NFR-OFF-003, NFR-REL-002, NFR-REL-004 | TASK-018, TASK-023, TASK-024, TASK-026, TASK-027 | recovery coordinator, offline state/retry policy | 完全离线核心本地能力可用；provider 独立降级；恢复只刷新免费状态，不重放付费/出声动作；崩溃/休眠安全恢复。 | `cargo test recovery_ offline_`; `pnpm test:e2e -- offline`; execute TEST-OFF-001/002 and TEST-REL-001 | Ready |
 | TASK-030 | M7 | NFR-A11Y-001, NFR-A11Y-002, NFR-A11Y-003, NFR-A11Y-004, NFR-COMPAT-003 | TASK-010, TASK-012, TASK-019, TASK-022, TASK-027, TASK-028 | frontend accessibility/responsive hardening only | 核心流程键盘/Narrator/axe 通过；对比、目标尺寸、live region、减少动画和分辨率/缩放矩阵全部达标，无业务行为变更。 | `pnpm test:axe`; `pnpm test:visual`; execute TEST-A11Y-001/002 and TEST-COMPAT-002 | Ready |
 | TASK-031 | M7 | NFR-COMPAT-001, NFR-SEC-002, NFR-SEC-005 | TASK-029, TASK-030 | build config, NSIS, SBOM/license notices, release scripts | 可复现 per-user NSIS、固定 WebView2 策略、哈希/SBOM/许可证清单、升级卸载和回滚检查完成；依赖无 Critical/High。 | `pnpm build`; `cargo audit`; `pnpm audit --prod`; execute TEST-COMPAT-001 and TEST-SEC-003 | Blocked |
-| TASK-032 | M7 | FR-ONB-001, FR-RAD-001, FR-LIB-001, FR-APL-001, FR-CHAT-001, FR-MEM-001, FR-SCH-001, FR-WEA-001, FR-SET-001, FR-DAT-001; NFR-PERF-005, NFR-SEC-004, NFR-MAINT-001, NFR-MAINT-002, NFR-MAINT-003 | TASK-031 | tests, evidence manifest, docs/status only | 全部 P0/P1 `TEST-*` 有可核验证据；资源/安全/覆盖率/文档门槛通过；追踪矩阵无缺口，Changelog 完成，候选制品可供用户批准。 | `pnpm verify`; `cargo test --workspace`; `powershell -File scripts/verify-docs.ps1`; release evidence audit | Blocked |
+| TASK-032 | M7 | FR-ONB-001, FR-RAD-001, FR-LIB-001, FR-APL-001, FR-CHAT-001, FR-MEM-001, FR-SCH-001, FR-WEA-001, FR-SET-001, FR-DAT-001; NFR-PERF-002, NFR-PERF-005, NFR-REL-001, NFR-SEC-004, NFR-MAINT-001, NFR-MAINT-002, NFR-MAINT-003 | TASK-031 | tests, evidence manifest, docs/status only | 全部 P0/P1 `TEST-*` 有可核验证据；100 首扫描、10 分钟节目、资源/安全/覆盖率/文档门槛通过；非阻断 10,000 条合成规模与 30 分钟虚拟时序结果入档；追踪矩阵无缺口，Changelog 完成，候选制品可供用户批准。 | `pnpm verify`; execute `TEST-LIB-002` and `TEST-RAD-005`; `cargo test --workspace`; `powershell -File scripts/verify-docs.ps1`; release evidence audit | Blocked |
 
 ## 3. 里程碑放行
 
 M1–M6 以 milestone checkpoint 为转场单位。全部计划内任务达到 `Done` 后，由 Lead Agent 生成单一 checkpoint：可运行或可演示 candidate、完成范围、主路径结果、硬门槛结果、未运行/失败检查及其计划 milestone。hard gates 通过时记录为 `Passed` 或 `Passed with known gaps`，立即把当前 milestone 标为完成、将下一 milestone 设为 Active 并继续，不等待人工确认；hard gate 失败时只能记录为 `Blocked`。不得把失败写成通过，也不得只用任务 `Done` 推断 checkpoint 通过。
 
-M1–M6 使用 prototype gate：主开发机上能启动或完成该 milestone 的主路径；改动过的 schema/公共契约有效；没有已知数据损坏、secret 泄露、越权文件/网络访问、未经确认的声音或付费调用、Critical/High 安全问题。逐行覆盖率、完整 Win10/Win11 与缩放矩阵、全状态截图、Narrator 全流程、10,000 首性能和长时间 soak 可作为 known gaps 递延到 M7，除非某项本身就是该 milestone 要消除的技术风险。M7 beta/release 不自动放行，仍需用户批准。
+M1–M6 使用 prototype gate：主开发机上能启动或完成该 milestone 的主路径；改动过的 schema/公共契约有效；没有已知数据损坏、secret 泄露、越权文件/网络访问、未经确认的声音或付费调用、Critical/High 安全问题。逐行覆盖率、完整 Win10/Win11 与缩放矩阵、全状态截图、Narrator 全流程、发布规模曲库性能和节目稳定性可作为 known gaps 递延到 M7，除非某项本身就是该 milestone 要消除的技术风险。M7 beta/release 不自动放行，仍需用户批准。
 
 技术探针可以推翻某个实现选择，但不能静默改变用户行为。`TASK-002` 的 `Manual-TASK-002` 与其他 M1 探针证据在 M1 checkpoint 一次性汇总，不再作为单独任务签字点。若 TASK-001/002/003 触发 `RISK-001`、`RISK-002` 或新的系统权限，先更新 ADR、需求、威胁模型、契约和本 Backlog，再请求用户批准。M7 完成只产生内测候选；签名、发布、上传或向外部用户分发仍需单独授权。
 
 M5 `TASK-023` 与 `TASK-024` 已完成并由 [`M5 checkpoint`](../testing/checkpoints/M5.md) 和 [`evidence manifest`](../../artifacts/test-evidence/milestones/M5/manifest.json) 聚合。最终 candidate 为 `f33f417a8d34983f4682105380967301c8122503`；全部 M5 hard gates 以及 weather/schedule Windows desktop E2E 通过。真实 Windows toast 人工交互、完整 DST/休眠/重复/离线矩阵及其他非硬门槛项如实递延至 M7。M5 以 `Passed with known gaps` 关闭；Product Owner 于 2026-09-05 解除 post-M5 stop condition 并授权 M6，因此 `TASK-025` 已认领，`TASK-027`、`TASK-028` 可执行，`TASK-026` 继续等待 `TASK-025` 依赖。
 
 M6 最终由 [`M6 checkpoint`](../testing/checkpoints/M6.md) 和 [`evidence manifest`](../../artifacts/test-evidence/milestones/M6/manifest.json) 记录为 `Passed with known gaps`。candidate `ea2f2fcc4d5ff077291119936aa975b37e84fe75` 修复了 sealed scan 的 6 Medium/3 Low finding families；独立复核追加发现并关闭一个 full-reset 准入竞态，最终无 open Critical/High。Apple Music Windows App `1.1540.23042.0` 的产品服务实机会话完成连接、真实 track/capability 观察及一次实际通用 TTS pause/restore，全部 M6 hard gates 通过。`TASK-025`–`TASK-028` 均为 `Done`，M7 已自动激活，`TASK-029`/`TASK-030` 进入 `Ready`；跨版本、50 次 convergence、实机用户抢占/会话消失与破坏性重启空状态矩阵作为 M7 known gaps 保留。
+
+Product Owner 于 2026-09-08 将 M7 beta 的本地规模/长稳硬门槛调整为 100 首六格式端到端扫描与 1 次真实加 10 次加速的 10 分钟节目。10,000 条合成目录/数据库记录和 30 分钟虚拟时序保留为非阻断工程守卫；其失败需登记风险，但不单独阻止小规模 beta candidate。

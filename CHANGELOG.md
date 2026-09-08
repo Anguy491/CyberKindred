@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Release Steward |
-| Last Verified | 2026-09-06 |
+| Last Verified | 2026-09-08 |
 | Source of Truth For | 用户可感知变更与破坏性契约变更历史 |
 | Related Documents | `docs/operations/BUILD-RELEASE.md`, `docs/planning/BACKLOG.md` |
 
@@ -14,6 +14,7 @@
 
 ### Changed
 
+- Product Owner 将 M7 beta 的规模与稳定性硬门槛调整为固定 100 首六格式曲库端到端扫描（3 次取最差、≤2 分钟）以及 1 次真实加 10 次加速的 10 分钟节目；PRD 用户成功目标同步为连续收听至少 10 分钟。10,000 条合成目录/数据库性能与 30 分钟虚拟时序保留为非阻断工程守卫，不再宣称 beta 支持 10,000 首或以 30 分钟实播作为发布条件。
 - M6 checkpoint 以 `Passed with known gaps` 关闭：candidate `ea2f2fcc4d5ff077291119936aa975b37e84fe75` 修复原 sealed review 的 6 Medium/3 Low finding families，以及 fresh bypass review 追加发现的一个 High reset-admission race；最终无 open Critical/High。Apple Music Windows App `1.1540.23042.0` 的产品服务实机会话已完成连接、真实 track/capability 观察和一次通用 TTS pause/restore，M7 自动激活。
 - Apple source 现在在切回 Local、替换来源和 shutdown 时 await deactivation；activation generation 使旧 TTS interruption token 失效，避免继续观察或恢复已不再授权的会话。
 - 数据控制增加 producer lifecycle fences：分类删除阻止晚到天气/导出重建数据，profile 删除清位置且旧反馈不重建新画像趋势，对话删除移除 source hash；full reset 原子关闭并等待 radio、scanner、understanding、provider preview、playback、scheduler 和 retention 后再清凭据/存储/文件。

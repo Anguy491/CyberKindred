@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Quality Engineering |
-| Last Verified | 2026-09-03 |
+| Last Verified | 2026-09-08 |
 | Source of Truth For | Documentation Baseline v1 的端到端验收场景库存、证据格式和 beta 发布判定 |
 | Related Documents | `docs/product/FRS.md`; `docs/product/NFRS.md`; `docs/testing/TEST-STRATEGY.md`; `docs/testing/TRACEABILITY.md`; `docs/planning/ROADMAP.md` |
 
@@ -31,14 +31,14 @@
 | Test ID | Covers | Mode | Scenario and expected evidence |
 |---|---|---|---|
 | TEST-LIB-001 | FR-LIB-001, FR-LIB-003, NFR-COMPAT-002 | Automated integration | 扫描各 5 个 MP3、FLAC、M4A/MP4、AAC、WAV、OGG 许可样本以及损坏/不支持样本；验证标签、封面、时长、错误隔离、移动/修改/删除增量结果及不复制原音频。 |
-| TEST-LIB-002 | FR-LIB-002, NFR-PERF-002 | Automated performance | 扫描固定 10,000 首曲库，总耗时≤15 分钟、UI 主线程最长任务≤100 ms、进度更新间隔≤500 ms；中途取消，确认≤1 秒被接受且已提交记录一致，再次增量扫描可完成。 |
+| TEST-LIB-002 | FR-LIB-002, NFR-PERF-002 | Automated performance | 以程序生成且不含用户音乐的固定 100 文件六格式 fixture 执行 3 次完整扫描并取最差结果：总耗时≤2 分钟、UI 主线程最长任务≤100 ms；扫描持续超过 500 ms 时进度更新间隔≤500 ms。中途取消，确认≤1 秒被接受且已提交记录一致；随后验证无变化增量扫描及新增、修改、移动、删除后重扫。 |
 | TEST-LIB-003 | FR-LIB-004, FR-LIB-005, NFR-PRIV-004, NFR-OFF-002 | Automated contract | 对 MusicBrainz fake 捕获请求，只允许文本标签且不含音频/路径；模拟低置信多候选，确认不覆盖原标签。验证搜索、状态过滤及原始/补全来源展示；阻断 metadata provider 后≤2 秒显示独立降级状态，缓存项仍显示 MusicBrainz 来源和缓存时间。 |
 | TEST-LIB-004 | FR-LIB-006, FR-RAD-002 | Automated domain | 固定时钟和随机种子生成候选集；验证重复冷却、反馈、画像、批准记忆规则，且模型输出候选外 ID 时计划被修复或降级为有效真实 ID。 |
 | TEST-RAD-001 | FR-RAD-001, FR-RAD-003 | Automated E2E | 用户点击开始 6 首本地节目；验证一次开场、常规串场间隔 2–3 首和所有声音由本次动作授权。后台日程到点但未确认时不调用 LLM/TTS/播放器。 |
 | TEST-RAD-002 | FR-RAD-004, FR-RAD-005, NFR-PERF-003 | Automated E2E | 对播放/暂停/上一首/下一首/进度、喜欢/跳过/少说一点各执行 200 次；每次将 UI 显示的 Now Playing、来源、进度、节目状态与权威后端快照逐字段比对，并验证 capability 门控。输入到视觉确认 P95≤100 ms，输入到本地音频动作 P95≤300 ms。反馈事件立即持久化且历史事件不可改写；在下一次候选生成中断言喜欢提高、跳过降低对应偏好；本节目串场变为每 4–6 首至多一次。 |
 | TEST-RAD-003 | FR-RAD-006 | Automated integration | 结束本地节目时停止本地/TTS 并记录原因；结束 Apple 陪伴时释放监听。测试结束瞬间第三方会话已被用户改变，确认不停止或改写新状态。 |
 | TEST-RAD-004 | FR-RAD-007, NFR-REL-003, NFR-OFF-002 | Automated fault injection | 对 LLM/TTS 分别注入超时、429、5xx、无效 JSON 和离线；每个 Provider 故障在≤2 秒内显示独立降级状态。LLM 结构化失败最多重试一次，TTS 不自动重播且保留文字，本地队列继续，错误只显示一次且其他 Provider 状态不受影响。 |
-| TEST-RAD-005 | NFR-REL-001 | Automated soak + manual audio | 固定 fixture 运行 100 次 30 分钟节目；断言无未处理异常/退出、非预期静音不超过 2 秒、相邻曲目转换成功率至少 99%，保存音频探针与事件时间线。 |
+| TEST-RAD-005 | NFR-REL-001 | Automated soak + manual audio | 固定生成式 fixture 运行 1 次真实 10 分钟节目和 10 次加速 10 分钟节目；断言无未处理异常/退出、非预期静音不超过 2 秒、相邻曲目转换成功率至少 99%，并保存音频探针、CPU/内存趋势与事件时间线。另执行 30 分钟虚拟时序工程守卫，其结果记录但不单独阻断 beta。 |
 
 ## 4. Apple Music 陪伴模式
 

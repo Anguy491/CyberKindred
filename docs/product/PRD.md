@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Product |
-| Last Verified | 2026-09-02 |
+| Last Verified | 2026-09-08 |
 | Source of Truth For | 产品愿景、目标用户、首发范围、非目标和成功定义 |
 | Related Documents | `docs/product/FRS.md`; `docs/product/NFRS.md`; `docs/product/AI-BEHAVIOR.md`; `docs/product/UX-SPEC.md`; `docs/planning/ROADMAP.md` |
 
@@ -55,7 +55,7 @@ Documentation Baseline v1 约束一个 Windows 10 22H2 / Windows 11 x64 可安�
 ### 6.1 用户成功
 
 - 新用户无需开发者协助即可完成安装、引导、导入本地曲库并启动首个节目。
-- 用户可连续收听至少 30 分钟，音乐不中断于非必要的 AI 交互，且能理解每个主要控制的当前状态。
+- 用户可连续收听至少 10 分钟，音乐不中断于非必要的 AI 交互，且能理解每个主要控制的当前状态。
 - 用户能准确说出系统长期记住的内容，并能在一个页面内纠正或删除任一记忆。
 - Apple Music 用户能区分“陪伴控制”与“精确点歌”，且 UI 不展示当前会话不支持的动作。
 - 到点提醒不会造成意外出声；确认、忽略和稍后处理都具有明确结果。

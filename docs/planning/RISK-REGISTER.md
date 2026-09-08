@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Lead Agent |
-| Last Verified | 2026-09-06 |
+| Last Verified | 2026-09-08 |
 | Source of Truth For | 已知项目风险、触发条件、缓解和关闭标准 |
 | Related Documents | `ROADMAP.md`, `../security/THREAT-MODEL.md`, `../integrations/EXTERNAL-INTEGRATIONS.md` |
 
@@ -21,7 +21,7 @@
 | RISK-007 | MusicBrainz 错误匹配覆盖用户标签或触发封禁 | M | M | 低置信度自动覆盖或 >1 request/s | 保留原始标签、阈值/人工状态、全局 1 rps、User-Agent、永久缓存、429 backoff | Metadata | Open |
 | RISK-008 | 外部天气/元数据不可用、城市查询披露或条款变化 | H | M | timeout、offline、quota/terms change，或 Geocoding query 超出用户显式动作 | 上下文可选、搜索手势门控/字段白名单/10分钟内存候选、缓存、短超时、provider kill switch；无天气/无增强正常运行 | Integrations | Open |
 | RISK-009 | 长期记忆/摘要错误、越界或删除后复活 | M | H | 未批准事实进入 prompt，或删除后仍可检索/由清理任务重建 | proposal/approved 分离、来源状态、summary deletion tombstone、级联清除敏感 outbox、重启与导出验证 | AI/Data | Open |
-| RISK-010 | 大曲库扫描阻塞 UI 或占用过多资源 | M | M | 10,000 首扫描无响应、内存/CPU 超阈值 | 后台有界并发、增量事务、进度/取消、mtime/hash 去重、性能预算 | Library | Open |
+| RISK-010 | 支持范围内曲库扫描阻塞 UI，或更大规模出现非线性退化 | M | M | 100 首端到端扫描超过 2 分钟、UI/取消超阈值，或 10,000 条合成规模守卫显示明显非线性增长 | 100 首六格式发布硬门槛；后台有界并发、增量事务、进度/取消、mtime/hash 去重；10,000 条合成目录/数据库基准作为非阻断早期预警，不宣称 beta 支持该规模 | Library | Open |
 | RISK-011 | 未签名 NSIS 触发 SmartScreen，阻碍内测 | H | M | 测试者无法辨识或安装 | 校验和、来源说明、最小测试群；公开发布前取得代码签名，不绕过系统安全 | Release | Open |
 | RISK-012 | 第三方字体、音频库或服务许可证不适合分发/商业化 | M | H | 许可证扫描或条款审查不通过 | Dependency Policy、NOTICE/SBOM、非商业内测限定；商业化前法律复核 | Legal | Open |
 | RISK-013 | 文档与实现漂移导致自主开发错误 | M | H | contract/traceability 检查失败、双向映射不对称或行为无 FR | docs-first change coupling、schema tests、ID/link lint、Requirement↔Test/Task 双向检查、每任务文档联动门槛 | Lead | Open |

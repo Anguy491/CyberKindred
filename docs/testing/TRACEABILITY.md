@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Engineering Lead & Quality Engineering |
-| Last Verified | 2026-09-06 |
+| Last Verified | 2026-09-08 |
 | Source of Truth For | 每个 FR/NFR 到 UX、架构、契约、测试、任务和里程碑的逐项追踪关系 |
 | Related Documents | `docs/product/FRS.md`; `docs/product/NFRS.md`; `docs/product/UX-SPEC.md`; `docs/architecture/ARCHITECTURE.md`; `docs/contracts/API-CONTRACT.md`; `docs/testing/ACCEPTANCE-TESTS.md`; `docs/planning/BACKLOG.md` |
 
@@ -18,7 +18,7 @@ M1 已由 [`M1 checkpoint`](checkpoints/M1.md) 与其 [`evidence manifest`](../.
 
 M2 的最终实现证据与 2026-09-02 历史 hard-gate 失败由 [`M2 checkpoint`](checkpoints/M2.md) 及其 [`evidence manifest`](../../artifacts/test-evidence/milestones/M2/manifest.json) 聚合记录。`TASK-004`–`TASK-010` 已集成；Node/W3C desktop smoke 实际完成首次七步本地降级 onboarding、静音 RADIO 与 Settings 导航。Product Owner 已解决 credential 生命周期、model probe 流程和 terminal delivery 语义，`RISK-016`–`RISK-018` 已关闭；最终 hard gates 全部通过，M2 以 `Passed with known gaps` 关闭并激活 M3 `TASK-011`。未运行的完整性能、跨版本、真实 TTS 与后续专用 API 场景仍按 checkpoint 目标保留，不改写为通过。
 
-M3 `TASK-011` 已集成六格式授权根扫描、坏文件隔离、碰撞容忍的增量身份匹配、事务批处理、取消以及唯一权威 terminal/outbox 重放。代表性许可 fixture 的 TEST-LIB-001/002 自动化路径通过；10,000 首性能矩阵仍保留到 M3 checkpoint 作为可明确标注的 `Not Run`/M7 known gap，不影响后续 M3 切片推进。
+M3 `TASK-011` 已集成六格式授权根扫描、坏文件隔离、碰撞容忍的增量身份匹配、事务批处理、取消以及唯一权威 terminal/outbox 重放。代表性许可 fixture 的 TEST-LIB-001/002 自动化路径通过；M3 checkpoint 当时记录的旧版 10,000 首性能矩阵为 `Not Run`，该发布门槛已由 2026-09-08 Product Owner 决策替换为 100 首端到端扫描，历史证据不回写为已执行。
 
 M3 `TASK-012`–`TASK-014` 已集成 path-free API-015/曲库 UI、严格 MusicBrainz/CAA 最小披露与限流缓存边界，以及 API-016–API-023/EVT-001 串行本地播放 actor。Library 的 focused Rust/TypeScript/axe 路径、metadata hermetic provider/低置信保留原标签、本地六格式解码与未授权零设备打开均通过；真实听感、双设备切换、联网 metadata artifact 持久化与 desktop library E2E 保留到 M3 checkpoint 如实标注。
 
@@ -26,7 +26,7 @@ M3 `TASK-015` 已集成最多 200 个 path-free 真实候选的确定性评分�
 
 M3 `TASK-016` 已集成 stateless OpenAI Responses ProgramPlan provider：请求固定 HTTPS `/v1/responses`、`store:false`、空 tools/`tool_choice:none`、strict `json_schema`、24k/4k 预算和 60 秒 deadline；上下文按 policy、画像、approved memory、可选天气、摘要、近期轮次、当前请求与 path-free candidates 排序并过滤 secret/路径。Hermetic tests 覆盖封闭请求、结构化失败恰好一次修复、取消/超时、provider 分类和候选外 ID 交回领域校验；真实联网调用保持 `Not Run`，不作为默认测试副作用。
 
-M3 的最终实现证据由 [`M3 checkpoint`](checkpoints/M3.md) 及其 [`evidence manifest`](../../artifacts/test-evidence/milestones/M3/manifest.json) 聚合记录。`TASK-011`–`TASK-019` 已集成：代表性许可六格式 fixture 完成扫描/标签、确定性计划、六曲连续本地节目、显式停止和 OpenAI/TTS 不可用时的文字 fallback；Radio UI 只在用户点击“开始节目”后调用 API-024，并以 `programId`/revision 丢弃陈旧事件。Rust、TypeScript、契约、axe、视觉、E2E harness、自检和安全差异审查均通过；实机出声、完整 Tauri Radio E2E、10,000 首、200 次控制采样、100×30 分钟 soak、Narrator/跨平台矩阵保持 `Not Run`，按 checkpoint 记录为 M7 known gaps。M3 以 `Passed with known gaps` 关闭。
+M3 的最终实现证据由 [`M3 checkpoint`](checkpoints/M3.md) 及其 [`evidence manifest`](../../artifacts/test-evidence/milestones/M3/manifest.json) 聚合记录。`TASK-011`–`TASK-019` 已集成：代表性许可六格式 fixture 完成扫描/标签、确定性计划、六曲连续本地节目、显式停止和 OpenAI/TTS 不可用时的文字 fallback；Radio UI 只在用户点击“开始节目”后调用 API-024，并以 `programId`/revision 丢弃陈旧事件。Rust、TypeScript、契约、axe、视觉、E2E harness、自检和安全差异审查均通过；当时的实机出声、完整 Tauri Radio E2E、10,000 首、200 次控制采样、100×30 分钟 soak、Narrator/跨平台矩阵保持 `Not Run`。其中规模与长稳门槛已由 2026-09-08 决策替换为 100 首与 10 分钟，历史 checkpoint 不回写结果；其他缺口仍按 M7 处理。M3 以 `Passed with known gaps` 关闭。
 
 M4 的最终实现证据由 [`M4 checkpoint`](checkpoints/M4.md) 及其 [`evidence manifest`](../../artifacts/test-evidence/milestones/M4/manifest.json) 聚合记录。Product Owner 于 2026-09-03 解除 post-M3 stop 并只授权 M4；`TASK-020`、`TASK-021`、`TASK-022` 已按依赖完成。文字请求/取消/反馈、确定性无付费降级、画像和趋势、提案审批/编辑/拒绝、记忆停用/启用/删除、摘要查看/删除、approved-memory-only Context、创建后 30 天原文清理及启动/每 24 小时维护均已集成。完整 Rust、TypeScript、契约、axe、视觉、依赖策略与精确 candidate 安全差异审查通过；完整 Tauri chat/memories E2E、live provider/实机音频、TEST-AI-001 固定评估集、删除后 20 轮语义级复活回归和 Narrator/分辨率矩阵保留为 M7 known gaps。M4 以 `Passed with known gaps` 关闭；按 Product Owner stop condition，M5 未激活。
 
@@ -35,6 +35,8 @@ M5 的最终实现证据由 [`M5 checkpoint`](checkpoints/M5.md) 及其 [`eviden
 M6 的当前证据由 [`M6 checkpoint`](checkpoints/M6.md) 及其 [`evidence manifest`](../../artifacts/test-evidence/milestones/M6/manifest.json) 聚合。candidate `9c3add0853082c857d7de490904a94e58e69fc9` 已实现 API-016–025、Apple App GSMTC adapter、显式 discovery、真实字段/capability 映射、本地确定性反应、通用 TTS interruption、设置/托盘/自启动与 API-036/037/040–042 数据控制；自动化契约、Rust、React、构建和文档检查通过。最终 45/45 文件安全差异审查为 6 Medium、3 Low、零 Critical/High，但证明切回 Local 后 Apple observation 未撤销、切源可保留旧 TTS resume 权限、分类删除/天气 late write/export staging/Library Index 约束和 full-reset quiescence 不满足 FR-APL-005、FR-DAT-004/005 与 NFR-PRIV-003/NFR-REL-004。`TEST-APL-001/002/004` 的真实 Windows App 主路径仍 `waiting for user`；因此 checkpoint 为 `Blocked`，`TASK-027` 回退为 `Blocked`，M7 未激活。
 
 上一段保留 2026-09-05 初始 checkpoint 的历史阻塞证据，其中“当前”仅指该候选当时的状态。M6 的最终证据仍由同一 [`M6 checkpoint`](checkpoints/M6.md) 及 [`evidence manifest`](../../artifacts/test-evidence/milestones/M6/manifest.json) 聚合记录：candidate `ea2f2fcc4d5ff077291119936aa975b37e84fe75` 修复 sealed review 的 Apple 授权、分类删除、weather/export race、Library Index 完整性和 full-reset quiescence findings。Apple Music Windows App `1.1540.23042.0` 的产品服务实机会话完成连接、结构化 track/capability 观察和一次真实 generic-TTS pause/restore；Apple 数据未进入 provider。fresh bypass review 追加发现的一个 High reset-admission race 已通过四个 producer 的原子准入门及实际任务完成等待关闭，最终无 open Critical/High。全部 M6 hard gates 通过，checkpoint 为 `Passed with known gaps`，`TASK-025`–`TASK-028` 均为 `Done` 并自动激活 M7；50 次/跨版本/实机抢占与会话消失、破坏性 native reset/restart 及 `RISK-022` 对抗性证明保留为 M7 evidence。
+
+Product Owner 于 2026-09-08 调整 M7 质量规模：`NFR-PERF-002`/`TEST-LIB-002` 的发布硬门槛为 100 首六格式文件端到端扫描，`NFR-REL-001`/`TEST-RAD-005` 为 1 次真实及 10 次加速的 10 分钟节目。10,000 条合成目录/数据库规模与 30 分钟虚拟时序仍作为非阻断工程守卫记录，不构成 beta 支持声明；最终证据由 `TASK-032` 聚合。
 
 ## 2. Functional requirements
 
@@ -128,11 +130,11 @@ M6 的当前证据由 [`M6 checkpoint`](checkpoints/M6.md) 及其 [`evidence man
 | Requirement | UX | Architecture | Contract | Test | Task | Milestone |
 |---|---|---|---|---|---|---|
 | NFR-PERF-001 | UX-STA-001 | ARCH-012, ARCH-016 | API-001, [`API-CONTRACT.md` §3.1](../contracts/API-CONTRACT.md#31-app-onboarding-settings-and-secrets) | TEST-ONB-004 | TASK-010 | M2 |
-| NFR-PERF-002 | UX-LIB-002 | ARCH-005, ARCH-012 | API-013, API-014, EVT-005 | TEST-LIB-002 | TASK-011 | M3 |
+| NFR-PERF-002 | UX-LIB-002 | ARCH-005, ARCH-012 | API-013, API-014, EVT-005 | TEST-LIB-002 | TASK-011, TASK-032 | M3/M7 |
 | NFR-PERF-003 | UX-RAD-003, UX-STA-007 | ARCH-013, ARCH-016 | API-019–API-023, API-027, EVT-001 | TEST-RAD-002 | TASK-002, TASK-012, TASK-014, TASK-019 | M1/M3 |
 | NFR-PERF-004 | UX-RAD-002, UX-STA-006 | ARCH-004, ARCH-013 | EVT-001, [`playback-event.schema.json`](../contracts/schemas/playback-event.schema.json) | TEST-APL-002 | TASK-001, TASK-025 | M1/M6 |
 | NFR-PERF-005 | UX-WIN-003 | ARCH-012, ARCH-018 | [`API-CONTRACT.md` §4](../contracts/API-CONTRACT.md#4-events) | TEST-RESOURCE-001 | TASK-032 | M7 |
-| NFR-REL-001 | UX-RAD-002, UX-STA-003 | ARCH-005, ARCH-013 | EVT-001–EVT-003, [`playback-event.schema.json`](../contracts/schemas/playback-event.schema.json) | TEST-RAD-005 | TASK-014, TASK-018 | M3 |
+| NFR-REL-001 | UX-RAD-002, UX-STA-003 | ARCH-005, ARCH-013 | EVT-001–EVT-003, [`playback-event.schema.json`](../contracts/schemas/playback-event.schema.json) | TEST-RAD-005 | TASK-014, TASK-018, TASK-032 | M3/M7 |
 | NFR-REL-002 | UX-STA-003 | ARCH-006, ARCH-013, ARCH-016 | API-018, ERR-1402, [`API-CONTRACT.md` §5](../contracts/API-CONTRACT.md#5-error-registry) | TEST-REL-001 | TASK-007, TASK-029 | M2/M7 |
 | NFR-REL-003 | UX-STA-003, UX-STA-005 | ARCH-008, ARCH-015 | ERR-1302–ERR-1305, [`provider-error.schema.json`](../contracts/schemas/provider-error.schema.json) | TEST-RAD-004 | TASK-015, TASK-016, TASK-018 | M3 |
 | NFR-REL-004 | UX-STA-005, UX-STA-006 | ARCH-013 | EVT-001, EVT-010, [`playback-state.schema.json`](../contracts/schemas/playback-state.schema.json), [`playback-event.schema.json`](../contracts/schemas/playback-event.schema.json) | TEST-APL-004 | TASK-002, TASK-014, TASK-024, TASK-025, TASK-026, TASK-029 | M1/M3/M5/M6/M7 |

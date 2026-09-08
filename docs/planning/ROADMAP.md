@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | Product Owner / Lead Agent |
-| Last Verified | 2026-09-06 |
+| Last Verified | 2026-09-08 |
 | Source of Truth For | 里程碑顺序、依赖与阶段退出条件 |
 | Related Documents | `../product/PRD.md`, `BACKLOG.md`, `RISK-REGISTER.md`, `../testing/TEST-STRATEGY.md`, `../architecture/adr/ADR-0007-milestone-prototype-delivery.md` |
 
@@ -54,7 +54,7 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 **Goal:** 从导入曲库到生成并连续播放一次完整本地节目。
 
-**Checkpoint criteria:** 交付首个可用原型：在代表性许可 fixture 上完成“扫描/标签 → 计划 → 用户点击开始 → 连续播放一次本地节目 → 控制/停止”的主路径；OpenAI/TTS 不可用时能明确降级到确定性本地队列与文字。完整格式矩阵、10,000 首压力、200 次延迟采样和 30 分钟 soak 可递延到 M7。
+**Checkpoint criteria:** 交付首个可用原型：在代表性许可 fixture 上完成“扫描/标签 → 计划 → 用户点击开始 → 连续播放一次本地节目 → 控制/停止”的主路径；OpenAI/TTS 不可用时能明确降级到确定性本地队列与文字。完整格式矩阵、发布规模曲库性能、重复延迟采样和长稳测试可递延到 M7。
 
 ## M4 — Understanding and conversation
 
@@ -86,7 +86,7 @@ Roadmap 描述阶段、checkpoint 结论和自动转场，不承载具体任务�
 
 **Goal:** 交付本人及少量内测者可独立安装和恢复的 Windows 版本。
 
-**Release criteria:** 不再允许未批准的 prototype known gaps。30 分钟节目、10,000 首曲库、安装/卸载/升级、数据导出与清除、离线/限流/损坏恢复、无障碍与隐私验收全部通过；满足全部 P0/P1 与覆盖率门槛，生成版本化 NSIS 制品、证据清单和 Changelog。
+**Release criteria:** 不再允许未批准的 prototype known gaps。1 次真实 10 分钟节目与 10 次加速 10 分钟节目、100 首六格式曲库端到端性能、安装/卸载/升级、数据导出与清除、离线/限流/损坏恢复、无障碍与隐私验收全部通过；满足全部 P0/P1 与覆盖率门槛，生成版本化 NSIS 制品、证据清单和 Changelog。10,000 条合成规模基准与 30 分钟虚拟时序作为非阻断工程守卫记录结果。
 
 ## Deferred beyond v1
 

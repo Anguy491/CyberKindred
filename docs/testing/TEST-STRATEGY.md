@@ -4,7 +4,7 @@
 |---|---|
 | Status | Approved |
 | Owner | QA Steward |
-| Last Verified | 2026-09-02 |
+| Last Verified | 2026-09-08 |
 | Source of Truth For | 测试层级、环境、fixture、质量门槛与证据 |
 | Related Documents | `ACCEPTANCE-TESTS.md`, `TRACEABILITY.md`, `../product/NFRS.md`, `../planning/ROADMAP.md`, `../architecture/adr/ADR-0007-milestone-prototype-delivery.md`, `../contracts/` |
 
@@ -76,7 +76,7 @@ M1 的 `TASK-002` 真实解码听感、播放/暂停/seek、默认设备切换�
 - candidate 在主要开发机可启动，并能完成 Roadmap 为当前 milestone 定义的主路径或技术演示。
 - 对当前主路径至少保留一次成功证据和一个最重要失败/降级路径的结果；测试可以是 focused automation、人工 smoke 或两者组合。
 - 相关 hard gates 全部通过：secret 不进入前端/日志，文件和网络不越权，声音与可能付费动作只由用户明确触发，改动过的公共契约有效，无已知数据损坏，无 open Critical/High security finding。
-- 覆盖率只采集趋势，不设阻塞阈值；完整 Win10/Win11、分辨率/缩放、Narrator、10,000 首、200 次采样与 soak 默认递延到 M7，除非它们是当前 milestone 的明确目标。
+- 覆盖率只采集趋势，不设阻塞阈值；完整 Win10/Win11、分辨率/缩放、Narrator、100 首端到端扫描、200 次采样与 10 分钟节目稳定性默认递延到 M7，除非它们是当前 milestone 的明确目标。
 - checkpoint 记录 candidate commit、环境、已执行检查、实际失败、known gaps、规避方式和目标 milestone。hard gates 通过时由 Lead Agent 记录 `Passed` 或 `Passed with known gaps` 并自动转场；实际失败不能改写成通过。hard gate 失败时记录 `Blocked`，不得跨 milestone 绕过。
 
 ### M7 beta release
@@ -87,8 +87,10 @@ M1 的 `TASK-002` 真实解码听感、播放/暂停/seek、默认设备切换�
 - Contract schema/examples are 100% validated and current migrations pass from every supported schema version.
 - Full default suite passes twice on clean checkout/build.
 - Manual Windows 10 22H2 and Windows 11 x64 smoke test passes.
-- Real Apple Music subscription suite and 10,000-track performance suite pass in recorded environments.
-- Installer hash, install/uninstall, retained/deleted data, restart recovery and 30-minute radio session pass.
+- Real Apple Music subscription suite and the 100-track, six-format end-to-end performance suite pass in recorded environments.
+- Installer hash, install/uninstall, retained/deleted data, restart recovery, one real-time 10-minute radio session and ten accelerated 10-minute sessions pass.
+
+M7 另运行两个非阻断工程守卫并如实记录结果：10,000 条不含用户音乐的合成目录/数据库记录用于发现非线性扫描、索引、分页或候选查询退化；30 分钟虚拟时序节目用于发现较长 timer/state-machine 漂移。二者失败必须进入风险登记，但不单独阻止当前小规模 beta candidate。
 
 ## Live-test isolation
 
