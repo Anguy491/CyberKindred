@@ -47,6 +47,9 @@ impl RadioIdFactory for FixedId {
 struct FakePlanner {
     calls: AtomicUsize,
     fail: AtomicBool,
+    block: AtomicBool,
+    cancelled: AtomicBool,
+    started: Notify,
 }
 
 impl FakePlanner {
@@ -54,6 +57,9 @@ impl FakePlanner {
         Self {
             calls: AtomicUsize::new(0),
             fail: AtomicBool::new(false),
+            block: AtomicBool::new(false),
+            cancelled: AtomicBool::new(false),
+            started: Notify::new(),
         }
     }
 }
@@ -62,10 +68,18 @@ impl ProgramRadioPlanner for FakePlanner {
     fn plan_local(
         &self,
         program_id: Uuid,
+        mut cancellation: watch::Receiver<bool>,
     ) -> traits::RadioFuture<'_, Result<PlannedProgram, ApiError>> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         let fail = self.fail.load(Ordering::SeqCst);
         Box::pin(async move {
+            self.started.notify_one();
+            while self.block.load(Ordering::SeqCst) {
+                if cancellation.changed().await.is_err() || *cancellation.borrow() {
+                    self.cancelled.store(true, Ordering::SeqCst);
+                    return Err(ApiError::from_reason(InternalReason::OperationCancelled));
+                }
+            }
             if fail {
                 Err(ApiError::from_reason(InternalReason::SourceUnavailable))
             } else {
@@ -902,6 +916,33 @@ async fn recovery_suspend_interrupts_blocking_program_without_marking_it_complet
         .expect_err("suspended service rejects fresh sound authorization");
     assert_eq!(blocked.error_id, ErrorId::ResourceBusy);
     fixture.service.resume_after_suspend();
+}
+
+#[tokio::test]
+async fn recovery_suspend_cancels_paid_planning_before_checkpoint_completes() {
+    let fixture = fixture();
+    fixture.planner.block.store(true, Ordering::SeqCst);
+    let service = fixture.service.clone();
+    let start = tokio::spawn(async move { service.start_local_program(start_request()).await });
+    tokio::time::timeout(Duration::from_secs(2), fixture.planner.started.notified())
+        .await
+        .expect("provider-backed planning began");
+
+    fixture
+        .service
+        .prepare_suspend()
+        .await
+        .expect("planning request cancelled before suspend completes");
+
+    let error = start
+        .await
+        .expect("start task joined")
+        .expect_err("interrupted planning cannot start playback");
+    assert_eq!(error.error_id, ErrorId::OperationCancelled);
+    assert!(fixture.planner.cancelled.load(Ordering::SeqCst));
+    assert_eq!(fixture.store.phase(), Some(ProgramRunPhase::Interrupted));
+    assert_eq!(fixture.playback.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(fixture.service.active_program_id().await, None);
 }
 
 #[tokio::test]

@@ -79,7 +79,11 @@ pub trait ProgramPlannerContextSource: Send + Sync {
 }
 
 pub trait ProgramRadioPlanner: Send + Sync {
-    fn plan_local(&self, program_id: Uuid) -> RadioFuture<'_, Result<PlannedProgram, ApiError>>;
+    fn plan_local(
+        &self,
+        program_id: Uuid,
+        cancellation: watch::Receiver<bool>,
+    ) -> RadioFuture<'_, Result<PlannedProgram, ApiError>>;
 }
 
 /// Adapter from the TASK-015 domain planner to the runner's minimal boundary.
@@ -99,22 +103,39 @@ impl DomainProgramPlanner {
 }
 
 impl ProgramRadioPlanner for DomainProgramPlanner {
-    fn plan_local(&self, program_id: Uuid) -> RadioFuture<'_, Result<PlannedProgram, ApiError>> {
+    fn plan_local(
+        &self,
+        program_id: Uuid,
+        mut cancellation: watch::Receiver<bool>,
+    ) -> RadioFuture<'_, Result<PlannedProgram, ApiError>> {
         Box::pin(async move {
-            let context = self.context.load_context(program_id).await?;
-            self.planner
-                .plan_local(LocalProgramRequest {
-                    program_id,
-                    local_hour: context.local_hour,
-                    profile_tags: context.profile_tags,
-                    approved_memory_tags: context.approved_memory_tags,
-                    recently_played_track_ids: context.recently_played_track_ids,
-                    cooldown_ms: context.cooldown_ms,
-                    allow_cooldown_relaxation: context.allow_cooldown_relaxation,
-                    selection_seed: context.selection_seed,
-                })
-                .await
-                .map_err(map_program_error)
+            if *cancellation.borrow() {
+                return Err(ApiError::from_reason(InternalReason::OperationCancelled));
+            }
+            let planning = async {
+                let context = self.context.load_context(program_id).await?;
+                self.planner
+                    .plan_local(LocalProgramRequest {
+                        program_id,
+                        local_hour: context.local_hour,
+                        profile_tags: context.profile_tags,
+                        approved_memory_tags: context.approved_memory_tags,
+                        recently_played_track_ids: context.recently_played_track_ids,
+                        cooldown_ms: context.cooldown_ms,
+                        allow_cooldown_relaxation: context.allow_cooldown_relaxation,
+                        selection_seed: context.selection_seed,
+                    })
+                    .await
+                    .map_err(map_program_error)
+            };
+            tokio::pin!(planning);
+            tokio::select! {
+                result = &mut planning => result,
+                changed = cancellation.changed() => {
+                    let _ = changed;
+                    Err(ApiError::from_reason(InternalReason::OperationCancelled))
+                }
+            }
         })
     }
 }

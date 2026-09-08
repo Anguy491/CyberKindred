@@ -173,9 +173,9 @@ impl RadioService {
     }
 
     pub(crate) async fn prepare_suspend(&self) -> Result<(), ApiError> {
+        self.begin_suspend();
         let active = {
             let state = self.inner.state.lock().await;
-            self.inner.accepting.store(false, Ordering::Release);
             state.active.clone()
         };
         if let Some(active) = active {
@@ -183,6 +183,10 @@ impl RadioService {
             active.wait().await?;
         }
         Ok(())
+    }
+
+    pub(crate) fn begin_suspend(&self) {
+        self.inner.accepting.store(false, Ordering::Release);
     }
 
     pub(crate) fn resume_after_suspend(&self) {
@@ -287,11 +291,27 @@ impl RadioService {
             });
         }
 
-        let planned = match self.inner.planner.plan_local(program_id).await {
+        let planned = match self
+            .inner
+            .planner
+            .plan_local(program_id, active.cancellation())
+            .await
+        {
             Ok(planned) => planned,
             Err(error) => {
-                self.fail_before_plan(program_id, 0, "planning_failed")
-                    .await?;
+                let terminal = if active.interrupted() {
+                    self.interrupt_before_plan(program_id, 0).await
+                } else {
+                    self.fail_before_plan(program_id, 0, "planning_failed")
+                        .await
+                };
+                match terminal {
+                    Ok(revision) => active.finish(Ok(revision)).await,
+                    Err(terminal_error) => {
+                        active.finish(Err(terminal_error.clone())).await;
+                        return Err(terminal_error);
+                    }
+                }
                 return Err(error);
             }
         };
@@ -390,7 +410,7 @@ impl RadioService {
         program_id: Uuid,
         revision: u64,
         failure_code: &'static str,
-    ) -> Result<(), ApiError> {
+    ) -> Result<u64, ApiError> {
         let terminal = self
             .inner
             .store
@@ -418,7 +438,35 @@ impl RadioService {
         let mut state = self.inner.state.lock().await;
         state.active = None;
         state.record_terminal(program_id, revision);
-        Ok(())
+        Ok(revision)
+    }
+
+    async fn interrupt_before_plan(
+        &self,
+        program_id: Uuid,
+        revision: u64,
+    ) -> Result<u64, ApiError> {
+        let revision = self
+            .inner
+            .store
+            .transition_program(
+                program_id,
+                ProgramRunPhase::Planning,
+                ProgramRunPhase::Interrupted,
+                revision,
+                self.inner.clock.now_ms(),
+                Some("interrupted"),
+            )
+            .await?;
+        self.inner.events.state(
+            program_id,
+            ProgramEventState::Failed,
+            Some("节目计划因系统休眠而中断；未发起播放。"),
+        );
+        let mut state = self.inner.state.lock().await;
+        state.active = None;
+        state.record_terminal(program_id, revision);
+        Ok(revision)
     }
 }
 

@@ -499,7 +499,11 @@ struct GuardPlanner {
 }
 
 impl ProgramRadioPlanner for GuardPlanner {
-    fn plan_local(&self, program_id: Uuid) -> RadioFuture<'_, Result<PlannedProgram, ApiError>> {
+    fn plan_local(
+        &self,
+        program_id: Uuid,
+        _cancellation: watch::Receiver<bool>,
+    ) -> RadioFuture<'_, Result<PlannedProgram, ApiError>> {
         let planned = virtual_program(program_id, self.track_count, self.duration_ms);
         Box::pin(async move { Ok(planned) })
     }
