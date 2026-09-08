@@ -28,7 +28,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sha2.workspace = true
 sqlx = { workspace = true, features = ["runtime-tokio", "sqlite-bundled", "migrate", "macros"] }
-symphonia = { workspace = true, features = ["aac", "isomp4", "mp3"] }
+symphonia = { workspace = true, features = ["aac", "flac", "isomp4", "mp3", "ogg", "pcm", "vorbis", "wav"] }
 tauri = { workspace = true, features = ["tray-icon"] }
 tauri-plugin-dialog.workspace = true
 tauri-plugin-notification.workspace = true

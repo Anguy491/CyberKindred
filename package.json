@@ -19,12 +19,20 @@
     "test": "vitest run",
     "test:axe": "vitest run tests/ui/app-shell-accessibility.test.tsx",
     "test:contracts": "pnpm contracts:check && vitest run tests/contracts/schema-contract.test.ts",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage --maxWorkers=1",
     "test:e2e": "node tests/e2e/run.mjs",
     "test:e2e:self": "node --test tests/e2e/*.test.mjs",
     "test:visual": "vitest run tests/ui/visual-policy.test.ts",
     "verify:docs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-docs.ps1",
-    "check": "pnpm contracts:check && pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm test:e2e:self && pnpm build && pnpm verify:docs"
+    "release:preflight": "node scripts/release/preflight.mjs",
+    "release:assets": "node scripts/release/generate-release-assets.mjs",
+    "release:verify-assets": "node scripts/release/verify-release-assets.mjs",
+    "release:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/build-beta.ps1",
+    "release:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/verify-release.ps1",
+    "release:repro": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/test-reproducibility.ps1",
+    "release:test-installer": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/test-installer.ps1",
+    "check": "pnpm contracts:check && pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm test:e2e:self && pnpm build && pnpm verify:docs",
+    "verify": "pnpm release:verify"
   },
   "dependencies": {
     "@tanstack/react-query": "5.102.8",

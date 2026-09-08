@@ -1,4 +1,4 @@
-# Dependency-policy gate for the Windows-first prototype.
+# Dependency-policy gate for the Windows x64 beta candidate.
 # Keep this file deliberately small: cargo-deny defaults remain active unless a
 # stricter repository rule is stated below.
 
