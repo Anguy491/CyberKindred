@@ -47,6 +47,8 @@ describe("M7 release provenance policy", () => {
     expect(builder).toContain("isolated build did not return exactly one trusted manifest digest");
     expect(builder).toContain("-CandidatePath\", $candidateStaging, \"-TrustedManifestSha256\", $trustedManifestHash");
     expect(builder).toContain("[IO.Directory]::Move($candidateStaging, $OutputRoot)");
+    expect(builder).toContain("-SnapshotBuild is restricted to a registered linked worktree");
+    expect(builder).toContain("-SnapshotBuild requires a detached exact-commit worktree");
     expect(builder).not.toContain("[Convert]::ToHexString");
   });
 

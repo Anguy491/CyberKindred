@@ -98,6 +98,23 @@ function Assert-SafeReleaseStaging {
     return $fullPath
 }
 
+if ($SnapshotBuild) {
+    if ($Development) {
+        throw "an internal release snapshot cannot be a development build"
+    }
+    $gitMarker = Join-Path $workspaceRoot ".git"
+    if (-not (Test-Path -LiteralPath $gitMarker -PathType Leaf)) {
+        throw "-SnapshotBuild is restricted to a registered linked worktree"
+    }
+    & git -C $workspaceRoot symbolic-ref --quiet HEAD 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        throw "-SnapshotBuild requires a detached exact-commit worktree"
+    }
+    if ((& git -C $workspaceRoot status --porcelain=v1 --untracked-files=all).Count -gt 0) {
+        throw "-SnapshotBuild requires a clean detached worktree"
+    }
+}
+
 if (-not $Development -and -not $SnapshotBuild) {
     Push-Location $workspaceRoot
     try {
@@ -149,6 +166,7 @@ if (-not $Development -and -not $SnapshotBuild) {
             $innerOutput |
                 Where-Object {
                     $_ -notmatch '^Local unsigned beta candidate:' -and
+                    $_ -notmatch '^Isolated release build output:' -and
                     $_ -notmatch '^Trusted manifest SHA-256 \(record outside the candidate directory\):'
                 } |
                 ForEach-Object { Write-Output $_ }
@@ -341,7 +359,11 @@ try {
         "--output", (Join-Path $OutputRoot "manifest.json")
     ) + $manifestArguments)
     $trustedManifestHash = Get-LockedFileSha256 (Join-Path $OutputRoot "manifest.json")
-    Write-Output "Local unsigned beta candidate: $OutputRoot"
+    if ($SnapshotBuild) {
+        Write-Output "Isolated release build output: $OutputRoot"
+    } else {
+        Write-Output "Local unsigned beta candidate: $OutputRoot"
+    }
     Write-Output "Trusted manifest SHA-256 (record outside the candidate directory): $trustedManifestHash"
     if ($Development) {
         Write-Warning "This candidate came from a dirty development tree and is not release-eligible."
