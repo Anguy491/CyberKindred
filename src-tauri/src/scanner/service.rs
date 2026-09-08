@@ -394,8 +394,8 @@ impl ScannerService {
     }
 
     pub(crate) async fn quiesce_for_reset(&self) -> Result<(), ApiError> {
+        self.begin_suspend()?;
         let _acceptance = self.runtime.acceptance.lock().await;
-        self.runtime.accepting.store(false, Ordering::Release);
         let operation_ids = self
             .runtime
             .active
@@ -412,6 +412,44 @@ impl ScannerService {
             .await?;
         }
         Ok(())
+    }
+
+    pub(crate) fn begin_suspend(&self) -> Result<(), ApiError> {
+        self.runtime.accepting.store(false, Ordering::Release);
+        let active = self
+            .runtime
+            .active
+            .lock()
+            .map_err(|_| ApiError::unexpected())?;
+        for scan in active.values() {
+            scan.cancellation.cancel();
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn prepare_suspend(&self) -> Result<(), ApiError> {
+        self.begin_suspend()?;
+        let _acceptance = self.runtime.acceptance.lock().await;
+        let operation_ids = self
+            .runtime
+            .active
+            .lock()
+            .map_err(|_| ApiError::unexpected())?
+            .keys()
+            .copied()
+            .collect::<Vec<_>>();
+        for operation_id in operation_ids {
+            self.cancel_scan_once(CancelLibraryScanRequest {
+                client_request_id: Uuid::now_v7(),
+                operation_id,
+            })
+            .await?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn resume_after_suspend(&self) {
+        self.runtime.accepting.store(true, Ordering::Release);
     }
 }
 

@@ -11,6 +11,7 @@ mod onboarding;
 mod operation_outbox;
 mod paths;
 mod playback_tracks;
+mod power_lifecycle;
 mod program_candidates;
 mod program_runs;
 mod provider_settings;

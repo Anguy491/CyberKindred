@@ -969,13 +969,17 @@ impl ProviderService {
         self.suspend_previews().await
     }
 
+    pub(crate) fn begin_suspend(&self) {
+        self.accepting_previews.store(false, Ordering::Release);
+    }
+
     pub(crate) fn resume_after_suspend(&self) {
         self.accepting_previews.store(true, Ordering::Release);
     }
 
     async fn suspend_previews(&self) -> Result<(), ApiError> {
+        self.begin_suspend();
         let _admission = self.preview_admission.lock().await;
-        self.accepting_previews.store(false, Ordering::Release);
         for operation_id in self
             .repository
             .load_active_voice_preview_ids()

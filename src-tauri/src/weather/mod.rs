@@ -625,9 +625,13 @@ impl WeatherService {
         self.cancel_network();
     }
 
-    pub(crate) async fn prepare_suspend(&self) {
+    pub(crate) fn begin_suspend(&self) {
         self.accepting.store(false, Ordering::Release);
         self.cancel_network();
+    }
+
+    pub(crate) async fn prepare_suspend(&self) {
+        self.begin_suspend();
         let _lifecycle = self.lifecycle.write().await;
         self.clear_private_candidates().await;
     }

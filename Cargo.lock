@@ -887,6 +887,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "cyberkindred-windows-credential",
+ "cyberkindred-windows-power-observer",
  "hex",
  "infer 0.22.0",
  "jsonschema",
@@ -920,6 +921,13 @@ version = "0.1.0"
 dependencies = [
  "windows 0.62.2",
  "zeroize",
+]
+
+[[package]]
+name = "cyberkindred-windows-power-observer"
+version = "0.1.0"
+dependencies = [
+ "windows 0.62.2",
 ]
 
 [[package]]

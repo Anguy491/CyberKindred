@@ -1,5 +1,9 @@
 use std::{
-    sync::{Arc, RwLock, mpsc},
+    sync::{
+        Arc, RwLock,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     time::Duration,
 };
 
@@ -142,6 +146,7 @@ impl Drop for SystemClient {
 pub(super) struct SystemMediaSource {
     client: Arc<SystemClient>,
     state: Arc<RwLock<PlaybackState>>,
+    accepting_interruption: Arc<AtomicBool>,
 }
 
 impl SystemMediaSource {
@@ -181,6 +186,7 @@ impl SystemMediaSource {
         Ok(Self {
             client: Arc::new(SystemClient { sender }),
             state,
+            accepting_interruption: Arc::new(AtomicBool::new(true)),
         })
     }
 
@@ -222,6 +228,9 @@ impl SystemMediaSource {
     }
 
     pub(super) async fn begin_interruption(&self) -> Result<SystemInterruptionToken, ApiError> {
+        if !self.accepting_interruption.load(Ordering::Acquire) {
+            return Err(ApiError::from_reason(InternalReason::ResourceBusy));
+        }
         let (response, receiver) = oneshot::channel();
         self.client
             .sender
@@ -234,6 +243,9 @@ impl SystemMediaSource {
         &self,
         token: SystemInterruptionToken,
     ) -> Result<PlaybackState, ApiError> {
+        if !self.accepting_interruption.load(Ordering::Acquire) {
+            return self.suspend().await;
+        }
         let (response, receiver) = oneshot::channel();
         self.client
             .sender
@@ -252,12 +264,26 @@ impl SystemMediaSource {
     }
 
     pub(super) async fn suspend(&self) -> Result<PlaybackState, ApiError> {
+        self.begin_suspend();
         let (response, receiver) = oneshot::channel();
         self.client
             .sender
             .send(SystemMessage::Suspend { response })
             .map_err(|_| ApiError::unexpected())?;
         receiver.await.map_err(|_| ApiError::unexpected())
+    }
+
+    pub(super) fn begin_suspend(&self) {
+        self.accepting_interruption.store(false, Ordering::Release);
+        let (response, _receiver) = oneshot::channel();
+        let _ = self
+            .client
+            .sender
+            .try_send(SystemMessage::Suspend { response });
+    }
+
+    pub(super) fn resume_after_suspend(&self) {
+        self.accepting_interruption.store(true, Ordering::Release);
     }
 
     async fn request<F>(&self, message: F) -> Result<PlaybackState, ApiError>

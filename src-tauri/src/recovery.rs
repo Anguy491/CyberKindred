@@ -5,13 +5,22 @@ use std::{
     time::{Duration, Instant},
 };
 
+use chrono::{SecondsFormat, TimeZone, Utc};
+use serde::Serialize;
+use tauri::{Emitter, Runtime};
 use tokio::sync::Mutex;
 
+#[cfg(windows)]
+use cyberkindred_windows_power_observer::{PowerEvent, PowerObserver};
+#[cfg(windows)]
+use std::sync::Mutex as StdMutex;
+
 use crate::{
-    ipc::{ApiError, InternalReason},
+    ipc::{ApiError, EventEnvelope, InternalReason, ProcessSequence},
     playback::PlaybackService,
     providers::ProviderService,
     radio::RadioService,
+    scanner::ScannerService,
     schedule::SchedulerService,
     storage::{Storage, StorageError, StorageReason},
     understanding::UnderstandingService,
@@ -19,12 +28,49 @@ use crate::{
 };
 
 const SUSPEND_DEADLINE: Duration = Duration::from_secs(2);
+const SUSPEND_QUIESCE_DEADLINE: Duration = Duration::from_millis(1_500);
 const GAP_POLL_INTERVAL: Duration = Duration::from_millis(500);
 const RESUME_GAP_THRESHOLD: Duration = Duration::from_secs(2);
+pub(crate) const APP_RESUMED_EVENT: &str = "cyberkindred://v1/app/resumed";
 
 type RecoveryFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppResumedEvent {
+    #[serde(flatten)]
+    envelope: EventEnvelope,
+    slept_at: Option<String>,
+}
+
+pub(crate) trait RecoveryEventSink: Send + Sync {
+    fn resumed(&self, slept_at: Option<String>, occurred_at: String) -> Result<(), ApiError>;
+}
+
+pub(crate) struct TauriRecoveryEventSink<R: Runtime> {
+    app: tauri::AppHandle<R>,
+    sequence: Arc<ProcessSequence>,
+}
+
+impl<R: Runtime> TauriRecoveryEventSink<R> {
+    pub(crate) fn new(app: tauri::AppHandle<R>, sequence: Arc<ProcessSequence>) -> Self {
+        Self { app, sequence }
+    }
+}
+
+impl<R: Runtime> RecoveryEventSink for TauriRecoveryEventSink<R> {
+    fn resumed(&self, slept_at: Option<String>, occurred_at: String) -> Result<(), ApiError> {
+        let mut envelope = EventEnvelope::now(self.sequence.next()?);
+        envelope.occurred_at = occurred_at;
+        envelope.validate()?;
+        self.app
+            .emit(APP_RESUMED_EVENT, AppResumedEvent { envelope, slept_at })
+            .map_err(|_| ApiError::unexpected())
+    }
+}
+
 trait RecoveryBackend: Send + Sync {
+    fn begin_suspend(&self);
     fn suspend(&self) -> RecoveryFuture<'_, Result<(), ApiError>>;
     fn resume(&self) -> RecoveryFuture<'_, Result<(), ApiError>>;
 }
@@ -37,53 +83,90 @@ struct ApplicationRecoveryBackend {
     understanding: Arc<UnderstandingService>,
     weather: Arc<WeatherService>,
     scheduler: Arc<SchedulerService>,
+    scanner: Arc<ScannerService>,
+    events: Arc<dyn RecoveryEventSink>,
 }
 
 impl RecoveryBackend for ApplicationRecoveryBackend {
+    fn begin_suspend(&self) {
+        // Close every paid or sound-capable admission boundary synchronously
+        // while Windows is still delivering PBT_APMSUSPEND. The bounded async
+        // phase below performs durable cancellation, silence, and checkpoint.
+        self.playback.begin_suspend();
+        self.radio.begin_suspend();
+        self.provider.begin_suspend();
+        self.understanding.begin_suspend();
+        self.weather.begin_suspend();
+        let _ = self.scanner.begin_suspend();
+    }
+
     fn suspend(&self) -> RecoveryFuture<'_, Result<(), ApiError>> {
         Box::pin(async move {
-            let network_operations = async {
-                let (provider, understanding, ()) = tokio::join!(
-                    self.provider.prepare_suspend(),
-                    self.understanding.prepare_suspend(),
-                    self.weather.prepare_suspend(),
-                );
-                provider?;
-                understanding?;
-                Ok::<(), ApiError>(())
-            };
-            let sound_operations = async {
-                // Revoking system-session tokens must happen before cancelling
-                // a radio speech task, otherwise its completion could resume a
-                // stale Apple session during the power boundary.
-                self.playback.prepare_suspend().await?;
-                self.radio.prepare_suspend().await
-            };
-            let (network, sound) = tokio::join!(network_operations, sound_operations);
-            network?;
-            sound?;
-            self.storage
+            let observed_at_ms = Utc::now().timestamp_millis();
+            let repository = self.storage.repository();
+            let (suspend_record, quiesce) = tokio::join!(
+                repository.record_power_suspend(observed_at_ms),
+                tokio::time::timeout(SUSPEND_QUIESCE_DEADLINE, async {
+                    tokio::join!(
+                        self.provider.prepare_suspend(),
+                        self.understanding.prepare_suspend(),
+                        self.weather.prepare_suspend(),
+                        self.playback.prepare_suspend(),
+                        self.radio.prepare_suspend(),
+                        self.scanner.prepare_suspend(),
+                    )
+                })
+            );
+            // Checkpoint is attempted even when one cancellation path fails or
+            // exhausts its share of the two-second Windows suspend budget.
+            let checkpoint = self
+                .storage
                 .passive_checkpoint()
                 .await
-                .map_err(|error| map_storage_error(&error))
+                .map_err(|error| map_storage_error(&error));
+            let (provider, understanding, (), playback, radio, scanner) =
+                quiesce.map_err(|_| ApiError::from_reason(InternalReason::ResourceBusy))?;
+            suspend_record.map_err(|error| map_storage_error(&error))?;
+            provider?;
+            understanding?;
+            playback?;
+            radio?;
+            scanner?;
+            checkpoint
         })
     }
 
     fn resume(&self) -> RecoveryFuture<'_, Result<(), ApiError>> {
         Box::pin(async move {
+            let resumed_at_ms = Utc::now().timestamp_millis();
             self.storage
                 .verify_integrity()
                 .await
                 .map_err(|error| map_storage_error(&error))?;
             self.playback.resume_silent().await?;
             self.scheduler.reconcile_after_resume().await?;
+            let slept_at_ms = self
+                .storage
+                .repository()
+                .record_power_resume(resumed_at_ms)
+                .await
+                .map_err(|error| map_storage_error(&error))?;
+            let slept_at = slept_at_ms.map(format_timestamp).transpose()?;
+            let occurred_at = format_timestamp(resumed_at_ms)?;
 
             // Restoring admission performs no provider request and starts no
             // sound. Any paid/text/TTS retry still needs a fresh user command.
+            self.playback.resume_after_suspend();
             self.weather.resume_after_suspend();
             self.understanding.resume_after_suspend();
             self.provider.resume_after_suspend();
             self.radio.resume_after_suspend();
+            self.scanner.resume_after_suspend();
+
+            // EVT-010 is a process-local hint. Reconciliation and admission
+            // reopening are authoritative and must not be rolled back when a
+            // window is closing or has no active event listener.
+            publish_resume_hint(self.events.as_ref(), slept_at, occurred_at);
 
             Ok(())
         })
@@ -117,6 +200,8 @@ impl RecoveryCoordinator {
         understanding: Arc<UnderstandingService>,
         weather: Arc<WeatherService>,
         scheduler: Arc<SchedulerService>,
+        scanner: Arc<ScannerService>,
+        events: Arc<dyn RecoveryEventSink>,
     ) -> Arc<Self> {
         Arc::new(Self {
             backend: Arc::new(ApplicationRecoveryBackend {
@@ -127,13 +212,24 @@ impl RecoveryCoordinator {
                 understanding,
                 weather,
                 scheduler,
+                scanner,
+                events,
             }),
             state: Mutex::new(PowerLifecycleState::Active),
             suspend_deadline: SUSPEND_DEADLINE,
         })
     }
 
+    fn begin_suspend(&self) {
+        self.backend.begin_suspend();
+    }
+
     async fn prepare_suspend(&self) -> Result<(), ApiError> {
+        self.begin_suspend();
+        self.finish_prepare_suspend().await
+    }
+
+    async fn finish_prepare_suspend(&self) -> Result<(), ApiError> {
         let mut state = self.state.lock().await;
         if matches!(
             *state,
@@ -152,6 +248,9 @@ impl RecoveryCoordinator {
 
     async fn resume(&self) -> Result<(), ApiError> {
         let mut state = self.state.lock().await;
+        if matches!(*state, PowerLifecycleState::Active) {
+            return Ok(());
+        }
         *state = PowerLifecycleState::Resuming;
         let result = self.backend.resume().await;
         *state = if result.is_ok() {
@@ -172,11 +271,50 @@ impl RecoveryCoordinator {
     }
 }
 
-pub(crate) struct RecoveryRuntime(tauri::async_runtime::JoinHandle<()>);
+#[derive(Debug)]
+pub(crate) struct RecoveryRuntimeError;
+
+impl std::fmt::Display for RecoveryRuntimeError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Windows power lifecycle observer unavailable")
+    }
+}
+
+impl std::error::Error for RecoveryRuntimeError {}
+
+pub(crate) struct RecoveryRuntime {
+    watchdog: tauri::async_runtime::JoinHandle<()>,
+    #[cfg(windows)]
+    power_observer: StdMutex<Option<PowerObserver>>,
+}
 
 impl RecoveryRuntime {
-    pub(crate) fn start(coordinator: Arc<RecoveryCoordinator>) -> Arc<Self> {
-        Arc::new(Self(tauri::async_runtime::spawn(async move {
+    pub(crate) fn start(
+        coordinator: &Arc<RecoveryCoordinator>,
+    ) -> Result<Arc<Self>, RecoveryRuntimeError> {
+        #[cfg(windows)]
+        let observer_coordinator = Arc::clone(coordinator);
+        #[cfg(windows)]
+        let power_observer = PowerObserver::start(move |event| match event {
+            PowerEvent::Suspend => {
+                // Windows waits for WM_POWERBROADCAST handlers before entering
+                // sleep. Keep this dedicated window thread inside the approved
+                // two-second cleanup budget so the callback cannot return while
+                // sound/provider admission remains open.
+                observer_coordinator.begin_suspend();
+                let _ =
+                    tauri::async_runtime::block_on(observer_coordinator.finish_prepare_suspend());
+            }
+            PowerEvent::Resume => {
+                let coordinator = Arc::clone(&observer_coordinator);
+                tauri::async_runtime::spawn(async move {
+                    let _ = coordinator.resume().await;
+                });
+            }
+        })
+        .map_err(|_| RecoveryRuntimeError)?;
+        let watchdog_coordinator = Arc::clone(coordinator);
+        let watchdog = tauri::async_runtime::spawn(async move {
             let mut interval = tokio::time::interval(GAP_POLL_INTERVAL);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
             interval.tick().await;
@@ -187,19 +325,28 @@ impl RecoveryRuntime {
                 let gap = now.saturating_duration_since(last_tick);
                 last_tick = now;
                 if gap >= RESUME_GAP_THRESHOLD {
-                    let _ = coordinator.reconcile_after_resume().await;
+                    let _ = watchdog_coordinator.reconcile_after_resume().await;
                     last_tick = Instant::now();
                 }
             }
-        })))
+        });
+        Ok(Arc::new(Self {
+            watchdog,
+            #[cfg(windows)]
+            power_observer: StdMutex::new(Some(power_observer)),
+        }))
     }
 
     pub(crate) fn abort(&self) {
-        self.0.abort();
+        self.watchdog.abort();
+        #[cfg(windows)]
+        if let Ok(mut observer) = self.power_observer.lock() {
+            drop(observer.take());
+        }
     }
 
     pub(crate) fn is_finished(&self) -> bool {
-        match &self.0 {
+        match &self.watchdog {
             tauri::async_runtime::JoinHandle::Tokio(handle) => handle.is_finished(),
         }
     }
@@ -207,7 +354,11 @@ impl RecoveryRuntime {
 
 impl Drop for RecoveryRuntime {
     fn drop(&mut self) {
-        self.0.abort();
+        self.watchdog.abort();
+        #[cfg(windows)]
+        if let Ok(observer) = self.power_observer.get_mut() {
+            drop(observer.take());
+        }
     }
 }
 
@@ -231,6 +382,21 @@ fn map_storage_error(error: &StorageError) -> ApiError {
     ApiError::from_reason(reason)
 }
 
+fn format_timestamp(value: i64) -> Result<String, ApiError> {
+    Utc.timestamp_millis_opt(value)
+        .single()
+        .map(|timestamp| timestamp.to_rfc3339_opts(SecondsFormat::Millis, true))
+        .ok_or_else(ApiError::unexpected)
+}
+
+fn publish_resume_hint(
+    events: &dyn RecoveryEventSink,
+    slept_at: Option<String>,
+    occurred_at: String,
+) {
+    let _ = events.resumed(slept_at, occurred_at);
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{
@@ -243,15 +409,30 @@ mod tests {
     use super::*;
     use crate::ipc::ErrorId;
 
+    struct FailingEventSink;
+
+    impl RecoveryEventSink for FailingEventSink {
+        fn resumed(&self, _slept_at: Option<String>, _occurred_at: String) -> Result<(), ApiError> {
+            Err(ApiError::unexpected())
+        }
+    }
+
     #[derive(Default)]
     struct FakeBackend {
         calls: StdMutex<Vec<&'static str>>,
         paid_calls: AtomicUsize,
         audible_calls: AtomicUsize,
+        admission_closed: std::sync::atomic::AtomicBool,
         suspend_gate: Option<Arc<Notify>>,
+        resume_gate: Option<Arc<Notify>>,
     }
 
     impl RecoveryBackend for FakeBackend {
+        fn begin_suspend(&self) {
+            self.admission_closed.store(true, Ordering::Release);
+            self.calls.lock().expect("calls").push("begin_suspend");
+        }
+
         fn suspend(&self) -> RecoveryFuture<'_, Result<(), ApiError>> {
             Box::pin(async move {
                 self.calls.lock().expect("calls").push("suspend");
@@ -265,6 +446,10 @@ mod tests {
         fn resume(&self) -> RecoveryFuture<'_, Result<(), ApiError>> {
             Box::pin(async move {
                 self.calls.lock().expect("calls").push("resume_silent");
+                if let Some(gate) = &self.resume_gate {
+                    gate.notified().await;
+                }
+                self.admission_closed.store(false, Ordering::Release);
                 Ok(())
             })
         }
@@ -288,7 +473,7 @@ mod tests {
             .expect("recovery");
         assert_eq!(
             backend.calls.lock().expect("calls").as_slice(),
-            ["suspend", "resume_silent"]
+            ["begin_suspend", "suspend", "resume_silent"]
         );
         assert_eq!(backend.paid_calls.load(Ordering::Acquire), 0);
         assert_eq!(backend.audible_calls.load(Ordering::Acquire), 0);
@@ -309,9 +494,57 @@ mod tests {
         assert_eq!(error.error_id, ErrorId::ResourceBusy);
         assert_eq!(
             backend.calls.lock().expect("calls").as_slice(),
-            ["suspend", "resume_silent"]
+            ["begin_suspend", "suspend", "resume_silent"]
         );
         assert_eq!(backend.paid_calls.load(Ordering::Acquire), 0);
         assert_eq!(backend.audible_calls.load(Ordering::Acquire), 0);
+    }
+
+    #[tokio::test]
+    async fn resume_keeps_admission_closed_until_reconciliation_finishes() {
+        let resume_gate = Arc::new(Notify::new());
+        let backend = Arc::new(FakeBackend {
+            resume_gate: Some(Arc::clone(&resume_gate)),
+            ..FakeBackend::default()
+        });
+        let coordinator = Arc::new(coordinator(Arc::clone(&backend), Duration::from_secs(1)));
+        coordinator.prepare_suspend().await.expect("suspend");
+        assert!(backend.admission_closed.load(Ordering::Acquire));
+
+        let resume = {
+            let coordinator = Arc::clone(&coordinator);
+            tokio::spawn(async move { coordinator.resume().await })
+        };
+        tokio::task::yield_now().await;
+        assert!(backend.admission_closed.load(Ordering::Acquire));
+        resume_gate.notify_one();
+        resume.await.expect("resume task").expect("resume");
+        assert!(!backend.admission_closed.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn resume_event_payload_matches_evt_010_and_transport_failure_is_best_effort() {
+        let payload = AppResumedEvent {
+            envelope: EventEnvelope {
+                schema_version: "1.0.0".to_owned(),
+                sequence: 7,
+                occurred_at: "2026-09-08T10:00:00.000Z".to_owned(),
+            },
+            slept_at: Some("2026-09-08T09:59:00.000Z".to_owned()),
+        };
+        assert_eq!(
+            serde_json::to_value(payload).expect("serialize"),
+            serde_json::json!({
+                "schemaVersion": "1.0.0",
+                "sequence": 7,
+                "occurredAt": "2026-09-08T10:00:00.000Z",
+                "sleptAt": "2026-09-08T09:59:00.000Z"
+            })
+        );
+        publish_resume_hint(
+            &FailingEventSink,
+            None,
+            "2026-09-08T10:00:00.000Z".to_owned(),
+        );
     }
 }

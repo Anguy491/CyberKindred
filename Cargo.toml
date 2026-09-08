@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/windows-credential", "src-tauri"]
+members = ["crates/windows-credential", "crates/windows-power-observer", "src-tauri"]
 resolver = "3"
 
 [workspace.package]
@@ -12,6 +12,7 @@ license = "LicenseRef-Proprietary"
 chrono = "=0.4.45"
 chrono-tz = "=0.10.4"
 cyberkindred-windows-credential = { version = "=0.1.0", path = "crates/windows-credential" }
+cyberkindred-windows-power-observer = { version = "=0.1.0", path = "crates/windows-power-observer" }
 hex = "=0.4.3"
 infer = "=0.22.0"
 jsonschema = { version = "=0.52.1", default-features = false }

@@ -1,5 +1,8 @@
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
@@ -89,6 +92,7 @@ pub struct PlaybackService {
     active_source: Arc<Mutex<ActiveSource>>,
     select_requests: Arc<AsyncIdempotency<SelectMusicSourceResponse>>,
     control_requests: Arc<AsyncIdempotency<PlaybackState>>,
+    accepting_sound: Arc<AtomicBool>,
 }
 
 impl PlaybackService {
@@ -188,6 +192,7 @@ impl PlaybackService {
             active_source: Arc::new(Mutex::new(ActiveSource::Local)),
             select_requests: Arc::new(AsyncIdempotency::new(IDEMPOTENCY_CAPACITY)),
             control_requests: Arc::new(AsyncIdempotency::new(IDEMPOTENCY_CAPACITY)),
+            accepting_sound: Arc::new(AtomicBool::new(true)),
         })
     }
 
@@ -367,6 +372,7 @@ impl PlaybackService {
         track_ids: Vec<String>,
         authorization: Option<PlaybackStartAuthorization>,
     ) -> Result<PlaybackState, ApiError> {
+        self.ensure_sound_admission()?;
         self.set_active(ActiveSource::Local)?;
         self.system_source.deactivate().await?;
         self.request_local_state(|response| ActorMessage::SetQueue {
@@ -397,9 +403,25 @@ impl PlaybackService {
     ///
     /// Returns a safe media, output, or actor-availability error.
     pub async fn prepare_suspend(&self) -> Result<PlaybackState, ApiError> {
+        self.begin_suspend();
         self.system_source.suspend().await?;
         self.request_local_state(|response| ActorMessage::Suspend { response })
             .await
+    }
+
+    pub(crate) fn begin_suspend(&self) {
+        self.accepting_sound.store(false, Ordering::Release);
+        self.system_source.begin_suspend();
+        let (response, _receiver) = oneshot::channel();
+        let _ = self
+            .local_client
+            .sender
+            .try_send(ActorMessage::Suspend { response });
+    }
+
+    pub(crate) fn resume_after_suspend(&self) {
+        self.system_source.resume_after_suspend();
+        self.accepting_sound.store(true, Ordering::Release);
     }
 
     /// Rebuilds a suspended/device-lost output only in paused state.
@@ -448,6 +470,7 @@ impl PlaybackService {
     pub(crate) async fn begin_system_interruption(
         &self,
     ) -> Result<SystemInterruptionToken, ApiError> {
+        self.ensure_sound_admission()?;
         if self.active()? != ActiveSource::System {
             return Err(ApiError::from_reason(InternalReason::SourceUnavailable));
         }
@@ -458,6 +481,9 @@ impl PlaybackService {
         &self,
         token: SystemInterruptionToken,
     ) -> Result<PlaybackState, ApiError> {
+        if !self.accepting_sound.load(Ordering::Acquire) {
+            return self.system_source.suspend().await;
+        }
         if self.active()? != ActiveSource::System {
             return self.system_source.deactivate().await;
         }
@@ -481,6 +507,7 @@ impl PlaybackService {
                 hash,
                 MEDIA_RETENTION,
                 || async {
+                    self.ensure_sound_admission()?;
                     match self.active()? {
                         ActiveSource::Local => {
                             self.control_local(request.expected_revision(), action)
@@ -495,6 +522,14 @@ impl PlaybackService {
                 },
             )
             .await
+    }
+
+    fn ensure_sound_admission(&self) -> Result<(), ApiError> {
+        if self.accepting_sound.load(Ordering::Acquire) {
+            Ok(())
+        } else {
+            Err(ApiError::from_reason(InternalReason::ResourceBusy))
+        }
     }
 
     async fn control_local(

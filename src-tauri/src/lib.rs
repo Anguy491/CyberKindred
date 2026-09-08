@@ -83,7 +83,7 @@ use radio::{
 };
 use radio_repository::RepositoryProgramContextSource;
 use radio_speech_repository::{RepositoryProgramSpeech, RepositorySystemProgramSpeech};
-use recovery::{RecoveryCoordinator, RecoveryRuntime};
+use recovery::{RecoveryCoordinator, RecoveryRuntime, TauriRecoveryEventSink};
 use scanner::{
     ScannerService, SystemScanClock, TauriScanEventSink,
     commands::{api_v1_cancel_library_scan, api_v1_start_library_scan},
@@ -458,8 +458,13 @@ fn setup_application(
         Arc::clone(&understanding_service),
         Arc::clone(&weather_service),
         Arc::clone(&scheduler_service),
+        Arc::clone(&scanner_service),
+        Arc::new(TauriRecoveryEventSink::new(
+            app.handle().clone(),
+            Arc::clone(&process_sequence),
+        )),
     );
-    let recovery_runtime = RecoveryRuntime::start(Arc::clone(&recovery_coordinator));
+    let recovery_runtime = RecoveryRuntime::start(&recovery_coordinator)?;
     let runtime_reset: Arc<dyn DataRuntimeReset> = Arc::new(ApplicationRuntimeReset {
         retention: Arc::clone(&retention_maintenance),
         recovery: Arc::clone(&recovery_runtime),
@@ -631,13 +636,20 @@ pub fn run() -> tauri::Result<()> {
         ])
         .build(tauri::generate_context!())?;
     app.run(|app_handle, event| {
-        if matches!(event, tauri::RunEvent::Resumed)
-            && let Some(coordinator) = app_handle.try_state::<Arc<RecoveryCoordinator>>()
+        #[cfg(not(windows))]
         {
-            let coordinator = Arc::clone(&coordinator);
-            tauri::async_runtime::spawn(async move {
-                let _ = coordinator.reconcile_after_resume().await;
-            });
+            if matches!(event, tauri::RunEvent::Resumed)
+                && let Some(coordinator) = app_handle.try_state::<Arc<RecoveryCoordinator>>()
+            {
+                let coordinator = Arc::clone(&coordinator);
+                tauri::async_runtime::spawn(async move {
+                    let _ = coordinator.reconcile_after_resume().await;
+                });
+            }
+        }
+        #[cfg(windows)]
+        {
+            let _ = (app_handle, event);
         }
     });
     Ok(())
