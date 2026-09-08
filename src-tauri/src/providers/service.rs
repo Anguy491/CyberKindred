@@ -962,6 +962,18 @@ impl ProviderService {
     }
 
     pub(crate) async fn quiesce_for_reset(&self) -> Result<(), ApiError> {
+        self.suspend_previews().await
+    }
+
+    pub(crate) async fn prepare_suspend(&self) -> Result<(), ApiError> {
+        self.suspend_previews().await
+    }
+
+    pub(crate) fn resume_after_suspend(&self) {
+        self.accepting_previews.store(true, Ordering::Release);
+    }
+
+    async fn suspend_previews(&self) -> Result<(), ApiError> {
         let _admission = self.preview_admission.lock().await;
         self.accepting_previews.store(false, Ordering::Release);
         for operation_id in self

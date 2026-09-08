@@ -17,6 +17,7 @@ pub mod providers;
 pub mod radio;
 mod radio_repository;
 mod radio_speech_repository;
+mod recovery;
 pub mod scanner;
 mod schedule;
 pub mod speech;
@@ -82,6 +83,7 @@ use radio::{
 };
 use radio_repository::RepositoryProgramContextSource;
 use radio_speech_repository::{RepositoryProgramSpeech, RepositorySystemProgramSpeech};
+use recovery::{RecoveryCoordinator, RecoveryRuntime};
 use scanner::{
     ScannerService, SystemScanClock, TauriScanEventSink,
     commands::{api_v1_cancel_library_scan, api_v1_start_library_scan},
@@ -133,6 +135,7 @@ impl RetentionMaintenance {
 
 struct ApplicationRuntimeReset {
     retention: Arc<RetentionMaintenance>,
+    recovery: Arc<RecoveryRuntime>,
     scheduler: Arc<SchedulerRuntime>,
     radio: RadioService,
     scanner: Arc<ScannerService>,
@@ -145,13 +148,17 @@ impl DataRuntimeReset for ApplicationRuntimeReset {
     fn quiesce(&self) -> DataRuntimeResetFuture<'_> {
         Box::pin(async move {
             self.retention.abort();
+            self.recovery.abort();
             self.scheduler.abort();
             self.radio.quiesce_for_reset().await?;
             self.scanner.quiesce_for_reset().await?;
             self.understanding.quiesce_for_reset().await?;
             self.provider.quiesce_for_reset().await?;
             self.playback.shutdown().await?;
-            while !self.retention.is_finished() || !self.scheduler.is_finished() {
+            while !self.retention.is_finished()
+                || !self.recovery.is_finished()
+                || !self.scheduler.is_finished()
+            {
                 tokio::task::yield_now().await;
             }
             Ok(())
@@ -443,8 +450,19 @@ fn setup_application(
         )),
         clock.clone(),
     ));
+    let recovery_coordinator = RecoveryCoordinator::new(
+        Arc::clone(&storage),
+        playback_service.clone(),
+        radio_service.clone(),
+        Arc::clone(&provider_service),
+        Arc::clone(&understanding_service),
+        Arc::clone(&weather_service),
+        Arc::clone(&scheduler_service),
+    );
+    let recovery_runtime = RecoveryRuntime::start(Arc::clone(&recovery_coordinator));
     let runtime_reset: Arc<dyn DataRuntimeReset> = Arc::new(ApplicationRuntimeReset {
         retention: Arc::clone(&retention_maintenance),
+        recovery: Arc::clone(&recovery_runtime),
         scheduler: Arc::clone(&scheduler_runtime),
         radio: radio_service.clone(),
         scanner: Arc::clone(&scanner_service),
@@ -474,6 +492,8 @@ fn setup_application(
     app.manage(process_sequence);
     app.manage(storage);
     app.manage(retention_maintenance);
+    app.manage(recovery_coordinator);
+    app.manage(recovery_runtime);
     app.manage(provider_service);
     app.manage(app_integrations);
     app.manage(scheduler_service);
@@ -536,7 +556,7 @@ pub fn run() -> tauri::Result<()> {
     let artwork_assets = ArtworkAssetStore::default();
     let protocol_artwork_assets = artwork_assets.clone();
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .register_uri_scheme_protocol("asset", move |_context, request| {
             protocol_artwork_assets.protocol_response(&request)
         })
@@ -609,7 +629,18 @@ pub fn run() -> tauri::Result<()> {
             api_v1_export_user_data,
             api_v1_delete_all_user_data,
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())?;
+    app.run(|app_handle, event| {
+        if matches!(event, tauri::RunEvent::Resumed)
+            && let Some(coordinator) = app_handle.try_state::<Arc<RecoveryCoordinator>>()
+        {
+            let coordinator = Arc::clone(&coordinator);
+            tauri::async_runtime::spawn(async move {
+                let _ = coordinator.reconcile_after_resume().await;
+            });
+        }
+    });
+    Ok(())
 }
 
 #[cfg(test)]

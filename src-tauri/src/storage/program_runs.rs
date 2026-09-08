@@ -17,6 +17,7 @@ pub(crate) enum StoredProgramStatus {
     Completing,
     Stopping,
     Completed,
+    Interrupted,
     Failed,
 }
 
@@ -32,6 +33,7 @@ impl StoredProgramStatus {
             Self::Completing => "completing",
             Self::Stopping => "stopping",
             Self::Completed => "completed",
+            Self::Interrupted => "interrupted",
             Self::Failed => "failed",
         }
     }
@@ -170,7 +172,9 @@ impl Repository {
         }
         let terminal = matches!(
             next,
-            StoredProgramStatus::Completed | StoredProgramStatus::Failed
+            StoredProgramStatus::Completed
+                | StoredProgramStatus::Interrupted
+                | StoredProgramStatus::Failed
         );
         let started = matches!(
             next,

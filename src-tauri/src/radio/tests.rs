@@ -864,6 +864,47 @@ async fn program_runner_stop_cancels_blocking_playback_and_persists_terminal() {
 }
 
 #[tokio::test]
+async fn recovery_suspend_interrupts_blocking_program_without_marking_it_completed() {
+    let fixture = fixture();
+    fixture.playback.block.store(true, Ordering::SeqCst);
+    fixture
+        .service
+        .start_local_program(start_request())
+        .await
+        .expect("confirmed start");
+    tokio::time::timeout(Duration::from_secs(2), fixture.playback.started.notified())
+        .await
+        .expect("playback began");
+
+    fixture
+        .service
+        .prepare_suspend()
+        .await
+        .expect("program interrupted before suspend");
+
+    assert_eq!(fixture.store.phase(), Some(ProgramRunPhase::Interrupted));
+    assert!(fixture.playback.stop_calls.load(Ordering::SeqCst) >= 1);
+    assert_eq!(fixture.service.active_program_id().await, None);
+    assert_eq!(
+        fixture
+            .store
+            .state
+            .lock()
+            .expect("store")
+            .transitions
+            .last(),
+        Some(&ProgramRunPhase::Interrupted)
+    );
+    let blocked = fixture
+        .service
+        .start_local_program(start_request())
+        .await
+        .expect_err("suspended service rejects fresh sound authorization");
+    assert_eq!(blocked.error_id, ErrorId::ResourceBusy);
+    fixture.service.resume_after_suspend();
+}
+
+#[tokio::test]
 async fn program_runner_allows_only_one_active_run() {
     let fixture = fixture();
     fixture.playback.block.store(true, Ordering::SeqCst);

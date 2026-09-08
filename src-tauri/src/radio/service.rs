@@ -33,6 +33,8 @@ const PLANNING_FAILED_MESSAGE: &str = "节目计划生成失败，未开始播�
 const COMPANION_RUNNING_MESSAGE: &str =
     "COMPANION MODE：队列由 Apple Music 控制；曲目反应在本机生成。";
 const COMPANION_FAILED_MESSAGE: &str = "Apple Music 陪伴模式已安全停止；未改动外部队列。";
+const COMPANION_INTERRUPTED_MESSAGE: &str =
+    "Apple Music 陪伴模式因系统休眠而停止；没有控制外部播放。";
 pub(super) const COMPANION_RECONNECTED_MESSAGE: &str =
     "Apple Music 会话已恢复；陪伴模式继续监听，不会改动外部队列。";
 
@@ -168,6 +170,23 @@ impl RadioService {
             active.wait().await?;
         }
         Ok(())
+    }
+
+    pub(crate) async fn prepare_suspend(&self) -> Result<(), ApiError> {
+        let active = {
+            let state = self.inner.state.lock().await;
+            self.inner.accepting.store(false, Ordering::Release);
+            state.active.clone()
+        };
+        if let Some(active) = active {
+            active.interrupt();
+            active.wait().await?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn resume_after_suspend(&self) {
+        self.inner.accepting.store(true, Ordering::Release);
     }
 
     /// Starts API-024 only after proving user authority, then persists identity
@@ -440,6 +459,22 @@ impl RadioServiceInner {
         loop {
             tokio::select! {
                 result = &mut monitor => {
+                    if active.interrupted() {
+                        revision = self.store.transition_program(
+                            active.program_id,
+                            phase,
+                            ProgramRunPhase::Interrupted,
+                            revision,
+                            self.clock.now_ms(),
+                            Some("interrupted"),
+                        ).await?;
+                        self.events.state(
+                            active.program_id,
+                            ProgramEventState::Failed,
+                            Some(COMPANION_INTERRUPTED_MESSAGE),
+                        );
+                        return Ok(revision);
+                    }
                     if result.is_err() && !*active.cancellation().borrow() {
                         revision = self.store.transition_program(
                             active.program_id,

@@ -21,6 +21,7 @@ pub enum ProgramRunPhase {
     Completing,
     Stopping,
     Completed,
+    Interrupted,
     Failed,
 }
 
@@ -201,6 +202,7 @@ const fn stored_program_status(value: ProgramRunPhase) -> StoredProgramStatus {
         ProgramRunPhase::Completing => StoredProgramStatus::Completing,
         ProgramRunPhase::Stopping => StoredProgramStatus::Stopping,
         ProgramRunPhase::Completed => StoredProgramStatus::Completed,
+        ProgramRunPhase::Interrupted => StoredProgramStatus::Interrupted,
         ProgramRunPhase::Failed => StoredProgramStatus::Failed,
     }
 }

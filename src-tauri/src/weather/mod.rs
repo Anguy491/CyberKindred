@@ -20,11 +20,11 @@ use std::{
     pin::Pin,
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::{Duration, Instant},
 };
-use tokio::sync::{Mutex, RwLock, RwLockWriteGuard};
+use tokio::sync::{Mutex, Notify, RwLock, RwLockWriteGuard};
 use uuid::Uuid;
 
 const GEOCODING_ENDPOINT: &str = "https://geocoding-api.open-meteo.com/v1/search";
@@ -398,6 +398,8 @@ pub(crate) struct WeatherService {
     candidates: Mutex<HashMap<Uuid, CandidateRecord>>,
     lifecycle: RwLock<()>,
     accepting: AtomicBool,
+    network_generation: AtomicU64,
+    network_changed: Notify,
     search_requests: AsyncIdempotency<SearchWeatherLocationsResponse>,
     select_requests: AsyncIdempotency<SelectWeatherLocationResponse>,
 }
@@ -439,6 +441,8 @@ impl WeatherService {
             candidates: Mutex::new(HashMap::new()),
             lifecycle: RwLock::new(()),
             accepting: AtomicBool::new(true),
+            network_generation: AtomicU64::new(0),
+            network_changed: Notify::new(),
             search_requests: AsyncIdempotency::new(),
             select_requests: AsyncIdempotency::new(),
         }
@@ -465,7 +469,9 @@ impl WeatherService {
         }
         validate_search(&request)?;
         let started_at = Instant::now();
-        let result = self.provider.search(&request.query, request.limit).await;
+        let result = self
+            .run_network(self.provider.search(&request.query, request.limit))
+            .await;
         self.record_outcome(
             ProviderRequestKind::LocationSearch,
             elapsed_millis(started_at.elapsed()),
@@ -581,7 +587,7 @@ impl WeatherService {
         }
 
         let started_at = Instant::now();
-        let result = self.provider.current(&location).await;
+        let result = self.run_network(self.provider.current(&location)).await;
         let _ = self
             .record_outcome(
                 ProviderRequestKind::CurrentWeather,
@@ -616,6 +622,44 @@ impl WeatherService {
 
     pub(crate) fn begin_reset(&self) {
         self.accepting.store(false, Ordering::Release);
+        self.cancel_network();
+    }
+
+    pub(crate) async fn prepare_suspend(&self) {
+        self.accepting.store(false, Ordering::Release);
+        self.cancel_network();
+        let _lifecycle = self.lifecycle.write().await;
+        self.clear_private_candidates().await;
+    }
+
+    pub(crate) fn resume_after_suspend(&self) {
+        self.accepting.store(true, Ordering::Release);
+    }
+
+    fn cancel_network(&self) {
+        self.network_generation.fetch_add(1, Ordering::AcqRel);
+        self.network_changed.notify_waiters();
+    }
+
+    async fn run_network<T>(
+        &self,
+        future: WeatherFuture<'_, Result<T, ProviderFailure>>,
+    ) -> Result<T, ProviderFailure> {
+        let generation = self.network_generation.load(Ordering::Acquire);
+        let changed = self.network_changed.notified();
+        tokio::pin!(future);
+        tokio::pin!(changed);
+        changed.as_mut().enable();
+        if !self.accepting.load(Ordering::Acquire)
+            || generation != self.network_generation.load(Ordering::Acquire)
+        {
+            return Err(ProviderFailure::new(ProviderFailureCategory::Unavailable));
+        }
+        tokio::select! {
+            biased;
+            () = &mut changed => Err(ProviderFailure::new(ProviderFailureCategory::Unavailable)),
+            result = &mut future => result,
+        }
     }
 
     async fn record_outcome(
@@ -679,8 +723,7 @@ impl ProviderHealthProbe for WeatherService {
                 .weather_location
                 .map(weather_location)
                 .ok_or_else(|| ProviderFailure::new(ProviderFailureCategory::Unavailable))?;
-            self.provider
-                .current(&location)
+            self.run_network(self.provider.current(&location))
                 .await
                 .map(|(_, latency)| latency)
         })

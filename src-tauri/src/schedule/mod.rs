@@ -616,6 +616,13 @@ impl SchedulerService {
         })
     }
 
+    /// Reconciles elapsed occurrences after a power boundary. This may show a
+    /// notification but cannot start a program without a fresh notification
+    /// action grant.
+    pub(crate) async fn reconcile_after_resume(&self) -> Result<(), ApiError> {
+        self.process_due(self.clock.now_ms()).await
+    }
+
     async fn process_due(&self, now_ms: i64) -> Result<(), ApiError> {
         let collection = self
             .repository

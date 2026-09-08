@@ -397,6 +397,7 @@ impl PlaybackService {
     ///
     /// Returns a safe media, output, or actor-availability error.
     pub async fn prepare_suspend(&self) -> Result<PlaybackState, ApiError> {
+        self.system_source.suspend().await?;
         self.request_local_state(|response| ActorMessage::Suspend { response })
             .await
     }
@@ -407,8 +408,15 @@ impl PlaybackService {
     ///
     /// Returns a safe source, media, output, or actor-availability error.
     pub async fn resume_silent(&self) -> Result<PlaybackState, ApiError> {
-        self.request_local_state(|response| ActorMessage::ResumeSilent { response })
-            .await
+        let local = self
+            .request_local_state(|response| ActorMessage::ResumeSilent { response })
+            .await?;
+        match self.active()? {
+            ActiveSource::Local => Ok(local),
+            // Refreshing a selected system source reads a new authoritative
+            // snapshot but deliberately sends no media command.
+            ActiveSource::System => self.system_source.get_state().await,
+        }
     }
 
     /// Stops only CyberKindred-owned local output and clears its queue.

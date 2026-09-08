@@ -301,6 +301,18 @@ impl UnderstandingService {
     }
 
     pub(crate) async fn quiesce_for_reset(&self) -> Result<(), ApiError> {
+        self.suspend_chat_operations().await
+    }
+
+    pub(crate) async fn prepare_suspend(&self) -> Result<(), ApiError> {
+        self.suspend_chat_operations().await
+    }
+
+    pub(crate) fn resume_after_suspend(&self) {
+        self.state.accepting.store(true, Ordering::Release);
+    }
+
+    async fn suspend_chat_operations(&self) -> Result<(), ApiError> {
         let operations = {
             let _admission = self.state.admission.lock().await;
             self.state.accepting.store(false, Ordering::Release);

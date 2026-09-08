@@ -113,6 +113,9 @@ enum SystemMessage {
     Deactivate {
         response: oneshot::Sender<PlaybackState>,
     },
+    Suspend {
+        response: oneshot::Sender<PlaybackState>,
+    },
     Refresh,
     Shutdown,
 }
@@ -248,6 +251,15 @@ impl SystemMediaSource {
         receiver.await.map_err(|_| ApiError::unexpected())
     }
 
+    pub(super) async fn suspend(&self) -> Result<PlaybackState, ApiError> {
+        let (response, receiver) = oneshot::channel();
+        self.client
+            .sender
+            .send(SystemMessage::Suspend { response })
+            .map_err(|_| ApiError::unexpected())?;
+        receiver.await.map_err(|_| ApiError::unexpected())
+    }
+
     async fn request<F>(&self, message: F) -> Result<PlaybackState, ApiError>
     where
         F: FnOnce(oneshot::Sender<Result<PlaybackState, ApiError>>) -> SystemMessage,
@@ -315,6 +327,15 @@ impl SystemMediaActor {
                     let _ = response.send(Ok(state));
                 }
                 Ok(SystemMessage::Deactivate { response }) => {
+                    self.activation_generation = self.activation_generation.saturating_add(1);
+                    self.monitoring = false;
+                    self.backend.deactivate();
+                    self.disconnect();
+                    let _ = response.send(self.state.clone());
+                }
+                Ok(SystemMessage::Suspend { response }) => {
+                    // A power boundary revokes every interruption token before
+                    // any cancelled TTS operation can attempt a stale resume.
                     self.activation_generation = self.activation_generation.saturating_add(1);
                     self.monitoring = false;
                     self.backend.deactivate();

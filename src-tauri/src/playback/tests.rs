@@ -910,6 +910,51 @@ async fn tts_interruption_resumes_only_the_unchanged_paused_system_session() {
 }
 
 #[tokio::test]
+async fn recovery_suspend_revokes_tts_resume_token_without_playing_system_media() {
+    let (harness, system) = system_harness();
+    harness
+        .service
+        .select_music_source(SelectMusicSourceRequest {
+            client_request_id: Uuid::now_v7(),
+            source_id: "apple_music".to_owned(),
+        })
+        .await
+        .expect("system source selected");
+    system.lock().expect("system state").snapshot.status = PlaybackStateStatus::Playing;
+    harness
+        .service
+        .get_playback_state(EmptyRequest {})
+        .await
+        .expect("playing refresh");
+    let token = harness
+        .service
+        .begin_system_interruption()
+        .await
+        .expect("safe pause token");
+
+    harness
+        .service
+        .prepare_suspend()
+        .await
+        .expect("suspend revokes token");
+    harness
+        .service
+        .finish_system_interruption(token)
+        .await
+        .expect("stale finish is a no-op");
+    let resumed = harness
+        .service
+        .resume_silent()
+        .await
+        .expect("resume only refreshes the system snapshot");
+
+    assert_eq!(resumed.status, PlaybackStateStatus::Paused);
+    let state = system.lock().expect("system state");
+    assert!(state.deactivations >= 1);
+    assert_eq!(state.controls, vec![SystemMediaControl::Pause]);
+}
+
+#[tokio::test]
 async fn tts_interruption_user_override_or_session_replacement_aborts_resume() {
     let (harness, system) = system_harness();
     harness

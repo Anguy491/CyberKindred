@@ -1,4 +1,10 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicU8, Ordering},
+    },
+};
 
 use tokio::sync::{Mutex, Notify, mpsc, watch};
 use uuid::Uuid;
@@ -17,12 +23,14 @@ use super::{
 };
 
 const PROGRAM_FAILED_MESSAGE: &str = "节目无法继续，已安全停止。";
+const PROGRAM_INTERRUPTED_MESSAGE: &str = "节目因系统休眠而安全停止；需要你再次确认后才能播放。";
 const SPEECH_DEGRADED_MESSAGE: &str = "语音不可用，已保留文字并继续播放。";
 const PLAN_DEGRADED_MESSAGE: &str = "AI 计划不可用，已使用确定性本地队列。";
 
 pub(crate) struct ActiveRun {
     pub(crate) program_id: Uuid,
     cancellation: watch::Sender<bool>,
+    cancellation_reason: AtomicU8,
     current_speech: std::sync::Mutex<Option<Uuid>>,
     completion: Mutex<Option<Result<u64, ApiError>>>,
     completion_notify: Notify,
@@ -34,6 +42,7 @@ impl ActiveRun {
         Arc::new(Self {
             program_id,
             cancellation,
+            cancellation_reason: AtomicU8::new(0),
             current_speech: std::sync::Mutex::new(None),
             completion: Mutex::new(None),
             completion_notify: Notify::new(),
@@ -41,7 +50,19 @@ impl ActiveRun {
     }
 
     pub(crate) fn cancel(&self) {
+        let _ =
+            self.cancellation_reason
+                .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire);
         self.cancellation.send_replace(true);
+    }
+
+    pub(crate) fn interrupt(&self) {
+        self.cancellation_reason.store(2, Ordering::Release);
+        self.cancellation.send_replace(true);
+    }
+
+    pub(crate) fn interrupted(&self) -> bool {
+        self.cancellation_reason.load(Ordering::Acquire) == 2
     }
 
     pub(crate) fn cancellation(&self) -> watch::Receiver<bool> {
@@ -112,6 +133,7 @@ impl ProgramRunner {
         execution.publish_queued();
         match execution.execute(authorization).await {
             Ok(revision) => Ok(revision),
+            Err(_) if execution.interrupted() => execution.interrupt().await,
             Err(_) if execution.cancelled() => execution.stop().await,
             Err(_) => execution.fail().await,
         }
@@ -495,6 +517,23 @@ impl<'a> RunExecution<'a> {
         Ok(self.revision)
     }
 
+    async fn interrupt(&mut self) -> Result<u64, ApiError> {
+        if let Some(segment_id) = self.active.current_speech() {
+            self.runner.speech.cancel(segment_id);
+        }
+        let _ = self.runner.playback.stop().await;
+        self.cancel_unfinished_segments_with_reason("interrupted")
+            .await?;
+        self.transition_run(ProgramRunPhase::Interrupted, Some("interrupted"))
+            .await?;
+        self.runner.events.state(
+            self.program_id,
+            ProgramEventState::Failed,
+            Some(PROGRAM_INTERRUPTED_MESSAGE),
+        );
+        Ok(self.revision)
+    }
+
     async fn fail(&mut self) -> Result<u64, ApiError> {
         if let Some(segment_id) = self.active.current_speech() {
             self.runner.speech.cancel(segment_id);
@@ -512,6 +551,14 @@ impl<'a> RunExecution<'a> {
     }
 
     async fn cancel_unfinished_segments(&mut self) -> Result<(), ApiError> {
+        self.cancel_unfinished_segments_with_reason("user_stop")
+            .await
+    }
+
+    async fn cancel_unfinished_segments_with_reason(
+        &mut self,
+        reason: &'static str,
+    ) -> Result<(), ApiError> {
         let unfinished = self
             .segment_states
             .iter()
@@ -523,7 +570,7 @@ impl<'a> RunExecution<'a> {
                 segment_id,
                 ProgramSegmentPhase::Cancelled,
                 Some(ProgramSegmentEventState::Skipped),
-                Some("user_stop"),
+                Some(reason),
             )
             .await?;
         }
@@ -576,6 +623,10 @@ impl<'a> RunExecution<'a> {
 
     fn cancelled(&self) -> bool {
         *self.active.cancellation.borrow()
+    }
+
+    fn interrupted(&self) -> bool {
+        self.active.interrupted()
     }
 
     fn ensure_not_cancelled(&self) -> Result<(), ApiError> {

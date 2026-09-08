@@ -4,6 +4,7 @@ use crate::{
     storage::{AppPaths, Storage, StoredWeatherCache, StoredWeatherLocation},
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
+use tokio::sync::Notify;
 
 struct FakeProvider {
     searches: AtomicUsize,
@@ -60,6 +61,47 @@ impl WeatherProvider for FakeProvider {
                 8,
             ))
         })
+    }
+}
+
+struct SuspendProvider {
+    searches: AtomicUsize,
+    started: Notify,
+}
+
+impl WeatherProvider for SuspendProvider {
+    fn search<'a>(
+        &'a self,
+        _query: &'a str,
+        _limit: u8,
+    ) -> WeatherFuture<'a, Result<(Vec<UnsignedCandidate>, u64), ProviderFailure>> {
+        let call = self.searches.fetch_add(1, Ordering::SeqCst);
+        self.started.notify_one();
+        Box::pin(async move {
+            if call == 0 {
+                std::future::pending().await
+            } else {
+                Ok((
+                    vec![UnsignedCandidate {
+                        city: "Sydney".to_owned(),
+                        region: Some("New South Wales".to_owned()),
+                        country: "Australia".to_owned(),
+                        country_code: "AU".to_owned(),
+                        latitude: -33.8688,
+                        longitude: 151.2093,
+                        timezone: "Australia/Sydney".to_owned(),
+                    }],
+                    7,
+                ))
+            }
+        })
+    }
+
+    fn current<'a>(
+        &'a self,
+        _location: &'a WeatherLocation,
+    ) -> WeatherFuture<'a, Result<(CurrentWeather, u64), ProviderFailure>> {
+        Box::pin(async { Err(ProviderFailure::new(ProviderFailureCategory::Unavailable)) })
     }
 }
 
@@ -147,6 +189,63 @@ async fn weather_provider_search_requires_explicit_valid_query_and_is_idempotent
     let retry = service.search_locations(request).await.expect("retry");
     assert_eq!(first, retry);
     assert_eq!(provider.searches.load(Ordering::SeqCst), 1);
+    storage.close().await;
+}
+
+#[tokio::test]
+async fn offline_recovery_cancels_inflight_weather_and_requires_a_fresh_request() {
+    let temp = tempfile::tempdir().expect("temp root");
+    let paths = AppPaths::create(
+        temp.path().join("data"),
+        temp.path().join("cache"),
+        temp.path().join("logs"),
+    )
+    .expect("paths");
+    let storage = Storage::open(&paths, "0.1.0").await.expect("storage");
+    let provider = Arc::new(SuspendProvider {
+        searches: AtomicUsize::new(0),
+        started: Notify::new(),
+    });
+    let service = Arc::new(WeatherService::new(
+        storage.repository(),
+        provider.clone(),
+        Arc::new(SystemClock),
+    ));
+    let inflight = tokio::spawn({
+        let service = Arc::clone(&service);
+        async move {
+            service
+                .search_locations(SearchWeatherLocationsRequest {
+                    client_request_id: Uuid::now_v7(),
+                    query: "Sydney".to_owned(),
+                    limit: 1,
+                })
+                .await
+        }
+    });
+    tokio::time::timeout(Duration::from_secs(1), provider.started.notified())
+        .await
+        .expect("network request started");
+
+    service.prepare_suspend().await;
+    let cancelled = tokio::time::timeout(Duration::from_secs(1), inflight)
+        .await
+        .expect("network request cancelled")
+        .expect("search task")
+        .expect_err("suspend cannot preserve a network result");
+    assert_eq!(cancelled.error_id, crate::ipc::ErrorId::ProviderUnavailable);
+
+    service.resume_after_suspend();
+    let fresh = service
+        .search_locations(SearchWeatherLocationsRequest {
+            client_request_id: Uuid::now_v7(),
+            query: "Sydney".to_owned(),
+            limit: 1,
+        })
+        .await
+        .expect("fresh request after recovery");
+    assert_eq!(fresh.candidates.len(), 1);
+    assert_eq!(provider.searches.load(Ordering::SeqCst), 2);
     storage.close().await;
 }
 
