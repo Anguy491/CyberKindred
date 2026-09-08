@@ -128,6 +128,8 @@ if (-not $Development -and -not $SnapshotBuild) {
     $snapshotRoot = Join-Path ([IO.Path]::GetFullPath([IO.Path]::GetTempPath())) ("cyberkindred-build-snapshot-" + [guid]::NewGuid().ToString("N"))
     $snapshotRegistered = $false
     $candidateStaging = $null
+    $publishedOutput = $false
+    $releaseVerified = $false
     try {
         Assert-SafeBuildSnapshot $snapshotRoot $false | Out-Null
         Invoke-Checked "git" @("-c", "core.longpaths=true", "-C", $workspaceRoot, "worktree", "add", "--detach", $snapshotRoot, $sourceCommit)
@@ -200,10 +202,31 @@ if (-not $Development -and -not $SnapshotBuild) {
         }
         [IO.Directory]::Move($candidateStaging, $OutputRoot)
         $candidateStaging = $null
+        $publishedOutput = $true
+        Invoke-Checked "powershell" @(
+            "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+            (Join-Path $workspaceRoot "scripts\release\verify-release.ps1"),
+            "-CandidatePath", $OutputRoot, "-TrustedManifestSha256", $trustedManifestHash,
+            "-SkipTests"
+        )
+        $releaseVerified = $true
         Write-Output "Local unsigned beta candidate: $OutputRoot"
         Write-Output "Trusted manifest SHA-256 (record outside the candidate directory): $trustedManifestHash"
     }
     finally {
+        if ($publishedOutput -and -not $releaseVerified -and (Test-Path -LiteralPath $OutputRoot)) {
+            try {
+                Assert-ReleaseOutputPath $OutputRoot $workspaceRoot | Out-Null
+                $failedOutput = Get-Item -Force -LiteralPath $OutputRoot
+                if (-not $failedOutput.PSIsContainer -or $failedOutput.LinkType) {
+                    throw "failed release output is not a real directory"
+                }
+                Remove-Item -LiteralPath $OutputRoot -Recurse -Force
+            }
+            catch {
+                Write-Warning "unverified release output cleanup failed for $OutputRoot`: $($_.Exception.Message)"
+            }
+        }
         if ($candidateStaging -and (Test-Path -LiteralPath $candidateStaging)) {
             try {
                 Assert-SafeReleaseStaging $candidateStaging (Join-Path $workspaceRoot "target\release-artifacts") | Out-Null
