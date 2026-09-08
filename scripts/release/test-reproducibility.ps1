@@ -1,5 +1,8 @@
 [CmdletBinding()]
-param([string]$Target = "x86_64-pc-windows-msvc")
+param(
+    [ValidateSet("x86_64-pc-windows-msvc")]
+    [string]$Target = "x86_64-pc-windows-msvc"
+)
 
 $ErrorActionPreference = "Stop"
 $workspaceRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))

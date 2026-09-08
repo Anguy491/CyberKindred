@@ -28,6 +28,7 @@ describe("M7 release provenance policy", () => {
     const verifier = script("scripts/release/verify-release.ps1");
     expect(manifest).toContain("releaseEligible: !development && sourceStatus.length === 0");
     expect(manifest).toContain("dirty: sourceStatus.length > 0");
+    expect(manifest).toContain("statusSha256: sha256(sourceStatus)");
     expect(verifier).toContain("TrustedManifestSha256");
     expect(verifier).toContain("development or dirty artifacts cannot pass release verification");
   });

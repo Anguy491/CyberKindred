@@ -1,7 +1,7 @@
 import { readdirSync, statSync } from "node:fs";
 import { basename, relative, resolve } from "node:path";
 
-import { hashFile, readJson, run, workspaceRoot, writeJson } from "./lib.mjs";
+import { hashFile, readJson, run, sha256, workspaceRoot, writeJson } from "./lib.mjs";
 
 function argument(name, fallback) {
   const index = process.argv.indexOf(name);
@@ -10,6 +10,10 @@ function argument(name, fallback) {
 
 const packageJson = readJson(resolve(workspaceRoot, "package.json"));
 const development = process.argv.includes("--development");
+const target = argument("--target", "x86_64-pc-windows-msvc");
+if (target !== "x86_64-pc-windows-msvc") {
+  throw new Error("release manifest target must be x86_64-pc-windows-msvc");
+}
 const input = resolve(argument("--input", resolve(workspaceRoot, "target/release-artifacts", packageJson.version)));
 const output = resolve(argument("--output", resolve(input, "manifest.json")));
 const overrideConfigArgument = argument("--config");
@@ -112,7 +116,7 @@ const manifest = {
   version: packageJson.version,
   commit,
   sourceDateEpoch: commitTimestamp,
-  target: "x86_64-pc-windows-msvc",
+  target,
   schemaDatabaseVersion: Math.max(...migrationVersions),
   unsigned: true,
   identifier: effectiveConfig.identifier,
@@ -123,6 +127,10 @@ const manifest = {
   development,
   dirty: sourceStatus.length > 0,
   releaseEligible: !development && sourceStatus.length === 0,
+  sourceState: {
+    head: commit,
+    statusSha256: sha256(sourceStatus),
+  },
   webView2InstallMode: effectiveConfig.bundle?.windows?.webviewInstallMode?.type,
   installerPolicy: {
     installMode: effectiveConfig.bundle?.windows?.nsis?.installMode,

@@ -3,6 +3,7 @@ param(
     [switch]$Development,
     [switch]$ReleaseTest,
     [string]$OutputRoot,
+    [ValidateSet("x86_64-pc-windows-msvc")]
     [string]$Target = "x86_64-pc-windows-msvc"
 )
 
@@ -43,7 +44,7 @@ try {
     $tauriArguments = @(
         "tauri", "build", "--target", $Target, "--bundles", "nsis", "--ci", "--no-sign"
     )
-    $manifestArguments = @()
+    $manifestArguments = @("--target", $Target)
     if ($Development) { $manifestArguments += "--development" }
     if ($ReleaseTest) {
         $releaseTestConfig = "scripts/release/tauri.release-test.conf.json"
