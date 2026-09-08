@@ -8,6 +8,11 @@
   gap: 16px;
 }
 
+.radio-current {
+  display: grid;
+  gap: 16px;
+}
+
 .radio-artwork {
   width: min(220px, 50vw);
   aspect-ratio: 1;
@@ -31,9 +36,9 @@
 
 .radio-readout dt,
 .radio-plan em {
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-family: "Space Mono", Consolas, monospace;
+  font-size: 12px;
   font-style: normal;
   text-transform: uppercase;
 }
@@ -101,12 +106,12 @@
 }
 
 .chat-transcript li[data-role="status"] {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .chat-transcript strong {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-family: "Space Mono", Consolas, monospace;
+  font-size: 12px;
 }
 
 @media (max-width: 760px) {

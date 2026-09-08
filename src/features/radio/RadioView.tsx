@@ -18,12 +18,13 @@ export interface RadioViewProps {
   readonly ipc: RadioIpc;
   readonly disabledReason?: string;
   readonly startButtonRef?: RefObject<HTMLButtonElement | null>;
+  readonly messageInputRef?: RefObject<HTMLTextAreaElement | null>;
   readonly autoFocusStart?: boolean;
   readonly onStartFocused?: () => void;
 }
 
 export function RadioView({
-  ipc, disabledReason, startButtonRef, autoFocusStart = false, onStartFocused,
+  ipc, disabledReason, startButtonRef, messageInputRef, autoFocusStart = false, onStartFocused,
 }: RadioViewProps) {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [sources, setSources] = useState<ReadonlyArray<SourceSummary>>([]);
@@ -239,19 +240,21 @@ export function RadioView({
   const controlsDisabled = playback === null || busy !== null;
   const startDisabled = busy !== null || active ? "[PROGRAM ACTIVE]" : unavailable;
   return <section className="page radio-page" aria-labelledby="radio-title">
-    <div className="page-primary radio-now" aria-live="polite">
+    <div className="page-primary radio-now">
       <p className="instrument-label">RADIO / {programState.toUpperCase()}</p>
       {playback?.currentTrack?.artworkUri ?
         <img className="radio-artwork" src={resolveAssetUri(playback.currentTrack.artworkUri)}
           alt={`${playback.currentTrack.title} 封面`} /> : null}
-      <h1 id="radio-title" className="hero-title">
-        {playback?.currentTrack?.title ?? "今天想听什么状态？"}
-      </h1>
-      <p className="secondary-copy">
-        {playback?.currentTrack === null || playback === null
-          ? "点击开始后才会规划、调用可用服务并播放。"
-          : `${playback.currentTrack.artist ?? "未知艺术家"} · ${playback.currentTrack.album ?? "未知专辑"}`}
-      </p>
+      <div className="radio-current" role="status" aria-live="polite" aria-atomic="true">
+        <h1 id="radio-title" className="hero-title">
+          {playback?.currentTrack?.title ?? "今天想听什么状态？"}
+        </h1>
+        <p className="secondary-copy">
+          {playback?.currentTrack === null || playback === null
+            ? "点击开始后才会规划、调用可用服务并播放。"
+            : `${playback.currentTrack.artist ?? "未知艺术家"} · ${playback.currentTrack.album ?? "未知专辑"}`}
+        </p>
+      </div>
       <dl className="radio-readout">
         <div><dt>来源</dt><dd>{playback?.sourceId ?? "local"}</dd></div>
         <div><dt>状态</dt><dd>{playback?.status ?? "disconnected"}</dd></div>
@@ -326,7 +329,7 @@ export function RadioView({
 
       <label className="text-entry" htmlFor="radio-message">
         <span className="instrument-label">告诉 CyberKindred 你现在想听什么</span>
-        <textarea id="radio-message" rows={2} value={draft}
+        <textarea id="radio-message" ref={messageInputRef} rows={2} value={draft}
           onChange={(event) => setDraft(event.currentTarget.value)}
           maxLength={4_000}
           onKeyDown={(event) => {

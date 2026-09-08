@@ -87,6 +87,7 @@ export function App({
   const [loadAttempt, setLoadAttempt] = useState(0);
   const librarySearchRef = useRef<HTMLInputElement>(null);
   const radioStartRef = useRef<HTMLButtonElement>(null);
+  const radioMessageRef = useRef<HTMLTextAreaElement>(null);
   const onboardingIpc = useMemoOnboardingClient(onboardingClient);
   const libraryClient = useMemoLibraryIpc(libraryIpc);
   const radioClient = useMemoRadioIpc(radioIpc);
@@ -161,7 +162,7 @@ export function App({
       if (event.key.toLowerCase() === "l") {
         event.preventDefault();
         setActiveRoute("radio");
-        queueMicrotask(() => radioStartRef.current?.focus());
+        queueMicrotask(() => radioMessageRef.current?.focus());
       } else if (event.key.toLowerCase() === "k") {
         event.preventDefault();
         setActiveRoute("library");
@@ -215,6 +216,7 @@ export function App({
               <RadioPage
                 ipc={radioClient}
                 startButtonRef={radioStartRef}
+                messageInputRef={radioMessageRef}
                 autoFocusStart={focusAfterOnboarding}
                 onStartFocused={() => setFocusAfterOnboarding(false)}
               />

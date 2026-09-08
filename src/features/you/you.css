@@ -18,7 +18,7 @@
 }
 
 .knowledge-list small {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .knowledge-actions {

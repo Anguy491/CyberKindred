@@ -77,6 +77,8 @@ select {
 }
 
 button {
+  min-width: 44px;
+  min-height: 44px;
   color: inherit;
 }
 
@@ -134,12 +136,13 @@ button {
 
 .nav-item,
 .settings-groups button {
+  min-width: 44px;
   min-height: 44px;
   padding: 0;
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;
-  color: var(--text-disabled);
+  color: var(--text-secondary);
   font-family: "Space Mono", Consolas, monospace;
   font-size: 12px;
   letter-spacing: 0.08em;
@@ -172,7 +175,7 @@ button {
 
 .connection-state--error,
 .status-error {
-  color: var(--error);
+  color: var(--text-primary);
 }
 
 .app-content {
@@ -328,7 +331,7 @@ button {
 .control {
   min-height: 44px;
   padding: 0 20px;
-  border: 1px solid var(--border-visible);
+  border: 1px solid var(--text-disabled);
   border-radius: 999px;
   background: transparent;
   color: var(--text-primary);
@@ -355,14 +358,14 @@ button {
 }
 
 .control[aria-disabled="true"] {
-  border-color: var(--border-visible);
+  border-color: var(--text-disabled);
   background: transparent;
   color: var(--text-disabled);
   cursor: not-allowed;
 }
 
 .control:disabled {
-  border-color: var(--border-visible);
+  border-color: var(--text-disabled);
   background: transparent;
   color: var(--text-disabled);
   cursor: not-allowed;
@@ -382,7 +385,13 @@ button {
 .inline-status,
 .empty-detail {
   margin: 0;
-  color: var(--text-disabled);
+  color: var(--text-secondary);
+}
+
+.inline-status--error {
+  padding-left: 8px;
+  border-left: 2px solid var(--error);
+  color: var(--text-primary);
 }
 
 .playback-controls {
@@ -401,6 +410,7 @@ button {
 
 input[type="range"] {
   width: 100%;
+  min-height: 44px;
   accent-color: var(--accent);
 }
 
@@ -420,7 +430,7 @@ select {
   min-height: 44px;
   padding: 10px 0;
   border: 0;
-  border-bottom: 1px solid var(--border-visible);
+  border-bottom: 1px solid var(--text-disabled);
   border-radius: 0;
   background: transparent;
   color: var(--text-primary);
@@ -441,7 +451,7 @@ textarea {
 
 textarea::placeholder,
 input::placeholder {
-  color: var(--text-disabled);
+  color: var(--text-secondary);
 }
 
 .instrument-list {
@@ -456,7 +466,7 @@ input::placeholder {
 }
 
 .instrument-list dt {
-  color: var(--text-disabled);
+  color: var(--text-secondary);
   letter-spacing: 0.08em;
 }
 
@@ -479,13 +489,18 @@ input::placeholder {
 
 .inline-notice strong,
 .inline-error strong {
-  color: var(--error);
+  color: var(--text-primary);
   font-family: "Space Mono", Consolas, monospace;
   font-size: 12px;
 }
 
 .inline-notice--warning strong {
   color: var(--warning);
+}
+
+.inline-error {
+  padding-left: 16px;
+  border-left: 2px solid var(--error);
 }
 
 .knowledge-sections section,
@@ -532,7 +547,7 @@ input::placeholder {
   width: 100%;
   min-height: 52px;
   padding: 12px 16px;
-  border: 1px solid var(--border-visible);
+  border: 1px solid var(--text-disabled);
   background: transparent;
   color: var(--text-primary);
   text-align: left;
@@ -663,13 +678,15 @@ input::placeholder {
 }
 
 .destructive-data-control select {
-  min-height: 2.5rem;
-  border: 1px solid var(--border-visible);
+  min-height: 44px;
+  border: 1px solid var(--text-disabled);
   color: var(--text-primary);
   background: var(--surface-raised);
 }
 
 .disabled-link {
+  display: inline-flex;
+  align-items: center;
   width: fit-content;
   min-height: 44px;
   padding: 12px 0;
@@ -823,7 +840,7 @@ input::placeholder {
   margin: 0;
   padding-left: 20px;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: "Space Mono", Consolas, monospace;
   font-size: 13px;
   line-height: 20px;
 }
@@ -872,6 +889,7 @@ input::placeholder {
 }
 
 .text-control {
+  min-width: 44px;
   min-height: 44px;
   padding: 0;
   border: 0;
@@ -924,6 +942,10 @@ input::placeholder {
     padding: 32px 24px;
   }
 
+  .brand-name {
+    overflow-wrap: anywhere;
+  }
+
   .page {
     grid-template-columns: minmax(0, 1fr);
     row-gap: 32px;
@@ -963,11 +985,48 @@ input::placeholder {
   }
 }
 
+@media (max-width: 680px) {
+  .app-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-inline: 16px;
+  }
+
+  .brand-block {
+    min-width: 0;
+  }
+
+  .primary-nav {
+    gap: 8px;
+  }
+
+  .app-content,
+  .onboarding {
+    padding-inline: 16px;
+  }
+
+  .weather-candidate-list button,
+  .schedule-form {
+    grid-template-columns: 1fr;
+  }
+
+  .schedule-form > :nth-child(n + 3),
+  .schedule-weekdays {
+    grid-column: auto;
+  }
+
+  .schedule-list > li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { ControlButton } from "../components/ControlButton";
 import type { FontStatus, FoundationState } from "../design/foundation";
@@ -281,7 +281,7 @@ function AiVoiceSettings({ ipc, shellState }: {
             onClick={() => void test(kind)}>测试 {kind.toUpperCase()}</ControlButton>
         ))}
       </div>
-      <span className="inline-status" role="status">{status}</span>
+      <StatusText status={status} />
     </div>
   );
 }
@@ -366,7 +366,7 @@ function PlaybackSettings({ ipc }: { readonly ipc: SettingsIpc }) {
         value={settings?.audioOutputBehavior === "fixed_device" ? "[FIXED DEVICE]" : "[FOLLOW SYSTEM DEFAULT]"}
         detail="关闭 TTS 后音乐仍可播放，所有主播内容只显示文字；保存设置不会播放测试音。" />
       <ControlButton disabled={busy || settings === null} onClick={() => void save()}>保存播放设置</ControlButton>
-      <span className="inline-status" role="status">{status}</span>
+      <StatusText status={status} />
     </div>
   );
 }
@@ -413,7 +413,8 @@ function AppleMusicSettings({ ipc, supported }: { readonly ipc: SettingsIpc; rea
     .map(([name]) => name.toUpperCase());
   return (
     <div className="setting-stack">
-      <SettingRow label="WINDOWS APP SESSION" value={supported ? status : "[UNAVAILABLE]"}
+      <SettingRow label="WINDOWS APP SESSION"
+        value={<StatusText status={supported ? status : "[UNAVAILABLE]"} />}
         detail={integration?.safeMessage ?? "当前 Windows 不支持系统媒体会话。"} />
       <SettingRow label="CAPABILITIES" value={controls.length === 0 ? "尚未获得" : controls.join(" · ")}
         detail="每项控制只按当前会话实时能力启用；CyberKindred 不建立精确 Apple 队列。" />
@@ -475,7 +476,7 @@ function ApplicationSettings({ ipc }: { readonly ipc: SettingsIpc }) {
         detail="日程到点只通知，不自动开播。" />
       <ControlButton disabled={busy || settings === null}
         onClick={() => void toggle("notificationsEnabled")}>{settings?.notificationsEnabled ? "关闭通知" : "启用通知"}</ControlButton>
-      <span className="inline-status" role="status">{status}</span>
+      <StatusText status={status} />
     </div>
   );
 }
@@ -682,7 +683,7 @@ function ScheduleSettings({ ipc }: { readonly ipc: SettingsIpc }) {
         <ControlButton disabled={busy || settings === null} onClick={() => void toggleNotifications()}>
           {settings?.notificationsEnabled ? "关闭系统通知" : "启用系统通知"}
         </ControlButton>
-        <span className="inline-status" role="status">{status}</span>
+        <StatusText status={status} />
       </div>
       {due === null ? null : (
         <section className="schedule-due" aria-label="到点节目选择">
@@ -907,7 +908,7 @@ function ContextSettings({ ipc }: { readonly ipc: SettingsIpc }) {
           disabled={busy || settings?.weatherLocation === null || settings === null}
           onClick={() => void clearLocation()}
         >清除城市</ControlButton>
-        <span className="inline-status" role="status">{status}</span>
+        <StatusText status={status} />
       </div>
       {candidates.length > 0 ? (
         <ul className="weather-candidate-list" aria-label="城市搜索结果">
@@ -1043,7 +1044,7 @@ function PrivacyDataSettings({ ipc }: { readonly ipc: SettingsIpc }) {
         value={String(inventory.length)}
         detail="清单只显示类别、数量、介质、保留期和外发对象；不显示正文、密钥或路径。"
       />
-      <span className="inline-status" role="status">{status}</span>
+      <StatusText status={status} />
       <ul className="data-inventory-list" aria-label="本地数据清单">
         {inventory.map((entry) => (
           <li key={entry.category} data-testid="data-inventory-row">
@@ -1103,7 +1104,7 @@ function PrivacyDataSettings({ ipc }: { readonly ipc: SettingsIpc }) {
 
 interface SettingRowProps {
   readonly label: string;
-  readonly value: string;
+  readonly value: ReactNode;
   readonly detail: string;
 }
 
@@ -1114,6 +1115,19 @@ function SettingRow({ label, value, detail }: SettingRowProps) {
       <strong>{value}</strong>
       <span>{detail}</span>
     </div>
+  );
+}
+
+function StatusText({ status }: { readonly status: string }) {
+  const assertive = /(?:ERROR|FAILED|UNAVAILABLE|REJECTED|NO APP SESSION)/u.test(status);
+  return (
+    <span
+      className={`inline-status${assertive ? " inline-status--error" : ""}`}
+      role={assertive ? "alert" : "status"}
+      aria-atomic="true"
+    >
+      {status}
+    </span>
   );
 }
 

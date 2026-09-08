@@ -46,11 +46,25 @@ describe("[TASK-009] application shell", () => {
 
     fireEvent.keyDown(document, { key: "1", ctrlKey: true });
     expect(screen.getByRole("textbox", { name: /告诉 CyberKindred/u })).toHaveProperty("value", "安静一点");
+    fireEvent.keyDown(document, { key: "l", ctrlKey: true });
+    await waitFor(() => expect(document.activeElement).toBe(radioInput));
     fireEvent.keyDown(document, { key: "k", ctrlKey: true });
     await waitFor(() => expect(document.activeElement).toBe(librarySearch));
     expect(librarySearch).toHaveProperty("value", "夜晚");
     fireEvent.keyDown(document, { key: ",", ctrlKey: true });
     expect(screen.getByRole("heading", { name: "AI & VOICE" })).not.toBeNull();
+  });
+
+  // TEST-A11Y-001; UX-NAV-003; NFR-A11Y-001.
+  it("keeps the global navigation in visual Tab order", async () => {
+    const user = userEvent.setup();
+    render(<App scenario="ready" fontStatusLoader={loadedFonts} />);
+    await screen.findByRole("heading", { name: "今天想听什么状态？" });
+
+    for (const name of ["电台", "曲库", "了解", "设置"]) {
+      await user.tab();
+      expect(document.activeElement).toBe(screen.getByRole("button", { name }));
+    }
   });
 
   // UX-STA-002/003/004/005/006; NFR-A11Y-002.

@@ -1,4 +1,4 @@
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { forwardRef, useId, type ButtonHTMLAttributes, type ReactNode } from "react";
 
 interface ControlButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   readonly children: ReactNode;
@@ -15,6 +15,10 @@ export const ControlButton = forwardRef<HTMLButtonElement, ControlButtonProps>(f
   ...buttonProps
 }: ControlButtonProps, ref) {
   const unavailable = disabledReason !== undefined;
+  const reasonId = useId();
+  const describedBy = unavailable
+    ? [buttonProps["aria-describedby"], reasonId].filter(Boolean).join(" ")
+    : buttonProps["aria-describedby"];
   return (
     <span className="control-with-reason">
       <button
@@ -24,6 +28,7 @@ export const ControlButton = forwardRef<HTMLButtonElement, ControlButtonProps>(f
         className={`control control--${tone}`}
         disabled={disabled}
         aria-disabled={unavailable || undefined}
+        aria-describedby={describedBy || undefined}
         onClick={(event) => {
           if (unavailable) {
             event.preventDefault();
@@ -34,7 +39,7 @@ export const ControlButton = forwardRef<HTMLButtonElement, ControlButtonProps>(f
       >
         {children}
       </button>
-      {unavailable ? <span className="control-reason">{disabledReason}</span> : null}
+      {unavailable ? <span id={reasonId} className="control-reason">{disabledReason}</span> : null}
     </span>
   );
 });
