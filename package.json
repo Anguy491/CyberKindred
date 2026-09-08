@@ -22,7 +22,10 @@
     "test:coverage": "vitest run --coverage --maxWorkers=1",
     "test:e2e": "node tests/e2e/run.mjs",
     "test:e2e:self": "node --test tests/e2e/*.test.mjs",
+    "test:m7:guards": "cargo test --release --package cyberkindred --test m7_engineering_guards -- --ignored --nocapture",
     "test:visual": "vitest run tests/ui/visual-policy.test.ts",
+    "coverage:rust": "cargo llvm-cov --workspace --all-features --branch --json --output-path target/m7-evidence/rust-coverage.json",
+    "coverage:gate": "node scripts/m7/merge-coverage.mjs --typescript coverage/coverage-summary.json --rust target/m7-evidence/rust-coverage.json --min-lines 80 --min-branches 70 --output target/m7-evidence/coverage-summary.json",
     "verify:docs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-docs.ps1",
     "release:preflight": "node scripts/release/preflight.mjs",
     "release:assets": "node scripts/release/generate-release-assets.mjs",
@@ -32,7 +35,7 @@
     "release:repro": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/test-reproducibility.ps1",
     "release:test-installer": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/test-installer.ps1",
     "check": "pnpm contracts:check && pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm test:e2e:self && pnpm build && pnpm verify:docs",
-    "verify": "pnpm release:verify"
+    "verify": "pnpm release:verify && pnpm coverage:rust && pnpm coverage:gate"
   },
   "dependencies": {
     "@tanstack/react-query": "5.102.8",
