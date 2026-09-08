@@ -27,6 +27,12 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "windows credential Rust coverage failed with exit code $LASTEXITCODE"
     }
+
+    $env:CARGO_LLVM_COV_TARGET_DIR = "target/llvm-cov-windows-power-observer"
+    & cargo "+$coverageToolchain" llvm-cov -p cyberkindred-windows-power-observer --branch --no-rustc-wrapper --json --output-path "coverage/rust-windows-power-observer.json"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Windows power observer Rust coverage failed with exit code $LASTEXITCODE"
+    }
 }
 finally {
     if ($null -eq $originalTarget) {
